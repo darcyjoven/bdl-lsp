@@ -55,6 +55,8 @@ Genero 源码 (.4gl/.global/.per)
 
 两个仓库都已有 Go 绑定：`bindings/go/binding.go`，模块路径分别为 `github.com/darcyjoven/tree-sitter-bdl`、`github.com/darcyjoven/tree-sitter-per`。
 
+> 注意：两个 grammar 仓库自身的 `go.mod` 仍声明 `go-tree-sitter v0.24.0`，与 ABI 15 不匹配；LSP 通过自己的 `require v0.25.0` 走 MVS 覆盖。建议 grammar 仓库同步升级依赖，并补一个真正调用 `SetLanguage`/`Parse` 的测试，避免单独引用 grammar 模块时踩 ABI 15。
+
 ---
 
 ## 3. 选型明细

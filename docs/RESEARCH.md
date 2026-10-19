@@ -258,6 +258,8 @@ panic: Incompatible language version 15. Expected minimum 13, maximum 14
 
 **结论**：`go.mod` 必须固定 `v0.25.0` 或更高兼容版本；grammar 升级需同步验证。
 
+> 备注：两个 grammar 仓库自己的 `go.mod` 仍写 `v0.24.0`；LSP 通过 `require v0.25.0` 覆盖。建议 grammar 侧也升级，并补解析测试（现有 `bindings/go` 测试未真正解析文件）。
+
 ### 4.3 编译开销
 
 - BDL parser.c 约 11.5 MB；首次冷编译（含依赖下载）约 20 s；热编译约 7 s。

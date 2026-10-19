@@ -28,6 +28,7 @@
 - [ ] 创建 VSCode 最小客户端：启动一个返回固定 initialize 的 Go server，确认扩展激活/连接。
 - [ ] 验证 GitHub Release 二进制下载：平台识别、chmod、`--version`、SHA256。
 - [ ] 用真实 `bdl-lsp` 二进制在 VSCode 中打开 `ammr110.4gl`，确认无 stdout 污染、日志可读。
+- [ ] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 依赖升到 `v0.25.0`，并补“真正解析文件”的测试（ABI 15）。
 - [ ] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。
 
 ---
