@@ -57,6 +57,7 @@
 
 ```bash
 # 本机已验证：Go + CGO 同时链接两个 grammar，解析样例 0 错误
+# 注意：spike 是临时验证程序，位于 artifacts/，未提交到 Git
 cd bdl-lsp/artifacts/spike
 ./spike bdl /code/workspace/tiptop-gp/tiptop/amm/4gl/ammr110.4gl
 ./spike per /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per

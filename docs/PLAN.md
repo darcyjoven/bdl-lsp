@@ -92,9 +92,9 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 
 | 仓库 | 职责 | Git 状态 |
 |---|---|---|
-| `bdl-lsp` | Go LSP 服务 + CLI + 文档 + 脚本 + 过程产物 | 已初始化，待提交 |
-| `vscode-extension` | VSCode 客户端、TextMate 语法、语言配置、命令、打包 | 已初始化，待提交 |
-| `zed-extension` | Zed 扩展清单、Rust/WASM 启动逻辑、Tree-sitter 查询 | 已初始化，待提交 |
+| `bdl-lsp` | Go LSP 服务 + CLI + 文档 + 脚本 + 过程产物 | 已初始化，首次提交完成 |
+| `vscode-extension` | VSCode 客户端、TextMate 语法、语言配置、命令、打包 | 已初始化，首次提交完成 |
+| `zed-extension` | Zed 扩展清单、Rust/WASM 启动逻辑、Tree-sitter 查询 | 已初始化，首次提交完成 |
 | `tree-sitter-bdl` | `.4gl` grammar（独立维护） | 已有仓库 |
 | `tree-sitter-per` | `.per` grammar（独立维护） | 已有仓库 |
 
@@ -202,11 +202,12 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 - 不 vendor 11 MB 的 `parser.c`，避免双份维护；CI 校验 grammar revision 与 `go.mod` 一致。
 - 风险：grammar 仓库必须可被 CI 访问；若转私有，改用内部 GOPROXY 或 vendor。
 
-### D4. LSP 3.17 基础库：`go.lsp.dev/protocol` + `go.lsp.dev/jsonrpc2`
+### D4. LSP 基础库：`go.lsp.dev/protocol` + `go.lsp.dev/jsonrpc2`
 
-- 选用 `protocol v0.12.0`、`jsonrpc2 v0.10.0`（Go 1.17+，已验证）。
-- 最新 `v1.0.1` 要求 Go 1.26，暂不升级；升级作为独立任务验证。
-- 不使用 `tliron/glsp`：仍停留在 LSP 3.16、框架侵入性强、更新慢。
+- 选用 `protocol v0.12.0`、`jsonrpc2 v0.10.0`（LSP 3.16 类型，Go 1.17+，已验证）。
+- v1 需要的文档同步、定义/引用、符号、格式化、推送诊断、语义高亮在 3.16 已覆盖；不依赖 3.17 的 inlay hints / pull diagnostics。
+- 最新 `v1.0.1` 支持 3.17，但要求 Go 1.26；待工具链升级后作为独立任务验证，不阻塞 v1。
+- 不使用 `tliron/glsp`：协议停留在 3.16、更新停滞、框架侵入性强；本项目自己控制分发与错误码。
 - 采用自定义 method 分发（不实现庞大 `protocol.Server` 接口），保留对未知方法的兼容与错误码控制。
 
 ### D5. 二进制分发：按平台发布原始可执行文件

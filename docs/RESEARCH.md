@@ -354,4 +354,4 @@ go build -o spike .
 ./spike per /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per
 ```
 
-> `artifacts/` 不进入 Git；上述命令用于当前阶段复现。
+> `artifacts/` 不进入 Git；spike 源码是临时验证程序，未提交。上述命令用于当前阶段复现，关键代码见第 4 节。

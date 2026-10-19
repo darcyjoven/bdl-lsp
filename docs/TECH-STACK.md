@@ -16,7 +16,7 @@ Genero 源码 (.4gl/.global/.per)
         │             go-tree-sitter v0.25.0（CGO）
         │                     │
         │             bdl-lsp (Go 1.24)
-        │              ├─ go.lsp.dev/protocol v0.12.0（LSP 3.17 类型）
+        │              ├─ go.lsp.dev/protocol v0.12.0（LSP 3.16 类型）
         │              ├─ go.lsp.dev/jsonrpc2 v0.10.0（JSON-RPC 2.0）
         │              ├─ 索引 / 校验 / 格式化 / 部署
         │              └─ stdio（默认）/ TCP（调试）
@@ -67,7 +67,7 @@ Genero 源码 (.4gl/.global/.per)
 | `github.com/tree-sitter/go-tree-sitter` | **v0.25.0** | 支持 grammar ABI 15；v0.24.0 不兼容 |
 | `github.com/darcyjoven/tree-sitter-bdl` | 固定 revision/tag | Go 绑定 + C parser |
 | `github.com/darcyjoven/tree-sitter-per` | 固定 revision/tag | 同上 |
-| `go.lsp.dev/protocol` | **v0.12.0** | LSP 3.17 类型；Go 1.17+；最新 v1.0.1 需 Go 1.26，暂不升级 |
+| `go.lsp.dev/protocol` | **v0.12.0** | LSP 3.16 类型；Go 1.17+；v1 所需能力已覆盖；v1.0.1 支持 3.17 但需 Go 1.26，暂不升级 |
 | `go.lsp.dev/jsonrpc2` | **v0.10.0** | JSON-RPC 2.0 连接/流；自定义 method 分发 |
 | `go.lsp.dev/uri` | v0.3.0（间接） | URI 转换 |
 | `go.uber.org/zap` | v1.27.x（间接） | `go.lsp.dev/protocol` 内部依赖；业务日志仍用 `slog` |
@@ -77,7 +77,7 @@ Genero 源码 (.4gl/.global/.per)
 | 标准库 `encoding/json` | Go 1.24 | 配置/协议 |
 | `github.com/google/go-cmp` | v0.7.x（测试） | 断言/快照 |
 
-**为什么不用 `tliron/glsp`**：仍是 LSP 3.16、2024 年后无新版本、框架绑定强；本项目需要 3.17（语义高亮、inlay hints 等）与自定义分发。
+**为什么不用 `tliron/glsp`**：协议停留在 3.16、2024 年后无新版本、框架绑定强；本项目选择更轻的 `jsonrpc2` + 自定义分发，后续可平滑升级 3.17。
 
 **为什么不用 `sourcegraph/go-lsp`**：协议覆盖旧、维护停滞。
 
@@ -251,6 +251,8 @@ go build ./...
 ```
 
 ### 4.3 已验证命令
+
+> `artifacts/spike` 与 `artifacts/spike-lsp` 是临时验证程序，未提交到 Git；关键代码片段见 [RESEARCH.md](RESEARCH.md)。以下命令用于本机复现。
 
 ```bash
 # 1) Go + CGO + 双 grammar 解析
