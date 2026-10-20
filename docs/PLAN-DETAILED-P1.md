@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.3（Block 2 完成）  
+> 版本：v0.4（Block 3 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1、Block 2 已完成**；Block 3–7 待做。  
+> 状态：**Block 1–3 已完成**；Block 4–7 待做。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -168,21 +168,98 @@ $ go test -bench='ParseFull|ParseIncremental' ./internal/parser/
 | 未 shutdown 就 exit | 退出码 1 |
 | shutdown + exit | 退出码 0 |
 
-## 3. 待做：Block 3 符号与悬停
+## 3. 已完成：Block 3 符号与悬停
 
-| 任务 | 说明 |
+### 3.1 交付内容
+
+| 文件 | 内容 |
 |---|---|
-| 3.1 | `internal/index`：扫描工作区，建 `FileIndex`（符号、作用域、导入） |
-| 3.2 | BDL 符号提取：`main`、`function`、`report`、`define`、`constant`、`type`、`record` 字段 |
-| 3.3 | PER 符号提取：`ATTRIBUTES` item、`SCREEN RECORD` |
-| 3.4 | `textDocument/documentSymbol`：按层级返回 |
-| 3.5 | `workspace/symbol`：全局符号 |
-| 3.6 | `textDocument/hover`：签名、类型、定义位置 |
-| 3.7 | 大小写不敏感匹配（Genero 标识符不区分大小写） |
+| `internal/index/index.go` | BDL 符号提取：main/function/report/define/constant/type/record/字段/参数 |
+| `internal/index/per.go` | PER 符号提取：ATTRIBUTES item、PHANTOM、SCREEN RECORD 及其字段 |
+| `internal/server/symbols.go` | `documentSymbol`、`workspace/symbol`、`hover` 三个 handler |
+| `internal/server/idents.go` | 索引缓存（按 URI+版本失效）、光标取词 |
+| `internal/index/index_test.go` | 10 个测试 |
+| `internal/index/per_test.go` | 5 个测试 |
+| `internal/server/server_test.go` | 新增 8 个符号/悬停测试 |
 
-**验收**：`ammr110.4gl` 中悬停 `show_name` 返回函数签名；文档符号列出所有函数。
+### 3.2 符号模型
 
----
+```go
+type Symbol struct {
+    Name, Lower string          // Lower 用于大小写不敏感匹配
+    Kind        Kind            // main/function/report/define/constant/type/record/field/parameter/form_item/screen_record
+    Scope       Scope           // global / func / param
+    Parent      string          // 所属记录/函数
+    Container   string
+    StartByte, EndByte uint     // 名字本身（精确跳转/高亮）
+    DeclStart, DeclEnd uint     // 整个声明（大纲范围）
+    TypeText    string          // "LIKE type_file.num5" / "EDIT"
+    Signature   string          // "FUNCTION helper(p_val)"
+    Children    []*Symbol       // 记录字段 / 函数参数与局部变量
+}
+```
+
+`.per` 的 item 名取 `tag` 字段（`EDIT f1 = ...` 中的 `f1`），而不是右侧绑定列名——
+4GL 的 `AFTER FIELD f1` 用的是 item 名，这一点在 P3 字段校验中至关重要。
+
+### 3.3 实现要点
+
+1. **`ChildrenByFieldName` 需要 cursor**  
+   go-tree-sitter v0.25 的该方法签名是 `(fieldName string, cursor *TreeCursor) []Node`，
+   不接受 `nil`。builder 持有一个复用 cursor，封装成 `fieldChildren` 返回 `[]*ts.Node`。
+
+2. **符号重复添加**  
+   `collectDefines` 内部已把符号写入 `fi.Symbols`，外层 `addDefines` 又追加一次，
+   导致每个 DEFINE 出现两次。改为 `collectDefines` 负责 `Symbols`、
+   `addDefines` 只负责 `TopLevel`。
+
+3. **`TYPE ... RECORD` 要识别为记录**  
+   `TYPE t_rec RECORD a, b END RECORD` 的节点是 `type`，其 `types` 字段下才是 `record`。
+   需要下探一层，否则字段不会进入 `Children`。
+
+4. **光标取词不依赖语法树**  
+   最初用 `NamedDescendantForByteRange` 上溯找 `identifier`，实测：
+   - 光标停在标识符边界时命中父节点；
+   - `field_ref` / `object` 包裹层次差异大；
+   - `DescendantForByteRange` 返回 `source_file`（根节点）。
+
+   改为直接从文本按标识符字符向两侧扩展（`wordAt`），对注释/字符串内的词也有效，
+   行为稳定可预期。
+
+5. **RECORD 的 detail 要截断**  
+   真实文件的 RECORD 类型文本夹带大量行注释，直接放进 `DocumentSymbol.Detail`
+   会撑爆大纲。改为显示 `RECORD (n 字段)`，其他类型截断到 80 字符。
+
+6. **索引缓存**  
+   符号提取要遍历全部节点，大文件（7000+ 行）约 1 ms，但高频请求仍需缓存。
+   按 `(URI, version)` 失效；`didClose` 时主动清理。
+
+### 3.4 验收结果
+
+```text
+$ go test ./internal/index/   → 15 个测试通过
+$ go test ./internal/server/  → 22 个测试通过（新增 8 个）
+$ go test -race ./...         → 全部通过
+```
+
+真实文件 `ammr110.4gl`（7138 行）：
+
+```text
+documentSymbol: 10 顶层, 36 总计, 1.1 ms
+  tm       RECORD (7 字段)
+  g_sql    STRING
+  main     MAIN
+  r110_tm  FUNCTION r110_tm(p_row, p_col)
+  r110     FUNCTION r110()
+workspace/symbol: 10 个（仅全局符号，局部变量被过滤）
+hover(FUNCTION r110_tm) → "FUNCTION r110_tm(p_row, p_col)"
+```
+
+`.per` 真实文件 `ammr110.per`：
+
+```text
+SCREEN RECORD 与 ATTRIBUTES item（mmg01、more 等）均正确提取
+```
 
 ## 4. 待做：Block 4 定义与引用
 
@@ -256,13 +333,14 @@ Block 1 ✅
 
 ---
 
-## 9. 已知限制（Block 1）
+## 9. 已知限制
 
 | 限制 | 影响 | 计划 |
 |---|---|---|
-| hover/definition 等仅声明未实现 | 客户端请求会 MethodNotFound | Block 3/4 |
+| definition/references 未实现 | 客户端请求会 MethodNotFound | Block 4 |
+| 无跨文件索引 | `workspace/symbol` 只覆盖**已打开**的文档 | Block 4 引入工作区扫描 |
+| 记录字段跳转未实现 | `rec.field` 无处可跳 | Block 4 |
 | grammar 用 `replace` 指向兄弟目录 | 独立 checkout 无法构建 | 后续为 grammar 打 tag |
-| 无工作区索引 | 无跨文件符号 | Block 3 |
 | 未做超大文件保护 | 极大文件可能慢 | Block 5 |
 | 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |
 | 未在 Windows 实测 | Windows 路径/换行未验证 | 你已保证环境正常，CI 覆盖 |

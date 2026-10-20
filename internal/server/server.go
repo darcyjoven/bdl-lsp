@@ -28,6 +28,7 @@ type Server struct {
 	logger  *slog.Logger
 	version string
 	docs    *document.Store
+	indexes *indexCache
 
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
@@ -45,6 +46,7 @@ func New(pool *parser.Pool, logger *slog.Logger, version string) *Server {
 		logger:  logger,
 		version: version,
 		docs:    document.NewStore(),
+		indexes: newIndexCache(),
 		exited:  make(chan struct{}),
 	}
 }
@@ -75,6 +77,7 @@ func (s *Server) ServeStream(ctx context.Context, rwc io.ReadWriteCloser) error 
 	}
 
 	s.docs.CloseAll()
+	s.indexes.dropAll()
 
 	// exit 通知后等待读循环退出，避免 stdout 被提前关闭导致响应丢失。
 	select {
@@ -125,6 +128,12 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleDidChange(ctx, req)
 	case protocol.MethodTextDocumentDidClose:
 		return s.handleDidClose(ctx, req)
+	case protocol.MethodTextDocumentDocumentSymbol:
+		return s.handleDocumentSymbol(ctx, reply, req)
+	case protocol.MethodWorkspaceSymbol:
+		return s.handleWorkspaceSymbol(ctx, reply, req)
+	case protocol.MethodTextDocumentHover:
+		return s.handleHover(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}

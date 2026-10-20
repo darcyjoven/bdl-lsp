@@ -134,6 +134,7 @@ func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error
 
 	uri := string(params.TextDocument.URI)
 	s.docs.Close(uri)
+	s.indexes.drop(uri)
 	s.logger.Debug("didClose", "uri", uri)
 	// 关闭时清空诊断，避免编辑器残留。
 	s.publish(ctx, uri, 0, nil)

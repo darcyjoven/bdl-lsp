@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 当前阶段：**P1 实现中**（Block 1、2 已完成）。  
+> 当前阶段：**P1 实现中**（Block 1–3 已完成）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -156,10 +156,17 @@ Block 2 已完成：
 - [x] `scripts/lsp-bench.py` + `make bench`。
 - [x] 测试增至 36 个；`go test -race` 通过。
 
+Block 3 已完成：
+
+- [x] `internal/index`：BDL 与 PER 符号提取（函数/报表/记录/字段/参数/表单 item/SCREEN RECORD）。
+- [x] `textDocument/documentSymbol`、`workspace/symbol`、`textDocument/hover`。
+- [x] 索引缓存（按 URI+版本失效）。
+- [x] 大小写不敏感匹配；光标取词不依赖语法树。
+
 待做：
 
-- [ ] `internal/index`：工作区扫描、`FileIndex`、按需解析 `.per`（Block 3）。
-- [ ] `internal/features`：documentSymbol、definition、references、hover（Block 3/4）。
+- [ ] 工作区扫描（当前 `workspace/symbol` 只覆盖已打开文档）。
+- [ ] `definition` / `references`（Block 4）。
 - [ ] 配置 `bdl.generoVersion`（默认 2.50）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。

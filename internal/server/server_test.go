@@ -33,6 +33,7 @@ func (p *pipeStream) Close() error {
 // harness 是一个最小 LSP 客户端，用于协议级测试。
 type harness struct {
 	t      *testing.T
+	srv    *Server
 	stream *pipeStream
 	client *io.PipeWriter
 	server *io.PipeReader
@@ -135,6 +136,7 @@ func startServer(t *testing.T) (*harness, func()) {
 	srv := New(pool, logger, "test")
 
 	h := newHarness(t)
+	h.srv = srv
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
@@ -520,5 +522,303 @@ func TestCleanShutdownReturnsNil(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("shutdown+exit 后服务未退出")
+	}
+}
+
+const symSource = `SCHEMA ds
+
+DEFINE g_count LIKE type_file.num5
+
+TYPE t_rec RECORD
+    a LIKE type_file.num5,
+    b STRING
+END RECORD
+
+MAIN
+    DEFINE l_local INTEGER
+    LET l_local = g_count
+END MAIN
+
+FUNCTION helper(p_val)
+    DEFINE l_tmp STRING
+    RETURN p_val
+END FUNCTION
+`
+
+// requestSymbol 发起一次请求并等待同 id 的响应。
+func (h *harness) request(id int, method, params string) map[string]any {
+	h.t.Helper()
+	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":%q,"params":%s}`, id, method, params))
+	for {
+		msg := h.readMessage(5 * time.Second)
+		if msg["method"] != nil {
+			continue // 跳过诊断等通知
+		}
+		if msg["id"] == float64(id) {
+			return msg
+		}
+	}
+}
+
+func (h *harness) openBDL(uri, text string) {
+	h.t.Helper()
+	h.sendDidOpen(uri, "bdl", text, 1)
+	// 等首轮诊断，确保解析完成
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		msg := h.readMessage(time.Until(deadline))
+		if msg["method"] == "textDocument/publishDiagnostics" {
+			return
+		}
+	}
+	h.t.Fatal("等待 didOpen 诊断超时")
+}
+
+func (h *harness) init() {
+	h.t.Helper()
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+}
+
+func TestDocumentSymbol(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/sym.4gl"
+	h.openBDL(uri, symSource)
+
+	resp := h.request(10, "textDocument/documentSymbol", fmt.Sprintf(`{"textDocument":{"uri":%q}}`, uri))
+	result, ok := resp["result"].([]any)
+	if !ok {
+		t.Fatalf("result 不是数组: %v", resp)
+	}
+	if len(result) == 0 {
+		t.Fatal("文档符号为空")
+	}
+
+	names := map[string]map[string]any{}
+	for _, raw := range result {
+		sym, _ := raw.(map[string]any)
+		if name, _ := sym["name"].(string); name != "" {
+			names[name] = sym
+		}
+	}
+
+	for _, want := range []string{"g_count", "t_rec", "main", "helper"} {
+		if _, ok := names[want]; !ok {
+			t.Errorf("缺少顶层符号 %q，实际有 %v", want, keys(names))
+		}
+	}
+
+	// helper 应有参数与局部变量子节点
+	if helper, ok := names["helper"]; ok {
+		children, _ := helper["children"].([]any)
+		if len(children) < 2 {
+			t.Errorf("helper 子符号 = %d，期望至少 2（参数+局部变量）", len(children))
+		}
+	}
+}
+
+func keys(m map[string]map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestDocumentSymbolNestedRecord(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/sym2.4gl"
+	h.openBDL(uri, symSource)
+
+	resp := h.request(11, "textDocument/documentSymbol", fmt.Sprintf(`{"textDocument":{"uri":%q}}`, uri))
+	result, _ := resp["result"].([]any)
+
+	var rec map[string]any
+	for _, raw := range result {
+		sym, _ := raw.(map[string]any)
+		if sym["name"] == "t_rec" {
+			rec = sym
+		}
+	}
+	if rec == nil {
+		t.Fatal("未找到 t_rec")
+	}
+	children, _ := rec["children"].([]any)
+	if len(children) != 2 {
+		t.Errorf("t_rec 字段数 = %d，期望 2", len(children))
+	}
+}
+
+func TestHoverFunction(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/hover.4gl"
+	h.openBDL(uri, symSource)
+
+	// "FUNCTION helper(p_val)" 位于第 14 行（0 基），helper 从第 9 列开始
+	resp := h.request(12, "textDocument/hover",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":14,"character":10}}`, uri))
+
+	result, ok := resp["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("hover 无结果: %v", resp)
+	}
+	contents, _ := result["contents"].(map[string]any)
+	value, _ := contents["value"].(string)
+	if !strings.Contains(value, "FUNCTION helper(p_val)") {
+		t.Errorf("hover 文本 = %q，未包含签名", value)
+	}
+}
+
+func TestHoverRecordField(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/hover2.4gl"
+	h.openBDL(uri, symSource)
+
+	// "    a LIKE type_file.num5," 在第 5 行，列 4
+	resp := h.request(13, "textDocument/hover",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":5,"character":5}}`, uri))
+
+	result, _ := resp["result"].(map[string]any)
+	if result == nil {
+		t.Fatal("记录字段应有 hover")
+	}
+	contents, _ := result["contents"].(map[string]any)
+	value, _ := contents["value"].(string)
+	if !strings.Contains(value, "LIKE type_file.num5") {
+		t.Errorf("hover 文本 = %q", value)
+	}
+}
+
+func TestHoverOnWhitespaceReturnsNull(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/hover3.4gl"
+	h.openBDL(uri, symSource)
+
+	// 第 1 行是空行
+	resp := h.request(14, "textDocument/hover",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":1,"character":0}}`, uri))
+	if resp["result"] != nil {
+		t.Errorf("空白处应返回 null，实际 %v", resp["result"])
+	}
+}
+
+func TestWorkspaceSymbol(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	h.openBDL("file:///tmp/ws1.4gl", symSource)
+	h.openBDL("file:///tmp/ws2.4gl", "FUNCTION another_fn(x)\n    RETURN x\nEND FUNCTION\n")
+
+	resp := h.request(15, "workspace/symbol", `{"query":""}`)
+	result, ok := resp["result"].([]any)
+	if !ok {
+		t.Fatalf("result 不是数组: %v", resp)
+	}
+
+	names := map[string]bool{}
+	for _, raw := range result {
+		sym, _ := raw.(map[string]any)
+		if name, _ := sym["name"].(string); name != "" {
+			names[name] = true
+		}
+	}
+	for _, want := range []string{"helper", "another_fn"} {
+		if !names[want] {
+			t.Errorf("工作区符号缺少 %q，实际 %v", want, names)
+		}
+	}
+	// 局部变量不应出现在工作区符号里
+	if names["l_tmp"] {
+		t.Error("局部变量不应出现在工作区符号中")
+	}
+}
+
+func TestWorkspaceSymbolFilter(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	h.openBDL("file:///tmp/ws3.4gl", symSource)
+
+	resp := h.request(16, "workspace/symbol", `{"query":"help"}`)
+	result, _ := resp["result"].([]any)
+	if len(result) == 0 {
+		t.Fatal("按名字过滤应返回 helper")
+	}
+	for _, raw := range result {
+		sym, _ := raw.(map[string]any)
+		name, _ := sym["name"].(string)
+		if !strings.Contains(strings.ToLower(name), "help") {
+			t.Errorf("过滤结果包含不匹配的 %q", name)
+		}
+	}
+}
+
+func TestPerDocumentSymbol(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const perSrc = `SCHEMA formonly
+
+LAYOUT (text=%"t")
+GRID
+{
+  Name:  [f1        ]
+}
+END
+END
+
+ATTRIBUTES
+EDIT f1 = formonly.cust_name;
+ButtonEdit f2 = formonly.act;
+END
+
+INSTRUCTIONS
+SCREEN RECORD rec_x(formonly.cust_name)
+END
+`
+	const uri = "file:///tmp/form.per"
+	h.sendDidOpen(uri, "per", perSrc, 1)
+	for {
+		msg := h.readMessage(5 * time.Second)
+		if msg["method"] == "textDocument/publishDiagnostics" {
+			break
+		}
+	}
+
+	resp := h.request(17, "textDocument/documentSymbol", fmt.Sprintf(`{"textDocument":{"uri":%q}}`, uri))
+	result, ok := resp["result"].([]any)
+	if !ok {
+		t.Fatalf("result 不是数组: %v", resp)
+	}
+
+	names := map[string]bool{}
+	for _, raw := range result {
+		sym, _ := raw.(map[string]any)
+		if name, _ := sym["name"].(string); name != "" {
+			names[name] = true
+		}
+	}
+	for _, want := range []string{"f1", "f2", "rec_x"} {
+		if !names[want] {
+			t.Errorf(".per 符号缺少 %q，实际 %v", want, names)
+		}
 	}
 }
