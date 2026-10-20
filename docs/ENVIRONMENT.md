@@ -326,7 +326,7 @@ gh auth status
 |---|---|---|
 | `bdl-lsp` 单测/语料/构建 | LSP | GitHub Actions（Linux/Windows）；本地脚本备用 |
 | `vscode-bdl` CI | 扩展 typecheck/test/package | GitHub Actions（Linux + Windows） |
-| `zed-bdl` CI | `cargo check --target wasm32-wasip2` | GitHub Actions（Linux） |
+| `zed-bdl` CI | `cargo check --target wasm32-wasip2` | GitHub Actions（Linux + Windows） |
 | LSP Release 构建 | Linux/Windows 二进制 | `bdl-lsp` GitHub Actions（tag `lsp-vX.Y.Z`） |
 | 语料回归 | 7699 `.4gl` / 7409 `.per` | 本地（慢测试，按需） |
 
