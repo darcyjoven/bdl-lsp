@@ -46,7 +46,7 @@
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
 - [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
 - [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
-- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)｜[P6 补全](docs/PLAN-P6-COMPLETION.md)｜[P6 重命名](docs/PLAN-P6-RENAME.md)｜[P6 CodeAction](docs/PLAN-P6-CODEACTION.md)｜[P6 语义高亮](docs/PLAN-P6-SEMTOK.md)
+- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)｜[P6 补全](docs/PLAN-P6-COMPLETION.md)｜[P6 重命名](docs/PLAN-P6-RENAME.md)｜[P6 CodeAction](docs/PLAN-P6-CODEACTION.md)｜[P6 语义高亮](docs/PLAN-P6-SEMTOK.md)｜[P6 record 成员](docs/PLAN-P6-RECORDMEMBER.md)
 - 部署用法：[示例配置](examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
 
 ## 目录约定
@@ -124,6 +124,7 @@ bash scripts/corpus-smoke.sh 60
 | 重命名（仅当前文件） | ✅ P6 |
 | Code Action（字段拼错快速修复） | ✅ P6 |
 | 语义高亮（自定义符号） | ✅ P6 |
+| record `BY NAME` 成员校验（默认 off） | ✅ P6 |
 
 性能（7138 行 / 329 KB）：`didOpen` 133 ms，`didChange` 往返 6.0 ms（含字段校验防抖）。
 

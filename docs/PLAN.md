@@ -203,7 +203,7 @@ GitHub Release
 | 语法诊断 | ✅ | 错误恢复增强 | 基于 ERROR/MISSING 节点 |
 | `.per` 内部校验 | ✅ | 布局/属性语义完善 | 重复 item、SCREEN RECORD 引用、布局引用 |
 | GLOBALS 模组全局变量 | ✅（P3a 完成） | 跨文件 references、大纲分组 | 跳转/来源标注/两类警告，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
-| 4GL 字段存在性 | ✅（P3b 完成） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 与 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
+| 4GL 字段存在性 | ✅（P3b + P6 record member） | 动态 API、schema 列 | 见 7.2、[P3b](PLAN-P3B-FIELD.md)、[P6 record](PLAN-P6-RECORDMEMBER.md) |
 | 4GL 格式化 | ✅（P4 完成：缩进 + 关键字大小写） | 重排、对齐、空白/逗号/运算符规范化 | 不改空白与换行结构 |
 | `.per` 格式化 | ❌ 不做（用户明确要求） | — | 表单文件一律不格式化 |
 | 部署 + 编译 | ✅（P5 完成：rsync 主 / scp 备，显式回退） | 多目标回滚、编译产物归档 | 见 7.4 与 [P5 记录](PLAN-P5-DEPLOY.md) |
@@ -552,7 +552,8 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
   编辑距离阈值控制，只给安全修复。记录：[PLAN-P6-CODEACTION.md](PLAN-P6-CODEACTION.md)。
 - ✅ **语义高亮**（2026-10-21）：只标注用户自定义符号，关键字交给 TextMate。
   记录：[PLAN-P6-SEMTOK.md](PLAN-P6-SEMTOK.md)。
-- ⬜ record `.*` 校验。
+- ✅ **record `BY NAME` 成员校验**（2026-10-21，默认 off）：语料 281160 处可校验
+  引用报出 157 处（0.1%），抽查为真阳性。记录：[PLAN-P6-RECORDMEMBER.md](PLAN-P6-RECORDMEMBER.md)。
 - ⬜ 缓存与性能、macOS 兼容与构建。
 - 暂不排期：Genero 5.0、GitHub Release/无感下载、市场发布、Zed 注册表 PR。
 - 文档完善、兼容矩阵、用户反馈迭代。

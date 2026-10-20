@@ -419,6 +419,25 @@ Block P2 已完成：
 - [x] Zed 侧不消费 LSP semantic tokens（走 `highlights.scm`），已在文档说明。
 - [ ] 使用处的语义着色——未排期（需全文件符号解析，成本高收益低）。
 
+#### record `.*` / `BY NAME` 成员校验（✅ 已完成 2026-10-21，默认 off）
+
+> 实现记录：[PLAN-P6-RECORDMEMBER.md](PLAN-P6-RECORDMEMBER.md)。
+
+- [x] `BY NAME rec.member` 的成员存在性校验（`INPUT`/`DISPLAY`/`CONSTRUCT`）。
+- [x] `rec.*` 通配**不校验**：语法树里没有 property 节点（`*` 被 grammar 吞掉），
+      语义上也不存在"某成员是否存在"的问题。
+- [x] 作用域按函数隔离 + 模块级回退；类型成员表带容器前缀
+      （不同作用域的同名记录不能互相覆盖）。
+- [x] 五类"不可校验"按 opaque 处理：子记录组、`RECORD LIKE table.*`、
+      多变量 DEFINE 错配、参数遮蔽、数组内置方法。
+- [x] **默认 off**（`recordMemberDiagnostics`）：`LIKE table.*` 占语料 87% 的引用，
+      静态看不到列名，硬开启会大面积误报。
+- [x] 语料评估 `cmd/record-audit`：全量 7683 文件 →
+      可校验 281160 处、报出 157 处（**0.1%**），抽查确认为真阳性。
+- [ ] **上游待修**：`internal/index` 的 `collectDefines`在多变量 DEFINE 中会
+      错配名字与类型节点（本轮用 TypeText 前缀检查兜底）。应单独修复并加测试。
+- [ ] `LIKE table.*` 的成员校验——需数据库 schema 索引。
+
 #### 其余 P6 项
 
 - [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。

@@ -59,6 +59,12 @@ type Settings struct {
 	MissingDiagnostics DiagnosticLevel `json:"missingDiagnostics"`
 	// Globals 是 GLOBALS 引入（P3a）相关的配置。
 	Globals GlobalsSettings `json:"globals"`
+	// RecordMemberDiagnostics 是 `BY NAME rec.member` 记录成员校验（P6）
+	// 的诊断级别。**默认 off**：记录成员静态上只能靠 TYPE..END RECORD
+	// 的字段列表，而语料里 `DEFINE r LIKE table.*`（按数据库列展开）
+	// 很常见，硬校验会大面积误报。由用户开启并观察。
+	RecordMemberDiagnostics DiagnosticLevel `json:"recordMemberDiagnostics"`
+
 	// FieldDiagnostics 是 4GL 字段存在性校验（P3b）的诊断级别，
 	// 默认 warning（Q3 决策：只在表单唯一解析成功时报告）。
 	FieldDiagnostics DiagnosticLevel `json:"fieldDiagnostics"`
@@ -115,7 +121,8 @@ func Default() Settings {
 			FileNotFoundDiagnostics:     LevelWarning,
 			UnresolvedSourceDiagnostics: LevelWarning,
 		},
-		FieldDiagnostics: LevelWarning,
+		FieldDiagnostics:        LevelWarning,
+		RecordMemberDiagnostics: LevelOff,
 		Format: FormatSettings{
 			Keywords:    "unchanged",
 			IndentStyle: "auto",
@@ -246,6 +253,9 @@ func (m *Manager) merge(s *Settings) {
 	}
 
 	// P3b：字段校验与表单根（PerRoots 同样用 nil 区分未下发与清空）
+	if s.RecordMemberDiagnostics != "" {
+		m.cur.RecordMemberDiagnostics = s.RecordMemberDiagnostics
+	}
 	if s.FieldDiagnostics != "" {
 		m.cur.FieldDiagnostics = s.FieldDiagnostics
 	}

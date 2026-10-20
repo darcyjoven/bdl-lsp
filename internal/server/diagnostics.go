@@ -129,6 +129,8 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	// P3b：字段校验（4gl）或 .per 内部校验（per），追加进同一次发布
 	if doc.Lang == parser.LangBDL {
 		s.formChecks(doc, &gDiags)
+		// P6：BY NAME rec.member 的记录成员校验（默认 off）
+		s.recordMemberChecks(doc, &gDiags)
 	} else {
 		s.perChecks(doc, &gDiags)
 	}
