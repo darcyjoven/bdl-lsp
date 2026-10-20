@@ -189,6 +189,10 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleCompletion(ctx, reply, req)
 	case protocol.MethodCompletionItemResolve:
 		return s.handleCompletionResolve(ctx, reply, req)
+	case protocol.MethodTextDocumentPrepareRename:
+		return s.handlePrepareRename(ctx, reply, req)
+	case protocol.MethodTextDocumentRename:
+		return s.handleRename(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}
@@ -250,6 +254,10 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			ReferencesProvider:         true,
 			DocumentSymbolProvider:     true,
 			DocumentFormattingProvider: true,
+			RenameProvider: &protocol.RenameOptions{
+				// prepareProvider：先校验能否改名，不能改就不弹输入框。
+				PrepareProvider: true,
+			},
 			CompletionProvider: &protocol.CompletionOptions{
 				// `.` 之后给记录成员/表单字段；手工触发（Ctrl+Space）也支持。
 				TriggerCharacters: []string{"."},

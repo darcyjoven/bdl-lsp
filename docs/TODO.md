@@ -379,9 +379,22 @@ Block P2 已完成：
 - [ ] 记录成员按类型精确推导——不做：Genero 弱类型，收益低于复杂度。
 - [ ] 全工作区符号索引——需后台索引 + 持久化缓存（PLAN §7.6），当前只看已打开文档。
 
+#### 重命名（✅ 已完成 2026-10-21）
+
+> 实现记录：[PLAN-P6-RENAME.md](PLAN-P6-RENAME.md)。
+
+- [x] `textDocument/prepareRename` + `textDocument/rename`。
+- [x] 范围与 references 一致：**只改当前文件**（跨文件需工作区索引，
+      漏改比不支持更糟）。
+- [x] 七道闸门：可解析 / 不在注释字符串 / 是本文件符号 / 新名合法 /
+      新名不撞名 / 新名不是关键字。
+- [x] prepareRename 拒绝时**报错**（客户端不弹输入框），而不是返回空编辑。
+- [x] 关键字与"已声明符号"的检查顺序修正：`DEFINE first INTEGER` 里
+      `first` 虽是关键字但也是合法符号，应当能改。
+- [ ] 跨文件重命名——需工作区索引。
+
 #### 其余 P6 项
 
-- [ ] 重命名。
 - [ ] Code Action（字段不存在时提示、忽略）。
 - [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。
 - [ ] 语义高亮（VSCode + Zed）。
