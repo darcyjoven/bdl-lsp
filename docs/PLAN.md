@@ -1,11 +1,12 @@
 # BDL LSP 项目粗略计划
 
-> 版本：v0.3（草案）  
+> 版本：v0.4（草案）  
 > 日期：2026-10-19  
 > 状态：**粗略计划**。本文只确定目标、边界、技术链、阶段与验收标准；详细到文件/函数/用例的拆分在确认待定项后另写 `PLAN-DETAILED-P1.md`。  
 > 约定：中文文档、测试脚本、中间产物、日志统一放在 `bdl-lsp/`。  
 > v0.2 变更：纳入 Q1（仓库远程）、Q2（rsync 主/scp 备）、Q3（warning 默认）、Q6（v1 Linux+Windows、macOS 后续）；补充环境配置与本地发布拓扑。  
-> v0.3 变更：`bdl-lsp` 增加远程与独立 Release（Q9）；Q4 不复用 `bdl` id，新扩展拟用 `bdl-full`；Q5 先本地 VSIX；Q7 无感自动下载；Q8 目标 Genero 2.50–5.0（当前 grammar 为 2.50 基线）。
+> v0.3 变更：`bdl-lsp` 增加远程与独立 Release（Q9）、恢复 Q4–Q9。  
+> v0.4 变更：Zed 扩展 id 定为 `4gl-full`；Genero 5.0 支持与发布/自动下载实现**暂不排期**；本轮先完成环境、push 与 P1 详细计划。
 
 ---
 
@@ -27,7 +28,7 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 **Genero 版本策略**：
 
 - 当前 `tree-sitter-bdl` 语法覆盖 **2.50**（用户口径 2.5）语法基线。
-- 产品目标范围：**2.50–5.0**；v1 以 2.50 语料/语法为主要基线，权威校验由 `fglform`/`fglcomp` 完成；5.0 新语法在后续里程碑补齐。
+- 产品目标范围：**2.50–5.0**；v1 以 2.50 语料/语法为主要基线，权威校验由 `fglform`/`fglcomp` 完成。**5.0 暂不排期**，待有明确需求后再调研/升级 grammar。
 - 版本差异通过配置/能力检测区分；未知语法降级为语法诊断，不阻塞打开文件。
 - 详见 D8。
 
@@ -113,7 +114,7 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 - `bdl-lsp` 现在是自己源码与 LSP 二进制的**唯一 Release 源**；不再把二进制托管到扩展仓库。
 - 三个仓库都已配置 `origin`，首次 push 需要 GitHub SSH 凭据。
 
-### 3.1.1 分发拓扑（Q9 已确认）
+### 3.1.1 分发拓扑（设计保留，暂不排期）
 
 ```text
 bdl-lsp GitHub 仓库（源码 + CI + Release）
@@ -126,14 +127,14 @@ GitHub Release
 ```
 
 - LSP 版本与扩展版本解耦；扩展声明“最低 LSP 版本”，启动时校验。
-- 正常用户不需要手工安装二进制；网络受限时可通过设置/环境变量覆盖。
-- 扩展 CI 只负责客户端；LSP 构建/测试/Release 在 `bdl-lsp` 的 GitHub Actions 完成。
+- **当前不排发布计划**：开发/测试阶段使用本地构建的 `bdl-lsp`，通过 `bdl.server.path`/`BDL_LSP_PATH` 指定；GitHub Release 与无感下载作为后续工作。
+- 发布启用后，扩展从 `bdl-lsp` Release 自动下载；扩展 CI 只负责客户端。
 
 ### 3.2 交付物清单
 
-- `bdl-lsp` 源码 + **GitHub Release**：v1 覆盖 Linux amd64 + Windows amd64；macOS/arm64 在 v1 之后补齐（代码保持可移植）。
+- `bdl-lsp` 源码 + 本地构建产物：v1 覆盖 Linux amd64 + Windows amd64；GitHub Release 暂不排期；macOS/arm64 后续。
 - VSCode `.vsix`：**先本地安装**（Q5）；稳定后再评估市场发布。
-- Zed 扩展：dev extension 可用；扩展 id 计划用 **`bdl-full`**（不复用 `bdl`，与轻量 `bdl-plugin` 共存）；后续提交注册表。
+- Zed 扩展：dev extension 可用；扩展 id 为 **`4gl-full`**（不复用 `bdl`，与轻量 `bdl-plugin` 共存）；注册表发布暂不排期。
 - 中文文档：本计划、技术链、调研、环境配置、测试说明、部署说明、格式化规则。
 - 环境配置：Linux/Windows 工具链清单、验证命令、账号/权限、CI 映射。
 - 测试脚本与基线报告：语料解析、字段校验标注、格式化幂等、性能。
@@ -242,13 +243,14 @@ GitHub Release
 - 不使用 `tliron/glsp`：协议停留在 3.16、更新停滞、框架侵入性强；本项目自己控制分发与错误码。
 - 采用自定义 method 分发（不实现庞大 `protocol.Server` 接口），保留对未知方法的兼容与错误码控制。
 
-### D5. 二进制分发：`bdl-lsp` Release + 无感自动安装
+### D5. 二进制分发（设计保留，暂不排期）：`bdl-lsp` Release + 无感自动安装
 
-- `bdl-lsp` 有独立远程仓库；GitHub Actions 在 tag `lsp-vX.Y.Z` 上构建并发布资产。
+- **暂不排发布计划**：当前只构建本地二进制；Release、自动下载与版本升级在后续排期时实现。
+- 设计上 `bdl-lsp` 有独立远程仓库；未来可在 tag `lsp-vX.Y.Z` 上构建并发布资产。
 - v1 资产：`bdl-lsp-linux-amd64`、`bdl-lsp-windows-amd64.exe` + `SHA256SUMS`；macOS/arm64 后续补。
-- **VSCode（无感）**：扩展激活时检查“扩展要求的最低/目标 LSP 版本”，缺失或过旧则后台自动下载到 `globalStorageUri`，校验 SHA256、设置可执行权限并启动；只在耗时较长时显示进度，不要求用户选择路径。
-- **Zed（无感）**：`language_server_command` 首次调用时用 `download_file` 自动下载对应平台二进制，`make_file_executable` 后启动；通过 `set_language_server_installation_status` 显示“下载/安装中”，完成后无额外步骤。
-- **兜底**：设置 `bdl.server.path` / 环境变量 `BDL_LSP_PATH` / 工作区 `.bdl-lsp/bin/bdl-lsp` 可覆盖；下载失败给出可操作错误和离线安装说明。
+- **VSCode（目标体验）**：扩展激活时检查“扩展要求的最低/目标 LSP 版本”，缺失或过旧则后台自动下载到 `globalStorageUri`，校验 SHA256、设置可执行权限并启动；只在耗时较长时显示进度，不要求用户选择路径。该实现暂不排期，开发期先用本地路径。
+- **Zed（目标体验）**：`language_server_command` 首次调用时用 `download_file` 自动下载对应平台二进制，`make_file_executable` 后启动；通过 `set_language_server_installation_status` 显示“下载/安装中”。该实现暂不排期，开发期先用本地路径。
+- **开发期路径**：设置 `bdl.server.path` / 环境变量 `BDL_LSP_PATH` / 工作区 `.bdl-lsp/bin/bdl-lsp`；发布启用后再加下载失败兜底。
 - **缓存与回滚**：按版本缓存，保留上一个可用版本；启动失败可回退，不阻塞用户。
 - **不默认内置 VSIX**：多平台体积大、更新慢；采用主流语言扩展常见的“按平台下载 + 本地缓存”模式（如 rust-analyzer），仅在企业离线场景提供“离线包”。
 - 发布可重复：固定 Go/grammar revision、`-trimpath`、校验和、失败不覆盖已有 Release。
@@ -266,12 +268,12 @@ GitHub Release
 - `vscode-extension` / `zed-extension` 只保留发布所需文件，便于市场审核与用户阅读。
 - 运行期缓存不放仓库：优先 `$XDG_CACHE_HOME/bdl-lsp`，其次系统临时目录；部署日志由编辑器输出通道 + 可选文件保存。
 
-### D8. Genero 版本策略：2.50–5.0
+### D8. Genero 版本策略：2.50 基线，5.0 暂不排期
 
 - 当前 `tree-sitter-bdl` 覆盖 **2.50**（用户口径 2.5）语法；v1 以 2.50 语料/语法为主要基线，权威校验仍以 `fglform`/`fglcomp` 为准。
-- 产品目标范围 **2.50–5.0**；5.0 的新语法/关键字作为后续增量，不在 v1 承诺 100% 覆盖。
+- 目标范围 **2.50–5.0**；但 **5.0 暂不排期**，v1 只承诺 2.50 基线可用。5.0 有明确需求后再调研/升级 grammar。
 - 解析、诊断、格式化通过配置（如 `bdl.generoVersion`）了解目标版本；未知语法只报语法诊断，不阻塞打开/跳转。
-- grammar 升级到 5.0 时必须回归 2.50 语料，避免破坏旧项目。
+- 未来升级到 5.0 时必须回归 2.50 语料，避免破坏旧项目。
 - 维护“Genero 版本 × 功能”兼容矩阵，发布说明中标注。
 
 ---
@@ -476,9 +478,9 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - ⬜ **环境配置**：Linux 与 Windows 的 Go/CGO、Node/pnpm、tree-sitter CLI、Rust/wasm、OpenSSH、rsync/scp、VSCode；清单见 [ENVIRONMENT.md](ENVIRONMENT.md)。
 - ⬜ Zed 扩展最小骨架 + WASM 构建（需安装 Rust/wasm target/wasi-sdk）。
 - ⬜ VSCode 最小客户端 + 启动真实 `bdl-lsp`（Linux + Windows）。
-- ⬜ 二进制分发链路：`bdl-lsp` CI 构建 → `bdl-lsp` Release（`lsp-vX.Y.Z`）→ 两个扩展无感下载/校验/权限（Linux + Windows）。
+- ⬜ 本地二进制闭环：`bdl-lsp` 构建 → 扩展通过本地路径启动（Release/自动下载暂不排期）。
 - ⬜ 首次 push `bdl-lsp`、`vscode-bdl`、`zed-bdl`（需要 GitHub SSH 凭据）。
-- ✅ 版本策略确定：2.50–5.0，当前 grammar 2.50 基线。
+- ✅ 版本策略确定：当前 2.50 基线；5.0 暂不排期。
 - 产出：`RESEARCH.md`、`ENVIRONMENT.md`、技术选型定稿。
 
 ### P1 LSP 骨架 + VSCode MVP（约 5–8 个工作块）
@@ -486,13 +488,13 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - 三个仓库骨架；`bdl-lsp` GitHub Actions（Linux/Windows、CGO、测试）；扩展仓库 CI。
 - LSP：initialize、文档同步、日志、配置、解析诊断、文档符号。
 - 4GL 函数/变量/记录字段的 definition/references/hover。
-- VSCode：客户端、无感二进制管理（自动下载/校验/缓存/回退）、TextMate 语法、语言配置、状态栏。
+- VSCode：客户端、本地二进制路径管理（自动下载暂不排期）、TextMate 语法、语言配置、状态栏。
 - 验收：**Linux 与 Windows** 上 VSIX 在样例工作区可高亮、跳转、显示语法错误（macOS 记录为后续项）。
 
 ### P2 Zed 扩展（约 2–3 个工作块）
 
-- 扩展 id `bdl-full`（与 `bdl-plugin` 共存）、grammar 注册（bdl/per）、queries（highlights/outline/brackets/injections/indents）。
-- `lib.rs` 无感下载并启动 LSP；平台识别；安装状态提示。
+- 扩展 id `4gl-full`（与 `bdl-plugin` 共存）、grammar 注册（bdl/per）、queries（highlights/outline/brackets/injections/indents）。
+- `lib.rs` 通过本地路径启动 LSP（自动下载暂不排期）；平台识别。
 - 验收：**Linux 与 Windows** 上 Zed dev extension 加载，两个语言高亮，LSP 启动，跳转可用（Zed 已有官方 Windows 版本，仍需实测扩展/路径差异）。
 
 ### P3 表单字段校验（约 5–7 个工作块）
@@ -518,8 +520,8 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 ### P6 打磨与发布（持续）
 
 - 补全、重命名、Code Action、语义高亮。
-- **Genero 5.0 语法**调研/grammar 增量（保持 2.50 回归）。
-- 缓存与性能、macOS 兼容与构建、市场发布、Zed 注册表 PR。
+- 缓存与性能、macOS 兼容与构建。
+- 暂不排期：Genero 5.0、GitHub Release/无感下载、市场发布、Zed 注册表 PR。
 - 文档完善、兼容矩阵、用户反馈迭代。
 
 ---
@@ -554,22 +556,19 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 
 ---
 
-## 10. 发布与版本
+## 10. 发布与版本（暂不排期）
+
+> 本轮明确：**暂不排发布计划**。以下仅保留版本规范与未来发布的设计约束，不在当前任务中执行。
 
 - **版本号**：LSP 与两个扩展独立 semver；扩展声明兼容的 LSP 最低版本。
 - **grammar 版本**：`tree-sitter-bdl` / `tree-sitter-per` 打 tag，LSP `go.mod` 固定；升级需跑语料回归（含 2.50 基线）。
-- **LSP 二进制托管**：`bdl-lsp` 自己的 GitHub Release，tag 约定 `lsp-vX.Y.Z`；扩展从该仓库下载。
-- **发布流程**：
-  1. grammar 变更 → 语法测试 + 语料基线（2.50）→ tag。
-  2. `bdl-lsp` CI：单测 + 语料 + 性能 → tag `lsp-vX.Y.Z` → GitHub Actions 构建 Linux/Windows 二进制 + `SHA256SUMS` → 自动上传 Release。
-  3. VSCode 扩展更新 → CI → VSIX → **本地安装**（Q5）；稳定后再评估市场发布。
-  4. Zed 扩展更新 → dev 验证 → 注册表 PR（扩展 id 计划 `bdl-full`，与 `bdl-plugin` 共存）。
-- **发布要求**：GitHub Actions 有 Release 权限；tag/版本/扩展最低版本一致；失败不覆盖已有 Release；保留上一个可用 LSP 版本。
-- **兼容性检查**：扩展启动时执行 `bdl-lsp --version`，低于最低版本自动下载目标版本（无感），失败才提示操作。
-- **版本矩阵**：发布说明列出 `LSP ↔ VSCode/Zed 扩展 ↔ grammar revision ↔ Genero 2.50–5.0`。
-- **许可**：新仓库默认 MIT（与 grammar 一致）；发布前补 `THIRD_PARTY_NOTICES`。
-
----
+- **当前分发方式**：本地构建 `bdl-lsp`，VSCode/Zed 通过 `bdl.server.path` / `BDL_LSP_PATH` / 工作区路径使用；VSCode 先本地 VSIX。
+- **未来发布设计（未排期）**：
+  - LSP 二进制由 `bdl-lsp` GitHub Release 发布，tag `lsp-vX.Y.Z`；
+  - 扩展从该 Release 无感下载、校验 SHA256、缓存与回退；
+  - 版本矩阵：`LSP ↔ VSCode/Zed 扩展 ↔ grammar revision ↔ Genero 2.50`（5.0 未排期）。
+- **Zed 发布**：扩展 id 已定为 `4gl-full`；注册表 PR 暂不排期。
+- **许可**：新仓库默认 MIT（与 grammar 一致）；正式发布前补 `THIRD_PARTY_NOTICES`。
 
 ## 11. 风险与对策
 
@@ -585,15 +584,13 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 | Zed/Rust 本机缺失 | 无法本地验证 | 安装 rustup + wasm32-wasip2 + wasi-sdk；CI 持续 `cargo check` |
 | 无 `fglcomp`/`fglform` 本机 | 无法验证权威诊断 | 服务器编译作为最终校验；mock 输出解析测试 |
 | 15k 文件索引慢/占内存 | 体验差 | 懒解析 `.per`、并行、缓存、忽略规则、性能门槛 |
-| 自动下载失败/企业内网 | 无法启动 | 保留上一个可用版本；支持 `bdl.server.path`/环境变量/工作区内置/离线包；错误可操作；代理支持 |
 | 部署安全 | 生产事故 | 显式触发、dry-run、严格 host key、最小权限、日志脱敏 |
 | Genero 5.0 语法未覆盖 | 5.0 新代码误报/不支持 | v1 明确 2.50 基线；5.0 差异调研后增量更新 grammar；未知语法只报解析错误 |
-| 自动下载与版本错配 | LSP 无法启动/行为异常 | 扩展固定目标 LSP 版本；下载后 `--version` 校验；保留旧版本回退；SHA256 校验 |
 | Windows 无 rsync | 上传路径不可用 | 默认 `scp` 回退；文档给出 cwRsync/MSYS2/WSL 可选安装 |
 | Zed 的 Windows 行为差异 | Zed 端在 Windows 上路径/进程/终端行为可能不同 | Zed 官方已支持 Windows；v1 在 Windows 实测 dev extension 与 LSP 启动，记录差异 |
 | macOS 延后 | 部分用户暂不可用 | 代码避免 Linux 专有依赖；v1 后补 CI/构建/验证 |
 | CI Release 权限/误发布 | 分发失败/覆盖旧版本 | tag 保护、Actions 最小权限、校验和、失败不覆盖已有 Release；保留多版本 |
-| 与现有 `bdl-plugin` 扩展冲突 | 用户困惑 | 不复用 `bdl` id；新扩展用 `bdl-full`，两者可共存；文档说明功能差异 |
+| 与现有 `bdl-plugin` 扩展冲突 | 用户困惑 | 不复用 `bdl` id；新扩展用 `4gl-full`，两者可共存；文档说明功能差异 |
 | 与现有 `bdl-plugin` 扩展冲突 | 用户困惑 | 复用 `bdl` id 并说明替换；或新 id（待确认） |
 
 ---
@@ -674,29 +671,28 @@ zed-extension/
 | Q1 | `bdl-lsp` → `git@github.com:darcyjoven/bdl-lsp.git`；`vscode-extension` → `git@github.com:darcyjoven/vscode-bdl.git`；`zed-extension` → `git@github.com:darcyjoven/zed-bdl.git`。三个仓库 `origin` 均已配置，尚未 push。 |
 | Q2 | 部署同步以 `ssh + rsync` 为主，`scp` 作为轻量备选/回退；v1 不做纯 Go SFTP。 |
 | Q3 | 字段校验默认 `warning`，仅在表单唯一解析成功时报告。 |
-| Q4 | **不复用** 现有 `bdl` id；`bdl-plugin` 是轻量语法插件，本插件是全功能版。新 Zed 扩展 id 拟用 **`bdl-full`**（最终命名可在实现前微调），两者可共存。 |
-| Q5 | VSCode **先本地 VSIX**；稳定后再评估市场发布。 |
+| Q4 | **不复用** 现有 `bdl` id；`bdl-plugin` 是轻量语法插件，本插件是全功能版。Zed 扩展 id 定为 **`4gl-full`**，两者可共存。 |
+| Q5 | VSCode **先本地 VSIX**；市场发布暂不排期。 |
 | Q6 | v1 在 **Windows + Linux** 验证通过；macOS 后续兼容，不作为 v1 阻塞项。 |
-| Q7 | LSP 二进制采用**无感自动下载**（主流方式）：扩展自动匹配平台/版本、下载、校验、缓存、启动；提供手动路径/离线包兜底。 |
-| Q8 | 目标 **Genero 2.50–5.0**；当前 `tree-sitter-bdl` 为 **2.50** 语法基线，5.0 新语法后续增量支持。 |
-| Q9 | LSP 二进制使用 **`bdl-lsp` 自己的 Release**（tag `lsp-vX.Y.Z`），不托管到扩展仓库。 |
+| Q7 | 目标体验是**无感自动下载**（主流方式）；但实现暂不排期，开发期先用本地路径/本地二进制。 |
+| Q8 | 目标范围 **Genero 2.50–5.0**；当前 `tree-sitter-bdl` 为 **2.50** 基线，**5.0 暂不排期**。 |
+| Q9 | LSP 二进制归属 **`bdl-lsp` 自己的 Release**（tag `lsp-vX.Y.Z`）；发布动作暂不排期。 |
 
-### 仍需在实现前确认的小项
+### 暂不排期
 
-- [ ] Zed 扩展 id 最终名称（建议 `bdl-full`）。
-- [ ] 5.0 支持的排期与是否作为 v1.1/v2 目标。
-- [ ] VSCode 市场发布的时间点与 publisher。
+- Genero 5.0 语法支持。
+- GitHub Release / 扩展无感下载 / VSCode 市场发布 / Zed 注册表发布。
+- 以上在有明确需求时再排期，不阻塞 v1（2.50 + Linux/Windows 开发闭环）。
 
 ## 14. 下一步（先环境与计划，不写功能代码）
 
 1. 按 [ENVIRONMENT.md](ENVIRONMENT.md) 完成 **Linux + Windows** 环境安装与验证，勾选 TODO 中的环境清单。
 2. 首次 push 三个仓库：`bdl-lsp`、`vscode-bdl`、`zed-bdl`（需要 GitHub SSH 凭据）。
-3. 设计并落地 CI/Release 基线：
-   - `bdl-lsp`：Linux/Windows CGO 构建、测试、tag `lsp-vX.Y.Z` Release；
-   - `vscode-bdl` / `zed-bdl`：客户端 CI；
-   - 扩展无感下载与版本校验。
+3. 建立 CI 基线（**只构建/测试，不发布**）：
+   - `bdl-lsp`：Linux/Windows CGO 构建、测试、语料冒烟；
+   - `vscode-bdl` / `zed-bdl`：客户端 CI。
 4. 写 `docs/PLAN-DETAILED-P1.md`：把 P1 拆到包/文件/接口/测试用例，给出每步验收命令。
-5. 固化 `scripts/dev-env.sh` / `dev-env.ps1`、环境检查、`release.sh` 设计。
+5. 固化 `scripts/dev-env.sh` / `dev-env.ps1` 与环境检查脚本。
 6. 规划确认后再开始 LSP 骨架与编辑器最小客户端代码。
 
 ---

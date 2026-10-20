@@ -115,7 +115,7 @@ gh --version
 gh auth status
 ```
 
-用途：维护/排查 `bdl-lsp` 的 GitHub Release（CI 为主；本地 `gh` 作为备用）。
+用途：可选；发布暂不排期。`gh` 仅用于未来 Release 或排查。
 
 ### 2.8 本沙箱的特殊处理
 
@@ -251,7 +251,7 @@ gh auth status
 | 用途 | 需要 | 存放 |
 |---|---|---|
 | push `bdl-lsp` / `vscode-bdl` / `zed-bdl` | GitHub SSH key | `~/.ssh/`，不提交 |
-| 上传 LSP Release | `gh` 登录、仓库 Release 权限 | `gh auth`，不写进仓库 |
+| 上传 LSP Release | （暂不排期）`gh` 登录、仓库 Release 权限 | 需要时配置 |
 | 部署到测试服务器 | SSH key/agent、known_hosts | 用户环境，不写进仓库 |
 | `fglform`/`fglcomp` | 服务器账号/环境 | 服务器侧，不写进仓库 |
 
@@ -301,7 +301,7 @@ gh auth status
 - [ ] Go + CGO 双 grammar 的 spike 能运行（见 RESEARCH.md）
 - [ ] `cargo check --target wasm32-wasip2`（Zed 骨架就绪后）
 - [ ] VSCode 扩展能激活（P1 后）
-- [ ] 记录目标 Genero 版本（当前 2.50 基线，规划 2.50–5.0）
+- [ ] 记录目标 Genero 版本（当前 2.50 基线；5.0 暂不排期）
 
 ---
 
@@ -314,7 +314,7 @@ gh auth status
 - [ ] 准备 Windows 机器/虚拟机，安装 Go + MinGW-w64 + Node + Git + VSCode。
 - [ ] 验证 Windows 下 `scp` 到测试服务器；记录命令与日志。
 - [ ] 配置 GitHub SSH key，完成 `bdl-lsp` / `vscode-bdl` / `zed-bdl` 首次 push。
-- [ ] `gh auth login`，验证对 `bdl-lsp` 有 Release/Actions 权限。
+- [ ] `gh` 可选；发布暂不排期，需要时再登录。
 - [ ] 准备测试服务器（Genero、`fglform`/`fglcomp`、SSH），记录路径映射样例。
 - [ ] 把环境验证结果记录到 `artifacts/env/`（日志/版本输出），不提交。
 
@@ -327,7 +327,7 @@ gh auth status
 | `bdl-lsp` 单测/语料/构建 | LSP | GitHub Actions（Linux/Windows）；本地脚本备用 |
 | `vscode-bdl` CI | 扩展 typecheck/test/package | GitHub Actions（Linux + Windows） |
 | `zed-bdl` CI | `cargo check --target wasm32-wasip2` | GitHub Actions（Linux + Windows） |
-| LSP Release 构建 | Linux/Windows 二进制 | `bdl-lsp` GitHub Actions（tag `lsp-vX.Y.Z`） |
+| LSP 本地构建 | Linux/Windows 二进制 | 本地/CI；Release 暂不排期 |
 | 语料回归 | 7699 `.4gl` / 7409 `.per` | 本地（慢测试，按需） |
 
 ---

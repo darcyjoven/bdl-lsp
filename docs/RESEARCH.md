@@ -330,7 +330,7 @@ panic: Incompatible language version 15. Expected minimum 13, maximum 14
 | R5 | `SCREEN RECORD` 与 4GL 记录/数组的映射规则？ | 手册 + 语料抽样，v1.1 再实现 |
 | R6 | 远程 `fglcomp`/`fglform` 输出格式与退出码？ | 测试服务器采集样本 |
 | R7 | 15k 文件索引的真实耗时/内存？ | 基准脚本 |
-| R8 | VSCode 市场发布策略与 publisher？ | 用户确认 |
+| R8 | VSCode 市场发布策略与 publisher？ | 暂不排期，后续确认 |
 
 ---
 

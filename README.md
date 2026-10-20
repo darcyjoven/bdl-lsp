@@ -11,18 +11,18 @@
 - 跨文件校验：4GL 中使用的表单字段是否真的存在于对应 `.per`
 - `.per` 内部一致性校验
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
-- 目标 Genero **2.50–5.0**（当前 grammar 以 2.50 为基线，5.0 后续增量支持）
+- Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**粗略计划阶段（v0.3）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
+> 当前状态：**粗略计划阶段（v0.4）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
-> 无感下载、`bdl-lsp` 独立 Release、Zed 新 id `bdl-full`、Genero 2.50–5.0 目标。
-> 细节与可微调项见 [TODO](docs/TODO.md)。
+> Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
+> 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
 
 ## 仓库组成
 
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
-| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物、LSP Release | 已初始化，remote 已配置 |
+| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化，remote 已配置 |
 | `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | 已初始化，remote 已配置 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | 已初始化，remote 已配置 |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
@@ -30,7 +30,7 @@
 
 说明：
 
-- `bdl-lsp` 同时是 LSP 二进制发布源（tag `lsp-vX.Y.Z`）；两个扩展从该仓库无感下载，详见计划。
+- `bdl-lsp` 是 LSP 二进制的归属仓库；Release/无感下载暂不排期，开发期用本地构建路径。
 - 本地目录名与远程仓库名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`。
 - 三个新仓库均已 `git init -b main` 并完成首次提交；三个仓库的 `origin` 均已配置，尚未 push。
 
