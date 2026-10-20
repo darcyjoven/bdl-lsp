@@ -202,7 +202,7 @@ GitHub Release
 | 悬停 | ✅ | 手册文档、类型推导增强 | 显示签名、类型、定义位置 |
 | 语法诊断 | ✅ | 错误恢复增强 | 基于 ERROR/MISSING 节点 |
 | `.per` 内部校验 | ✅ | 布局/属性语义完善 | 重复 item、SCREEN RECORD 引用、布局引用 |
-| GLOBALS 模组全局变量 | ✅（P3a） | 跨文件 references、大纲分组 | 跳转/来源标注/两类警告，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
+| GLOBALS 模组全局变量 | ✅（P3a 完成） | 跨文件 references、大纲分组 | 跳转/来源标注/两类警告，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
 | 4GL 字段存在性 | ✅（显式字段） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 |
 | 4GL 格式化 | ✅（缩进/大小写/空白） | 重排、对齐、SQL 格式化 | 保守，不改变换行结构 |
 | `.per` 格式化 | ✅（非 LAYOUT 小节） | 布局对齐 | 绝不改 LAYOUT 的列位置 |
@@ -498,15 +498,15 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - `lib.rs` 通过本地路径启动 LSP（自动下载暂不排期）；平台识别。
 - 验收：**Linux 与 Windows** 上 Zed dev extension 加载，两个语言高亮，LSP 启动，跳转可用（Zed 已有官方 Windows 版本，仍需实测扩展/路径差异）。
 
-### P3a GLOBALS 模组全局变量（约 3–4 个工作块）
+### P3a GLOBALS 模组全局变量（约 3–4 个工作块）✅ 已完成
 
 - GLOBALS 块索引（定义侧）与 `GLOBALS "file"` 导入提取（引用侧）。
 - 跨文件解析器：相对路径 + `searchPaths`、按需加载与缓存。
 - 跳转四级作用域（新增 GLOBALS 级）、悬停来源标注。
 - 两类警告：global 文件未找到、变量来源未找到（后者可配置关闭）。
-- 验收：跳转进 `.global` 文件；tiptop 语料 8404 处引用解析正确、
-  107 处未解析全部告警；误报标注 < 5%。
-- 详细规划：[PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
+- 验收：跳转进 `.global` 文件；tiptop 语料 8403 处引用解析正确、
+  107 处未解析全部告警；e2e 16/16。
+- 详细设计与实现记录：[PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
 
 ### P3b 表单字段校验（约 4–6 个工作块）
 

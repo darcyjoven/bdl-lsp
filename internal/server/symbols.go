@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
 	"go.lsp.dev/jsonrpc2"
@@ -206,6 +207,11 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 
 	matches := fi.Lookup(strings.ToLower(word))
 	if len(matches) == 0 {
+		// P3a（F2）：本文档没有定义时，查 GLOBALS 引入的模组全局变量。
+		// 悬停来源标注是用户明确要求的能力。
+		if h := s.hoverGlobalsImported(doc, idx, word); h != nil {
+			return reply(ctx, *h, nil)
+		}
 		return reply(ctx, nil, nil)
 	}
 
@@ -218,6 +224,12 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		sb.WriteString(hoverText(sym))
 	}
 
+	// P3a（F2）：定义方文档（.global 自己打开）里悬停块内变量时，
+	// 标注它是模组全局变量（跨模块共享）。
+	if len(matches) == 1 && matches[0].Scope == index.ScopeGlobals {
+		sb.WriteString("\n\n---\n模组全局变量（GLOBALS 块内定义，跨模块共享）")
+	}
+
 	return reply(ctx, protocol.Hover{
 		Contents: protocol.MarkupContent{
 			Kind:  protocol.Markdown,
@@ -225,6 +237,63 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		},
 		Range: ptrRange(byteRange(idx, matches[0].StartByte, matches[0].EndByte)),
 	}, nil)
+}
+
+// hoverGlobalsImported 生成"GLOBALS 引入变量"的悬停内容（F2）。
+//
+// 位置 Range 用引用方文档的（光标处的词），内容列出全部来源：
+// 变量名 + 类型 + 来源文件:行号。多来源时全部列出（与跳转策略一致）。
+func (s *Server) hoverGlobalsImported(doc *document.Document, idx *textpos.Index, word string) *protocol.Hover {
+	if s.globalsRes == nil {
+		return nil
+	}
+	locs, sources := s.globalsDefinitions(word)
+	if len(locs) == 0 {
+		return nil
+	}
+
+	// 从对应 entry 取类型文本：重新查一遍带类型（sources 与 locs 对齐）
+	typeLines := s.globalsTypeLines(word)
+
+	var sb strings.Builder
+	sb.WriteString("```bdl\n")
+	sb.WriteString(word)
+	if len(typeLines) == 1 && typeLines[0] != "" {
+		sb.WriteString(" : ")
+		sb.WriteString(typeLines[0])
+	}
+	sb.WriteString("\n```")
+	sb.WriteString("\n\n来源（GLOBALS 引入）：")
+	for i, src := range sources {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString("- ")
+		sb.WriteString(src)
+	}
+	if len(typeLines) > 1 {
+		sb.WriteString("\n\n多个来源的类型：")
+		for _, tt := range typeLines {
+			if tt == "" {
+				continue
+			}
+			sb.WriteString("\n- ")
+			sb.WriteString(tt)
+		}
+	}
+
+	// Range 落在光标处的词上（本文档坐标）
+	rng := protocol.Range{}
+	if off, ok := wordOffset(doc, idx, word); ok {
+		rng = byteRange(idx, uint(off), uint(off+len(word)))
+	}
+	return &protocol.Hover{
+		Contents: protocol.MarkupContent{
+			Kind:  protocol.Markdown,
+			Value: sb.String(),
+		},
+		Range: &rng,
+	}
 }
 
 // hoverText 生成单个符号的 markdown 描述。
@@ -283,6 +352,11 @@ func ptrRange(r protocol.Range) *protocol.Range { return &r }
 
 // byteRange 把字节区间换算为 LSP Range。
 func byteRange(idx *textpos.Index, start, end uint) protocol.Range {
+	if idx == nil {
+		// 行索引缺失（如跨文件目标未缓存）：退化为单点，
+		// 不 panic——诊断/跳转的健壮性优先于精确位置。
+		return protocol.Range{}
+	}
 	sl, sc := idx.Position(int(start))
 	el, ec := idx.Position(int(end))
 	return protocol.Range{

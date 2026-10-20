@@ -13,8 +13,9 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 1–7 + P2 Zed 已完成**；下一步 **P3a GLOBALS 模组全局变量**
-> （跳转/来源标注/两类可关闭警告，规划见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)）。
+> 当前状态：**P1 Block 1–7 + P2 Zed + P3a GLOBALS 已完成**；下一步 P3b 字段校验。
+> P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
+> 详见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -112,7 +113,7 @@ bash scripts/corpus-smoke.sh 60
 | VSCode 扩展 | ✅ Block 6 |
 | GitHub Actions（Linux + Windows） | ✅ Block 7 |
 | Zed 扩展（`4gl-full`） | ✅ P2 |
-| GLOBALS 模组全局变量（跨文件跳转/警告） | ⏳ P3a（已规划） |
+| GLOBALS 模组全局变量（跨文件跳转/来源/警告） | ✅ P3a |
 | 字段校验（4GL ↔ `.per`） | ⏳ P3b |
 
 性能（7138 行 / 329 KB）：`didOpen` 51 ms，`didChange` 往返 0.7 ms。

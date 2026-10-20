@@ -40,11 +40,35 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	}
 	s.logger.Info("配置已更新", "generoVersion", settings.GeneroVersion)
 
+	// P3a：searchPaths 变化会影响 GLOBALS 解析结果，重建解析器
+	// （缓存随重建丢弃；已打开文档走内存版不受影响）。
+	if !searchPathsEqual(s.lastSearchPaths, settings.Globals.SearchPaths) {
+		s.logger.Info("globals searchPaths 变化，重建解析器",
+			"old", s.lastSearchPaths, "new", settings.Globals.SearchPaths)
+		s.lastSearchPaths = append([]string(nil), settings.Globals.SearchPaths...)
+		if s.rootPath != "" {
+			s.newGlobalsResolver(s.rootPath)
+		}
+	}
+
 	// 重新诊断所有打开的文档
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)
 	}
 	return nil
+}
+
+// searchPathsEqual 比较两个 searchPaths（nil 与空切片视为相等）。
+func searchPathsEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // extractSettings 从客户端下发的内容里取出实际设置对象。

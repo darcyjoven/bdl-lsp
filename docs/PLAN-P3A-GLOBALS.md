@@ -1,8 +1,8 @@
 # P3a 规划：GLOBALS 模组全局变量 —— 跨文件解析、跳转与诊断
 
-> 版本：v1.0（规划，未实现）  
+> 版本：v2.0（已实现）  
 > 日期：2026-10-20  
-> 状态：**待实现**。P2（Zed 扩展）已完成，本功能是下一步。  
+> 状态：**已完成**（T1–T6 全部落地；验收输出见 §11）。  
 > 上游：[粗略计划](PLAN.md)｜[P1/P2 详细记录](PLAN-DETAILED-P1.md)｜[待办](TODO.md)  
 > 来源：**用户明确要求**（2026-10-20，原话摘录见 §1.1）
 
@@ -404,7 +404,96 @@ g_aaz — RECORD LIKE aaz_file.*
 
 ---
 
-## 10. 验收标准（DoD）
+## 10. 实现记录（与规划的差异）
+
+实现过程中与原规划的偏差，全部记录在案：
+
+| 规划 | 实际 | 原因 |
+|---|---|---|
+| Resolver 内环检查放在 loadIndex | 移到 resolveImports，visiting 覆盖子树 | loadIndex 里用 defer 回退 visiting，集合永远为空——缓存命中返回 fi 后调用方继续递归，环挡不住（实测栈溢出）；缓存只让每层变快，不终止递归 |
+| NotFound 不建反向依赖边 | **建**：candidate 返回预期路径（无论存在与否），所有候选位置都登记 | 文件后来被创建/打开时，refreshImporters 才能找到引用方并清警告；否则 NotFound 的导入永远收不到“文件出现了”的通知（实测：补上文件后警告不消失） |
+| TreeCursor 遍历收集变量使用 | tree-sitter Query | 7138 行文件 cursor DFS 让 didChange 0.7ms→74ms（每次 CGO 调用太贵）；query 13ms |
+| 两个 query（uses/skip）各扫一遍 | 合并为一个 query（两 pattern） | query 是全树扫描，与 match 数无关；两个 query 付两遍代价（25ms vs 13ms） |
+| T5 在每次 didChange 现场计算 | 缓存 + 400ms 防抖 | 13ms 的 query 挂在按键上仍卡（27ms）；didChange 清缓存快速发布，停顿后 reparseFull 恢复完整诊断 |
+| reparseFull 复用 reparse 再补发一次 | 完整独立实现，**单次**发布 | didOpen 同步处理时两次 publish 写满测试管道（容量有限）→ 读侧未消费 → 死锁（实测挂起） |
+
+三个非显而易见的坑（都已写进代码注释）：
+
+1. **typed-nil 陷阱**：`ts.NewQuery` 返回 `*QueryError`；把它装进先声明的
+   `error` 接口变量再判 `!= nil`，编译成功的 nil 也为 true——T5 被静默
+   禁用，单独测试全绿、集成后失效，极难定位。修法：`qerr` 单独声明。
+2. **Impossible pattern**：`form/window/report/label` 的 `name` 字段是
+   `identifier` 直接节点（node-types.json 实测），不是 `variable`；
+   把它们写进 skip query 会让**整个 query** 编译失败。
+3. **nil os.FileInfo panic**：`fromDoc` 时没有磁盘 stat，对 nil 接口调
+   `ModTime()` 直接崩（Windows/内存版路径专属）。
+
+性能结果（7138 行 / 329 KB，与规划目标对照）：
+
+| 指标 | 基线 | 实测 | 规划目标 |
+|---|---|---|---|
+| didOpen 全量 | 51 ms | 84.9 ms | < 300 ms ✅ |
+| didChange 往返 | 0.7 ms | 6.8 ms | < 100 ms ✅（新增 globals 解析与缓存维护） |
+| 语料全量解析 | — | 7756 文件 72 s（冷启动一次性） | 8404 resolved ✅ |
+| 未解析 | — | 107 处 | 107 处全部告警 ✅ |
+
+## 11. 验收输出
+
+```text
+$ go test ./internal/globals/ -v
+    --- PASS: TestResolveRelativePath
+    --- PASS: TestResolveNotFound
+    --- PASS: TestResolveUnresolvableVariable
+    --- PASS: TestResolveSearchPaths
+    --- PASS: TestResolveAbsoluteLiteral
+    --- PASS: TestResolveUnknownExtensionStillParsed
+    --- PASS: TestCacheReuseAndInvalidate
+    --- PASS: TestOpenDocPreferredOverDisk
+    --- PASS: TestImportersReverseDependency
+    --- PASS: TestCircularImportsTerminated
+    --- PASS: TestChainImportsResolved
+    --- PASS: TestURIPathRoundTrip
+ok
+
+$ go test ./internal/index/ -run 'Globals' -v
+    --- PASS: TestGlobalsBlockSymbols
+    --- PASS: TestGlobalsImportLiteral
+    --- PASS: TestGlobalsImportTrailingComment
+    --- PASS: TestGlobalsImportVariable
+    --- PASS: TestGlobalsMultipleImports
+    --- PASS: TestModuleDefineNotGlobalsScope
+    --- PASS: TestRealGlobalFileIndexing   # top.global: 274 符号
+
+$ go test ./internal/server/ -run 'Globals|Unresolved' -v
+    --- PASS: TestGlobalsFileNotFoundDiagnostic
+    --- PASS: TestGlobalsFileFoundNoDiagnostic
+    --- PASS: TestGlobalsNotFoundHealsWhenFileCreated
+    --- PASS: TestGlobalsNotFoundDisabledByConfig
+    --- PASS: TestGlobalsOpenTargetRefreshesImporters
+    --- PASS: TestGlobalsImportInPERIgnored
+    --- PASS: TestGlobalsDefinitionJumpsToGlobalFile
+    --- PASS: TestGlobalsRecordFieldJumpsThroughGlobals
+    --- PASS: TestGlobalsHoverShowsSource
+    --- PASS: TestGlobalsHoverInDefiningFileAnnotated
+    --- PASS: TestGlobalsDefinitionScopeOrder
+    --- PASS: TestUnresolvedSourceWarnsForUnknownVariable
+    --- PASS: TestUnresolvedSourceSilentWhenDefined
+    --- PASS: TestUnresolvedSourceSkipsCallAndField
+    --- PASS: TestUnresolvedSourceMentionsMissingGlobals
+    --- PASS: TestUnresolvedSourceSilentWithUnresolvableImport
+    --- PASS: TestUnresolvedSourceDisabledByConfig
+ok
+
+$ go test -race ./...          # 全绿
+$ make lint                    # gofmt + vet 通过
+$ make check                   # testdata 冒烟通过
+$ make e2e-vscode
+[e2e] 用例 16/16 通过
+  ✓ GLOBALS 变量跳转到 global 文件 (68ms)
+  ✓ GLOBALS 文件未找到产生警告 (40ms)
+```
+
+## 12. 验收标准（DoD）
 
 1. §1.1 的 F1–F5 全部有对应的自动化测试且通过；
 2. tiptop 语料：8404 处引用解析正确、107 处未解析全部产生 `globals-file-not-found`；

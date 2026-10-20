@@ -27,7 +27,12 @@ func (s *Server) handleDidOpen(ctx context.Context, req jsonrpc2.Request) error 
 
 	doc := s.docs.Open(uri, lang, params.TextDocument.Version, params.TextDocument.Text)
 	s.logger.Debug("didOpen", "uri", uri, "lang", lang, "version", doc.Version)
-	s.reparse(ctx, doc, nil)
+	s.clearSourceDiags(uri) // 打开新文档：T5 缓存按当前内容重算
+	s.reparseFull(ctx, doc)
+
+	// P3a：本文档可能是其它文档的 GLOBALS 导入目标（.global 常见），
+	// 打开即触发引用方重算（内存版优先于磁盘版）。
+	s.refreshImporters(ctx, uri)
 	return nil
 }
 
@@ -91,7 +96,15 @@ func (s *Server) handleDidChange(ctx context.Context, req jsonrpc2.Request) erro
 		return nil
 	}
 
+	// T5 清空 + 防抖：来源检查是全树 query（大文件 ~27ms），
+	// 不能挂在按键路径上；停顿 400ms 后 reparseFull 恢复完整诊断。
+	s.clearSourceDiags(uri)
 	s.reparse(ctx, doc, oldTree)
+	s.scheduleSourceRecheck(uri)
+
+	// P3a：本文档可能是其它文档的 GLOBALS 导入目标，内容变化后
+	// 引用方的跳转目标/来源诊断需要重算。
+	s.refreshImporters(ctx, uri)
 	return nil
 }
 
@@ -137,6 +150,6 @@ func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error
 	s.indexes.drop(uri)
 	s.logger.Debug("didClose", "uri", uri)
 	// 关闭时清空诊断，避免编辑器残留。
-	s.publish(ctx, uri, 0, nil)
+	s.publish(ctx, uri, 0, nil, nil)
 	return nil
 }

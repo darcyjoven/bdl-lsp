@@ -57,6 +57,15 @@ func (s *Server) handleDefinition(ctx context.Context, reply jsonrpc2.Replier, r
 }
 
 // resolveDefinition 按作用域优先级解析定义位置。
+//
+// P3a 起为四级（Genero 作用域规则）：
+//  1. `rec.field` 形式：字段定义在 rec 的记录结构里；
+//  2. 当前函数内的局部 DEFINE；
+//  3. 当前函数的参数；
+//  4. 模块级 DEFINE / CONSTANT / TYPE / FUNCTION / REPORT / MAIN；
+//  5. GLOBALS 引入（模组全局变量，定义在引用的 .global 文件里）。
+//
+// 同名多命中时全部返回，交给客户端让用户选择（比猜测更可靠）。
 func (s *Server) resolveDefinition(doc *document.Document, fi *index.FileIndex, idx *textpos.Index, word string, offset int) []protocol.Location {
 	// 1) rec.field 形式
 	if rec, field, ok := qualifierAt(doc.Text(), offset, word); ok {
@@ -90,6 +99,11 @@ func (s *Server) resolveDefinition(doc *document.Document, fi *index.FileIndex, 
 		if len(group) > 0 {
 			return toLocations(doc.URI, idx, group)
 		}
+	}
+
+	// 5) GLOBALS 引入（跨文件：Location 的 URI 指向 .global 文件）
+	if locs, _ := s.globalsDefinitions(word); len(locs) > 0 {
+		return locs
 	}
 	return nil
 }

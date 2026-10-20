@@ -34,13 +34,32 @@ const (
 type Scope string
 
 const (
-	// ScopeGlobal 模块级：主函数之前、任何函数之外。
+	// ScopeGlobal 模块级：主函数之前、任何函数之外（仅本模块可见）。
 	ScopeGlobal Scope = "global"
+	// ScopeGlobals GLOBALS ... END GLOBALS 块内的声明：
+	// 模组全局变量，所有引入同一 global 文件的模块共享（P3a）。
+	// 与 ScopeGlobal 的区别只在跨文件可见性，查找顺序也更靠后。
+	ScopeGlobals Scope = "globals-block"
 	// ScopeFunc 函数/报表/main 体内。
 	ScopeFunc Scope = "func"
 	// ScopeParam 函数参数。
 	ScopeParam Scope = "param"
 )
+
+// GlobalsImport 是一条 `GLOBALS "file"` 引用（引用侧）。
+//
+// 只记录字面量与位置，路径解析由 internal/globals 负责。
+type GlobalsImport struct {
+	// Literal 是去引号后的路径字面量（变量形式时为空）。
+	Literal string
+	// IsVariable 表示文件名是变量而非字符串字面量，静态无法解析。
+	IsVariable bool
+	// Name 是变量形式的变量名（IsVariable 时使用）。
+	Name string
+	// StartByte / EndByte 是 filename 节点（含引号/变量名）的区间。
+	StartByte uint
+	EndByte   uint
+}
 
 // Symbol 是一个可跳转的命名实体。
 type Symbol struct {
@@ -82,6 +101,13 @@ type FileIndex struct {
 	Symbols []*Symbol
 	// TopLevel 只包含顶层符号，嵌套结构通过 Children 表达。
 	TopLevel []*Symbol
+	// GlobalsImports 是文件里的 GLOBALS "..." 引用列表（按出现顺序）。
+	// 只有 bdl 语言会有内容。
+	GlobalsImports []GlobalsImport
+	// HasGlobalsBlock 表示本文件含 GLOBALS ... END GLOBALS 块定义
+	// （通常是 .global 文件）。块内符号已进 Symbols（Scope 为 ScopeGlobals），
+	// 单独记一个标志便于快速判断。
+	HasGlobalsBlock bool
 }
 
 // Lookup 按小写名查找符号，返回所有匹配（不同作用域可能重名）。
@@ -161,9 +187,77 @@ func (b *builder) visitTop(node *ts.Node, container string) {
 		b.addNamed(node, "name", KindConstant, ScopeGlobal, container, "")
 	case "type":
 		b.addTypeDecl(node, ScopeGlobal, container)
-	case "globals", "schema", "import", "options", "preproc":
+	case "globals":
+		b.visitGlobals(node)
+	case "schema", "import", "options", "preproc":
 		// 其余顶层结构暂不建符号
 	}
+}
+
+// visitGlobals 处理 GLOBALS 的两种形式（P3a）：
+//
+//   - 块定义：GLOBALS ... END GLOBALS，内部 constant/type/define 以
+//     ScopeGlobals 收集（模组全局变量，跨文件共享）；
+//   - 文件引用：GLOBALS "path" / GLOBALS var，记录字面量与位置，
+//     路径解析交给 internal/globals。
+//
+// 提取必须走语法树的 filename 字段而不是行正则：
+// 行尾可能带注释（GLOBALS #FUN-AC0060 ...，语料实测存在），
+// 且被注释掉的 #GLOBALS 行 grammar 不会解析（实测确认）。
+func (b *builder) visitGlobals(node *ts.Node) {
+	// 文件引用形式：有 filename 字段
+	if fn := node.ChildByFieldName("filename"); fn != nil {
+		imp := GlobalsImport{
+			StartByte: fn.StartByte(),
+			EndByte:   fn.EndByte(),
+		}
+		switch fn.Kind() {
+		case "string":
+			// 剥掉两侧引号（可能带转义，这里只处理普通引号）
+			imp.Literal = unquoteString(b.text(fn))
+		case "variable":
+			imp.IsVariable = true
+			// 变量名取首标识符（variable 可能是 a.b 形式，文件名取整体文本即可）
+			imp.Name = b.text(fn)
+		default:
+			// 未知形式，记变量按不可解析降级
+			imp.IsVariable = true
+			imp.Name = b.text(fn)
+		}
+		b.fi.GlobalsImports = append(b.fi.GlobalsImports, imp)
+		return
+	}
+
+	// 块定义形式：遍历 constant/type/define 子节点
+	b.fi.HasGlobalsBlock = true
+	count := node.NamedChildCount()
+	for i := uint(0); i < count; i++ {
+		child := node.NamedChild(i)
+		if child == nil {
+			continue
+		}
+		switch child.Kind() {
+		case "define":
+			b.addDefines(child, ScopeGlobals, "")
+		case "constant":
+			b.addNamed(child, "name", KindConstant, ScopeGlobals, "", "")
+		case "type":
+			b.addTypeDecl(child, ScopeGlobals, "")
+		}
+	}
+}
+
+// unquoteString 去掉字符串字面量两侧的引号。
+//
+// tree-sitter 的 string 节点文本含引号本身；转义序列（\"）不展开——
+// 文件路径里出现引号转义在语料中不存在，保持原样足够。
+func unquoteString(s string) string {
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 // addContainer 为 main/function/report 建符号，并递归收集其内部声明。

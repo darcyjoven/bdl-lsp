@@ -1,9 +1,9 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v1.0（Block 7 + P2 完成；P3a GLOBALS 已另行规划）  
+> 版本：v1.1（Block 7 + P2 + P3a GLOBALS 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–7 与 P2 Zed 已完成**；下一步 P3a GLOBALS 模组全局变量
-> （规划见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)，P3b 字段校验复用其索引基础）。  
+> 状态：**Block 1–7、P2 Zed、P3a GLOBALS 已完成**；下一步 P3b 字段校验
+> （P3a 的实现记录与踩坑见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) §10–§11）。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -897,8 +897,8 @@ Block 1 ✅
    └── Block 6 ✅（VSCode，依赖 1+3+4+5）
           └── Block 7 ✅（CI）
                  └── P2 Zed 扩展 ✅
-                        └── P3a GLOBALS 模组全局变量  ← 下一步（已规划）
-                               └── P3b 字段校验（复用 P3a 索引基础）
+                        └── P3a GLOBALS 模组全局变量 ✅
+                               └── P3b 字段校验（复用 P3a 索引基础） ← 下一步
 ```
 
 ---

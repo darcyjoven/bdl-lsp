@@ -57,10 +57,29 @@ type Settings struct {
 	SyntaxDiagnostics DiagnosticLevel `json:"syntaxDiagnostics"`
 	// MissingDiagnostics 缺失节点（MISSING）的级别，默认 warning。
 	MissingDiagnostics DiagnosticLevel `json:"missingDiagnostics"`
+	// Globals 是 GLOBALS 引入（P3a）相关的配置。
+	Globals GlobalsSettings `json:"globals"`
 	// Limits 资源保护阈值。
 	Limits Limits `json:"limits"`
 	// LogLevel 日志级别。
 	LogLevel string `json:"logLevel"`
+}
+
+// GlobalsSettings 控制 GLOBALS 模组全局变量相关的解析与诊断（P3a）。
+type GlobalsSettings struct {
+	// FileNotFoundDiagnostics 是 `GLOBALS "路径"` 目标文件找不到时的级别，
+	// 默认 warning。
+	FileNotFoundDiagnostics DiagnosticLevel `json:"fileNotFoundDiagnostics"`
+	// UnresolvedSourceDiagnostics 是变量使用处查不到任何定义时的级别，
+	// 默认 warning。用户明确要求可关闭（设为 off）。
+	UnresolvedSourceDiagnostics DiagnosticLevel `json:"unresolvedSourceDiagnostics"`
+	// SearchPaths 是附加的解析根（相对工作区根，按序尝试）。
+	//
+	// 动机：语料里 97 处 `../../config/top.global` 因模块目录层级不同
+	// 解析不到（rest/aps/4gl 在 tiptop/rest/config 下没有 top.global，
+	// 真实文件在 tiptop/config）。配置 ["tiptop/config"] 后这类引用可命中。
+	// 默认空（不启用）。
+	SearchPaths []string `json:"searchPaths"`
 }
 
 // Default 返回默认配置。
@@ -70,6 +89,10 @@ func Default() Settings {
 		SyntaxDiagnostics:  LevelError,
 		MissingDiagnostics: LevelWarning,
 		LogLevel:           "info",
+		Globals: GlobalsSettings{
+			FileNotFoundDiagnostics:     LevelWarning,
+			UnresolvedSourceDiagnostics: LevelWarning,
+		},
 		Limits: Limits{
 			MaxFileBytes:   2 * 1024 * 1024, // 2 MB
 			MaxFileLines:   20000,
@@ -180,6 +203,19 @@ func (m *Manager) merge(s *Settings) {
 	if s.Limits.ParseTimeoutMS > 0 {
 		m.cur.Limits.ParseTimeoutMS = s.Limits.ParseTimeoutMS
 	}
+
+	// Globals（P3a）
+	if s.Globals.FileNotFoundDiagnostics != "" {
+		m.cur.Globals.FileNotFoundDiagnostics = s.Globals.FileNotFoundDiagnostics
+	}
+	if s.Globals.UnresolvedSourceDiagnostics != "" {
+		m.cur.Globals.UnresolvedSourceDiagnostics = s.Globals.UnresolvedSourceDiagnostics
+	}
+	// SearchPaths 用 nil 区分“未下发”与“显式清空”：
+	// 客户端只发用户改过的键，JSON 省略数组时为 nil。
+	if s.Globals.SearchPaths != nil {
+		m.cur.Globals.SearchPaths = s.Globals.SearchPaths
+	}
 }
 
 // Get 返回当前配置的快照。
@@ -225,6 +261,19 @@ func (s Settings) Validate() []string {
 	}
 	if s.Limits.ParseTimeoutMS <= 0 {
 		problems = append(problems, "limits.parseTimeoutMs 必须为正数")
+	}
+
+	for name, lvl := range map[string]DiagnosticLevel{
+		"globals.fileNotFoundDiagnostics":     s.Globals.FileNotFoundDiagnostics,
+		"globals.unresolvedSourceDiagnostics": s.Globals.UnresolvedSourceDiagnostics,
+	} {
+		switch lvl {
+		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:
+		case "":
+			problems = append(problems, fmt.Sprintf("%s 未设置（应取 off/error/warning/information/hint）", name))
+		default:
+			problems = append(problems, fmt.Sprintf("未知 %s %q（支持 off/error/warning/information/hint）", name, lvl))
+		}
 	}
 	return problems
 }

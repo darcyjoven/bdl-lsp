@@ -22,7 +22,7 @@
 | 9 | 基于 `tree-sitter-bdl` / `tree-sitter-per` | 🧑 用户提供 | v1 | ✅ |
 | 10 | 三个仓库的 Git 管理 | 🧑 用户提供 | 已完成 | ✅ |
 | 11 | 文档/脚本/中间产物集中 `bdl-lsp` | 🧑 用户提供 | 已完成 | ✅ |
-| 12 | GLOBALS 模组全局变量：跳转到 global 文件、来源标注、两类警告（可关闭） | 🧑 用户提供 | P3a | **已规划**，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
+| 12 | GLOBALS 模组全局变量：跳转到 global 文件、来源标注、两类警告（可关闭） | 🧑 用户提供 | P3a | ✅ 已完成（语料 8403 处引用验证、e2e 16/16），见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
 
 ### 1.1 记录（record）`.*` 校验的说明
 

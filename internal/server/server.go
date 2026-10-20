@@ -18,6 +18,7 @@ import (
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
+	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -31,6 +32,25 @@ type Server struct {
 	docs    *document.Store
 	indexes *indexCache
 	cfg     *config.Manager
+	// globalsRes 解析 GLOBALS 引入（P3a）；initialize 之后非 nil。
+	globalsRes *globals.Resolver
+	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
+	rootPath string
+	// lastSearchPaths 是上次构建解析器用的 searchPaths（检测变化）。
+	lastSearchPaths []string
+	// globalsEntries 缓存每个文档最近一次的 GLOBALS 解析结果，
+	// 供跳转/悬停查询（gMu 保护）。
+	globalsMu      sync.RWMutex
+	globalsEntries map[string][]globals.Entry
+	// varQueries 是变量使用检查的复用 query（T5；惰性编译）。
+	varQueries     *variableQueries
+	varQueriesOnce sync.Once
+	// sourceDiags 缓存每文档的 T5（变量来源）诊断（debounceMu 保护）。
+	// didChange 时清空并防抖重算：来源检查要全树 query（大文件 ~27ms），
+	// 不能挂在每次按键上；编辑停顿 400ms 后恢复完整诊断。
+	sourceDiags   map[string][]protocol.Diagnostic
+	recheckTimers map[string]*time.Timer
+	debounceMu    sync.Mutex
 
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
@@ -44,13 +64,16 @@ type Server struct {
 // New 创建服务器。Serve 之前不会读写任何协议数据。
 func New(pool *parser.Pool, logger *slog.Logger, version string) *Server {
 	return &Server{
-		pool:    pool,
-		logger:  logger,
-		version: version,
-		docs:    document.NewStore(),
-		indexes: newIndexCache(),
-		cfg:     config.NewManager(""),
-		exited:  make(chan struct{}),
+		pool:           pool,
+		logger:         logger,
+		version:        version,
+		docs:           document.NewStore(),
+		indexes:        newIndexCache(),
+		cfg:            config.NewManager(""),
+		globalsEntries: map[string][]globals.Entry{},
+		sourceDiags:    map[string][]protocol.Diagnostic{},
+		recheckTimers:  map[string]*time.Timer{},
+		exited:         make(chan struct{}),
 	}
 }
 
@@ -183,6 +206,14 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 		for _, p := range problems {
 			s.logger.Warn("配置问题", "detail", p)
 		}
+	}
+
+	// P3a：GLOBALS 解析器（searchPaths 来自配置，热更新时按变化重建）
+	s.rootPath = globals.PathOfURI(string(params.RootURI))
+	s.lastSearchPaths = append([]string(nil), s.settings().Globals.SearchPaths...)
+	s.newGlobalsResolver(s.rootPath)
+	if n := len(s.settings().Globals.SearchPaths); n > 0 {
+		s.logger.Info("globals searchPaths 生效", "count", n)
 	}
 	if params.InitializationOptions != nil {
 		if raw, err := json.Marshal(params.InitializationOptions); err == nil {
