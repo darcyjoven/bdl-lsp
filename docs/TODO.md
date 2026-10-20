@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 当前阶段：**P1 实现中**（Block 1–4 已完成）。  
+> 当前阶段：**P1 实现中**（Block 1–5 已完成）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -168,6 +168,14 @@ Block 4 已完成：
 - [x] `textDocument/definition`：局部 → 参数 → 全局 → `rec.field` 记录字段。
 - [x] `textDocument/references`：词边界 + 排除注释/字符串 + includeDeclaration。
 - [x] 修复光标落在词首/词中时 `rec.field` 判定失败。
+
+Block 5 已完成：
+
+- [x] `internal/config`：generoVersion、诊断级别、limits、工作区配置、客户端热更新。
+- [x] 诊断增强：级别可配、去重、同行合并、诊断 code、大文件提示。
+- [x] 解析超时（C 层）与 ctx 检查；修复 `ParseCtx` 崩溃。
+- [x] `scripts/corpus-regress.sh` + `make regress`。
+- [x] 全量回归：per 7407/7409、bdl 7683/7699；18 个失败均为已知文件问题。
 
 待做：
 

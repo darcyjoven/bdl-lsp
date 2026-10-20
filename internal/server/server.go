@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"go.lsp.dev/jsonrpc2"
@@ -29,6 +30,7 @@ type Server struct {
 	version string
 	docs    *document.Store
 	indexes *indexCache
+	cfg     *config.Manager
 
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
@@ -47,8 +49,17 @@ func New(pool *parser.Pool, logger *slog.Logger, version string) *Server {
 		version: version,
 		docs:    document.NewStore(),
 		indexes: newIndexCache(),
+		cfg:     config.NewManager(""),
 		exited:  make(chan struct{}),
 	}
+}
+
+// settings 返回当前配置快照。
+func (s *Server) settings() config.Settings {
+	if s.cfg == nil {
+		return config.Default()
+	}
+	return s.cfg.Get()
 }
 
 // Serve 以 stdio 运行 LSP，直到客户端发送 exit 或连接关闭。
@@ -134,6 +145,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleWorkspaceSymbol(ctx, reply, req)
 	case protocol.MethodTextDocumentHover:
 		return s.handleHover(ctx, reply, req)
+	case protocol.MethodWorkspaceDidChangeConfiguration:
+		return s.handleDidChangeConfiguration(ctx, req)
 	case protocol.MethodTextDocumentDefinition:
 		return s.handleDefinition(ctx, reply, req)
 	case protocol.MethodTextDocumentReferences:
@@ -163,6 +176,21 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	s.mu.Lock()
 	s.initParms = &params
 	s.mu.Unlock()
+
+	// 用 rootUri 定位工作区配置并校验
+	s.cfg = config.NewManager(string(params.RootURI))
+	if problems := s.cfg.Get().Validate(); len(problems) > 0 {
+		for _, p := range problems {
+			s.logger.Warn("配置问题", "detail", p)
+		}
+	}
+	if params.InitializationOptions != nil {
+		if raw, err := json.Marshal(params.InitializationOptions); err == nil {
+			if err := s.cfg.Apply(raw); err != nil {
+				s.logger.Warn("初始化选项解析失败", "error", err)
+			}
+		}
+	}
 
 	result := protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{

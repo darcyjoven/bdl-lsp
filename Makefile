@@ -1,4 +1,4 @@
-.PHONY: all build test test-race vet fmt lint check corpus clean help
+.PHONY: all build test test-race vet fmt lint check corpus regress bench clean help
 
 GO ?= go
 BIN := artifacts/bin/bdl-lsp
@@ -40,6 +40,10 @@ check: build
 ## corpus: 对真实语料抽样做解析冒烟（需 tiptop-gp）
 corpus: build
 	@bash scripts/corpus-smoke.sh
+
+## regress: 全量语料回归（较慢，发布前/大改后运行）
+regress: build
+	@bash scripts/corpus-regress.sh
 
 ## bench: LSP 端到端延迟基准（didOpen / didChange）
 bench: build

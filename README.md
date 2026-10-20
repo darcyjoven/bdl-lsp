@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 4 已完成**（LSP 骨架 + 解析诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI）。
+> 当前状态：**P1 Block 5 已完成**（LSP 骨架 + 智能诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI）。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -83,6 +83,7 @@ make test                      # 单元测试
 make lint                      # gofmt + vet
 make check                     # 样例冒烟
 make bench                     # LSP 延迟基准
+make regress                   # 全量语料回归（约 2.5 分钟）
 
 # 解析检查（可用于 CI）
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per

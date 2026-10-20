@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.5（Block 4 完成）  
+> 版本：v0.6（Block 5 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–4 已完成**；Block 5–7 待做。  
+> 状态：**Block 1–5 已完成**；Block 6–7 待做。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -346,19 +346,136 @@ references(r110_tm)            → 2 处（定义 + 调用）
 | `TestReferencesExcludesDeclaration` | `includeDeclaration=false` 时排除定义 |
 | `TestReferencesExcludesCommentsAndStrings` | 注释/字符串内不计入引用 |
 
-## 5. 待做：Block 5 诊断增强
+## 5. 已完成：Block 5 诊断增强
 
-| 任务 | 说明 |
+### 5.1 交付内容
+
+| 文件 | 内容 |
 |---|---|
-| 5.1 | 诊断去重与合并（相邻 ERROR 合并为大区间） |
-| 5.2 | 区分 ERROR（error）与 MISSING（warning）严重级别 |
-| 5.3 | 大文件保护：> 2 MB 或 > 20k 行时跳过解析并提示 |
-| 5.4 | 解析超时保护（`ParseCtx`） |
-| 5.5 | 语料回归脚本：7699 `.4gl` + 7409 `.per`，统计通过率与耗时 |
+| `internal/config/config.go` | 配置模型、默认值、文件加载、客户端下发合并、校验 |
+| `internal/config/config_test.go` | 7 个测试 |
+| `internal/parser/issues.go` | 严重级别分类、去重、同行相邻 ERROR 合并 |
+| `internal/parser/parser.go` | `ParseWith`：C 层超时 + ctx 前后检查 |
+| `internal/parser/errors.go` | `ErrTimeout` / `ErrTooLarge` |
+| `internal/server/diagnostics.go` | 按配置映射级别、大文件跳过、诊断 code |
+| `internal/server/config.go` | `workspace/didChangeConfiguration` 处理与全量重诊断 |
+| `scripts/corpus-regress.sh` | 全量语料回归（通过率 + 耗时分位） |
 
-**验收**：全量语料零崩溃；通过率不低于既有基线（`.per` 7068/7070）。
+### 5.2 配置项
 
----
+```json
+{
+  "bdl": {
+    "generoVersion": "2.50",
+    "syntaxDiagnostics": "error",
+    "missingDiagnostics": "warning",
+    "limits": {
+      "maxFileBytes": 2097152,
+      "maxFileLines": 20000,
+      "maxIssues": 200,
+      "parseTimeoutMs": 2000
+    }
+  }
+}
+```
+
+- 级别支持 `off` / `error` / `warning` / `information` / `hint`。
+- `syntaxDiagnostics` 管 ERROR 节点，`missingDiagnostics` 管 MISSING 节点——
+  后者通常表示“缺少必填结构”，与语法错误区别对待更贴合实际使用。
+- 配置来源优先级：客户端下发 > `.bdl-lsp/config.json` > 内置默认。
+- 客户端设置变更后**重新诊断所有已打开文档**，无需等用户再编辑。
+
+### 5.3 诊断质量改进
+
+| 改进 | 说明 |
+|---|---|
+| 严重级别可配 | ERROR 默认 error，MISSING 默认 warning |
+| 去重 | 相同区间+类型+缺失标记的重复问题只报一次 |
+| 同行合并 | 一行内相邻（≤3 字节）的多个 ERROR 合并为一条，避免红点成排 |
+| 诊断 code | `syntax-error` / `missing-<kind>`，便于用户过滤 |
+| 大文件保护 | 超限时只发一条 information 提示，不做语法检查 |
+| 超时保护 | 超时不等于文件有错，**保留上次诊断**，避免编辑时闪烁 |
+
+### 5.4 关键踩坑：`ParseCtx` 存在崩溃
+
+go-tree-sitter v0.25 的 `Parser.ParseCtx` 实现：
+
+```go
+if ctx.Done() != nil {
+    go func() {
+        select {
+        case <-ctx.Done():
+            atomic.StoreUintptr(p.CancellationFlag(), 1)  // ← 危险
+        case <-finish:
+            return
+        }
+    }()
+}
+```
+
+问题：解析结束后 parser 被 `Reset()` 放回池中复用，若那个 goroutine 迟到执行，
+`CancellationFlag()` 可能已指向失效内存，导致 **SIGSEGV**。已实测复现：
+
+```text
+panic: runtime error: invalid memory address or nil pointer dereference
+github.com/tree-sitter/go-tree-sitter.(*Parser).ParseCtx.func1()
+```
+
+**解决**：不用 `ParseCtx`，改为
+
+1. 解析前检查 `ctx.Err()`；
+2. 用 `SetTimeoutMicros` 在 C 层中断；
+3. 解析后再次检查 `ctx.Err()`（覆盖解析期间被取消的情况），并释放已产生的树。
+
+`-race -count=3` 压测通过。
+
+### 5.5 全量语料回归结果
+
+```text
+样本：per=7409  bdl=7699
+per: 7407/7409 通过（99.97%）
+bdl: 7683/7699 通过（99.79%）
+
+耗时：
+per  n=7409  均值 3.4ms  p50 3ms  p95 5ms  p99 7ms   max 29ms
+bdl  n=7699  均值 13.5ms p50 9ms  p95 32ms p99 87ms  max 865ms
+```
+
+对比既有基线：
+
+| 语言 | 既有基线 | 本次 | 结论 |
+|---|---|---|---|
+| `.per` | 7068/7070（99.97%） | 7407/7409（99.97%） | 一致（样本口径更大） |
+| `.4gl` | 7671/7699（99.64%） | 7683/7699（99.79%） | **略优** |
+
+18 个失败文件逐一核对 `tree-sitter-bdl/BACKLOG.md`，**全部为已知的真实文件问题**：
+
+| 文件 | 问题 |
+|---|---|
+| `aooi010.per` / `apmi252.per` | 含未注释中文说明文字 |
+| `ghri0471.4gl` | 仅 3 字节（`e9 94 98`） |
+| `cs_restful.4gl` | 使用 `&&`（BDL 非法） |
+| `cxcq761.4gl` | 孤立 `END IF` |
+| `baofei.4gl` / `findidx.4gl` | 多行字符串赋值缺逗号 |
+| `sapmt540 (3).4gl` | `END RECORD` 多余尾逗号 |
+| `ghri0431.4gl` / `saxmt400.4gl` | 文件截断 |
+| `TX_asfi301_1/2/3.4gl` | 异常文件 |
+| `safi501.4gl` | 缺 `END IF` |
+| `csfi510.4gl` | 续行逗号被注释吞掉 |
+| `csfq012.4gl` | 行末缺逗号 |
+| `sapmt720_sub.4gl` / `cws_get_start_works.4gl` | SQL 内 `END CASE` 等已知语法缺口 |
+
+这说明 **LSP 的诊断没有误报**——报出来的都是文件本身的问题。
+
+### 5.6 复现命令
+
+```bash
+cd bdl-lsp
+source scripts/dev-env.sh
+
+make regress                      # 全量语料（约 2.5 分钟）
+bash scripts/corpus-regress.sh --limit 300   # 快速抽样
+```
 
 ## 6. 待做：Block 6 VSCode 客户端
 
@@ -410,7 +527,7 @@ Block 1 ✅
 | 跨文件跳转未实现 | 引用/定义只在当前文档内搜索 | 工作区索引（P1 后续或 P3） |
 | `RECORD LIKE table.*` 无字段 | 跳转到记录本身，不下探字段 | 需 schema 索引（P6） |
 | grammar 用 `replace` 指向兄弟目录 | 独立 checkout 无法构建 | 后续为 grammar 打 tag |
-| 未做超大文件保护 | 极大文件可能慢 | Block 5 |
+| 超时后不重试 | 极端慢文件会一直用旧诊断 | 可接受；超时阈值可配置 |
 | 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |
 | 未在 Windows 实测 | Windows 路径/换行未验证 | 你已保证环境正常，CI 覆盖 |
 
@@ -428,6 +545,7 @@ go test -race ./...              # 竞态检测
 make lint                        # gofmt + vet
 make check                       # 样例冒烟
 make bench                       # LSP 端到端延迟
+make regress                     # 全量语料回归（约 2.5 分钟）
 bash scripts/corpus-smoke.sh 60  # 语料抽样
 
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl | jq

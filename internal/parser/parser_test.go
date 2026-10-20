@@ -1,8 +1,11 @@
 package parser
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 )
 
 const samplePer = `SCHEMA formonly
@@ -205,5 +208,90 @@ func BenchmarkParsePer(b *testing.B) {
 			b.Fatal(err)
 		}
 		tree.Close()
+	}
+}
+
+func TestCollectWithMerge(t *testing.T) {
+	pool := newPool(t)
+	// 一行里连续多个错误（漏逗号等），应合并
+	src := []byte("MAIN\n    DISPLAY \"a\" \"b\" \"c\"\nEND MAIN\n")
+	tree, err := pool.Parse(LangBDL, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tree.Close()
+
+	raw := Collect(tree, CollectOptions{MaxIssues: 100, MergeAdjacent: false})
+	merged := Collect(tree, CollectOptions{MaxIssues: 100, MergeAdjacent: true})
+
+	if len(merged) > len(raw) {
+		t.Errorf("合并后不应变多：raw=%d merged=%d", len(raw), len(merged))
+	}
+	// 合并后每条都应覆盖合法区间
+	for _, iss := range merged {
+		if iss.StartByte > iss.EndByte {
+			t.Errorf("区间非法：%+v", iss)
+		}
+	}
+}
+
+func TestCollectDistinguishesMissing(t *testing.T) {
+	pool := newPool(t)
+	src := []byte("MAIN\n    IF 1 = 1 THEN\n    END IF\n")
+	tree, err := pool.Parse(LangBDL, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tree.Close()
+
+	issues := Collect(tree, DefaultCollectOptions())
+	hasMissing := false
+	for _, iss := range issues {
+		if iss.Missing {
+			hasMissing = true
+			if !strings.HasPrefix(iss.Message, "缺少") {
+				t.Errorf("MISSING 消息格式异常：%q", iss.Message)
+			}
+		}
+	}
+	_ = hasMissing // 该样例可能只产生 ERROR，不强制要求 MISSING
+}
+
+func TestParseWithTimeout(t *testing.T) {
+	pool := newPool(t)
+	// 极小超时：正常文件也可能超时，但不应 panic
+	_, err := pool.ParseWith(context.Background(), LangBDL, []byte(sampleBDL), nil,
+		ParseOptions{Timeout: time.Nanosecond})
+	// 允许成功（解析极快）或返回 ErrTimeout
+	if err != nil && !errors.Is(err, ErrTimeout) {
+		t.Errorf("超时应返回 ErrTimeout，实际 %v", err)
+	}
+}
+
+func TestParseWithCanceledContext(t *testing.T) {
+	pool := newPool(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := pool.ParseWith(ctx, LangBDL, []byte(sampleBDL), nil, ParseOptions{})
+	if err == nil {
+		t.Error("已取消的 context 应返回错误")
+	}
+}
+
+func TestParserReusableAfterTimeout(t *testing.T) {
+	pool := newPool(t)
+	// 先触发一次超时
+	_, _ = pool.ParseWith(context.Background(), LangBDL, []byte(sampleBDL), nil,
+		ParseOptions{Timeout: time.Nanosecond})
+
+	// 再正常解析，验证池中的 parser 未被污染
+	tree, err := pool.Parse(LangBDL, []byte(sampleBDL), nil)
+	if err != nil {
+		t.Fatalf("超时后复用失败: %v", err)
+	}
+	defer tree.Close()
+	if root := tree.RootNode(); root == nil || root.HasError() {
+		t.Error("超时后的解析结果异常")
 	}
 }

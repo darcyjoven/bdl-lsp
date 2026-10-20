@@ -1020,3 +1020,113 @@ END MAIN
 		t.Errorf("引用数 = %d，期望 2（排除注释与字符串）：%v", len(result), result)
 	}
 }
+
+func TestDiagnosticsSeverityConfigurable(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/sev.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Fatal("应有诊断")
+	}
+	d, _ := diags[0].(map[string]any)
+	if sev, _ := d["severity"].(float64); sev != 1 {
+		t.Errorf("默认应为 error(1)，实际 %v", d["severity"])
+	}
+
+	// 改成 warning 后应重新诊断
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"warning"}}}`)
+	diags = h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Fatal("配置变更后仍应有诊断")
+	}
+	d, _ = diags[0].(map[string]any)
+	if sev, _ := d["severity"].(float64); sev != 2 {
+		t.Errorf("应为 warning(2)，实际 %v", d["severity"])
+	}
+}
+
+func TestDiagnosticsOff(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/off.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
+	h.drainDiagnostics(uri, 5*time.Second)
+
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"off"}}}`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) != 0 {
+		t.Errorf("关闭后应无诊断，实际 %d 条", len(diags))
+	}
+}
+
+func TestDiagnosticsNestedSettings(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/nested.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
+	h.drainDiagnostics(uri, 5*time.Second)
+
+	// VSCode 会把设置包在 "bdl" 键下
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"bdl":{"syntaxDiagnostics":"information"}}}}`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Fatal("嵌套设置应生效")
+	}
+	d, _ := diags[0].(map[string]any)
+	if sev, _ := d["severity"].(float64); sev != 3 {
+		t.Errorf("应为 information(3)，实际 %v", d["severity"])
+	}
+}
+
+func TestLargeFileSkipsDiagnostics(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	// 把上限调低，构造超限内容
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"limits":{"maxFileBytes":100}}}}`)
+
+	const uri = "file:///tmp/big.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\nEND MAIN\n"+strings.Repeat("-- padding\n", 30), 1)
+
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) != 1 {
+		t.Fatalf("超限文件应只有 1 条提示，实际 %d", len(diags))
+	}
+	d, _ := diags[0].(map[string]any)
+	if code, _ := d["code"].(string); code != "file-too-large" {
+		t.Errorf("code = %v，期望 file-too-large", d["code"])
+	}
+	if sev, _ := d["severity"].(float64); sev != 3 {
+		t.Errorf("提示应为 information(3)，实际 %v", d["severity"])
+	}
+}
+
+func TestDiagnosticsHaveCode(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/code.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Fatal("应有诊断")
+	}
+	d, _ := diags[0].(map[string]any)
+	code, _ := d["code"].(string)
+	if code == "" {
+		t.Error("诊断应带 code 便于过滤")
+	}
+	if !strings.HasPrefix(code, "syntax-error") && !strings.HasPrefix(code, "missing-") {
+		t.Errorf("code = %q，格式不符", code)
+	}
+}

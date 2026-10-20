@@ -8,8 +8,10 @@
 package parser
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	bdl "github.com/darcyjoven/tree-sitter-bdl/bindings/go"
 	per "github.com/darcyjoven/tree-sitter-per/bindings/go"
@@ -42,7 +44,7 @@ func ext(path string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		switch path[i] {
 		case '.':
-			return lower(path[i:])
+			return lowerASCII(path[i:])
 		case '/', '\\':
 			return ""
 		}
@@ -50,7 +52,7 @@ func ext(path string) string {
 	return ""
 }
 
-func lower(s string) string {
+func lowerASCII(s string) string {
 	b := []byte(s)
 	for i := range b {
 		if b[i] >= 'A' && b[i] <= 'Z' {
@@ -80,29 +82,13 @@ func New() (*Pool, error) {
 	}
 
 	p := &Pool{bdlLang: bdlLang, perLang: perLang}
-	p.pool.New = func() any {
-		return ts.NewParser()
-	}
+	p.pool.New = func() any { return ts.NewParser() }
 	return p, nil
 }
 
-// Close 释放池中缓存的所有 Parser。
+// Close 重置池；池中的 Parser 由 GC 通过 finalizer 释放。
 func (p *Pool) Close() {
-	for {
-		v := p.pool.Get()
-		if v == nil {
-			return
-		}
-		if parser, ok := v.(*ts.Parser); ok {
-			parser.Close()
-		}
-		// sync.Pool 没有“取空”语义；用固定次数退出避免死循环。
-		if p.pool.New == nil {
-			return
-		}
-		p.pool = sync.Pool{New: p.pool.New}
-		return
-	}
+	p.pool = sync.Pool{New: func() any { return ts.NewParser() }}
 }
 
 // Language 返回指定语言的 tree-sitter Language。
@@ -117,8 +103,32 @@ func (p *Pool) Language(lang Lang) (*ts.Language, error) {
 	}
 }
 
+// ParseOptions 控制单次解析。
+type ParseOptions struct {
+	// Timeout 为 0 表示不限时。
+	Timeout time.Duration
+}
+
 // Parse 用池中的 Parser 解析源码。返回的 Tree 由调用方负责 Close。
 func (p *Pool) Parse(lang Lang, src []byte, oldTree *ts.Tree) (*ts.Tree, error) {
+	return p.ParseWith(context.Background(), lang, src, oldTree, ParseOptions{})
+}
+
+// ParseWith 支持超时与 context 取消。
+//
+// 超时用 Parser.SetTimeoutMicros 在 C 层中断，避免占用 CPU 过久。
+//
+// **不使用 Parser.ParseCtx**：go-tree-sitter v0.25 的 ParseCtx 会启动一个
+// goroutine，在 ctx 取消时写 CancellationFlag；若解析先结束、parser 被
+// Reset 复用，该 goroutine 仍可能迟到执行，导致空指针崩溃（已实测复现）。
+// 因此这里改为「解析前检查 ctx + C 层超时 + 解析后检查 ctx」。
+//
+// 解析结束后无论成败都 Reset + 清空超时，避免标记污染后续解析。
+func (p *Pool) ParseWith(ctx context.Context, lang Lang, src []byte, oldTree *ts.Tree, opts ParseOptions) (*ts.Tree, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
+
 	target, err := p.Language(lang)
 	if err != nil {
 		return nil, err
@@ -128,14 +138,31 @@ func (p *Pool) Parse(lang Lang, src []byte, oldTree *ts.Tree) (*ts.Tree, error) 
 	if parser == nil {
 		return nil, fmt.Errorf("解析器池状态异常")
 	}
-	defer p.pool.Put(parser)
+	defer func() {
+		parser.Reset()
+		parser.SetTimeoutMicros(0)
+		p.pool.Put(parser)
+	}()
 
 	if err := parser.SetLanguage(target); err != nil {
 		return nil, fmt.Errorf("设置语言 %s: %w", lang, err)
 	}
+
+	if opts.Timeout > 0 {
+		parser.SetTimeoutMicros(uint64(opts.Timeout.Microseconds()))
+	}
+
 	tree := parser.Parse(src, oldTree)
+
+	// 解析结束后再检查一次：调用方可能在解析期间取消（如文档已关闭）。
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		if tree != nil {
+			tree.Close()
+		}
+		return nil, ctxErr
+	}
 	if tree == nil {
-		return nil, fmt.Errorf("解析 %s 返回空语法树", lang)
+		return nil, fmt.Errorf("%w（%s）", ErrTimeout, opts.Timeout)
 	}
 	return tree, nil
 }
