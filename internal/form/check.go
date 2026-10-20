@@ -148,47 +148,13 @@ func (r *Resolver) Check(tree *ts.Tree, src []byte, refPath string, qs *Queries)
 	}
 
 	// 1) 收集事件流（query match 按文档序；再按 start 排序保证确定性）
-	type captured struct {
-		name string
-		node ts.Node
-	}
-	var all []captured
-	var containers []ts.Node // function/main/report（按文档序）
-	qc := ts.NewQueryCursor()
-	matches := qc.Matches(qs.query, root, src)
-	for m := matches.Next(); m != nil; m = matches.Next() {
-		for _, c := range m.Captures {
-			all = append(all, captured{name: captureName(qs, c.Index), node: c.Node})
-			switch c.Node.Kind() {
-			case "function", "main", "report":
-				containers = append(containers, c.Node)
-			}
-		}
-	}
-	qc.Close()
+	all, containers := collectEvents(qs, root, src)
 	if len(all) == 0 {
 		return nil, nil
 	}
 
-	// containerOf 二分查找字节偏移所在的函数容器（-1 = 模块级）。
-	// 作用域按函数隔离（PLAN §7.2）：整文件线性跟踪会跨函数泄漏——
-	// 实测 saxmt400_slk.4gl（15 个 WITH FORM）里函数 A 的表单泄漏到
-	// 函数 B 的字段上，全量语料 2.8 万条误报；按函数隔离后归零。
-	containerOf := func(pos uint) int {
-		lo, hi := 0, len(containers)
-		for lo < hi {
-			mid := (lo + hi) / 2
-			if containers[mid].EndByte() <= pos {
-				lo = mid + 1
-			} else {
-				hi = mid
-			}
-		}
-		if lo < len(containers) && containers[lo].StartByte() <= pos && pos < containers[lo].EndByte() {
-			return lo
-		}
-		return -1
-	}
+	containerOf := makeContainerOf(containers)
+
 	sortByStart(all, func(c captured) uint { return c.node.StartByte() })
 
 	// 2) 作用域跟踪：按文档序扫描事件，维护当前表单与命名绑定
@@ -330,4 +296,149 @@ func unquote(s string) string {
 		}
 	}
 	return s
+}
+
+// captured 是 query 捕获流里的一条（已带 capture 名）。
+type captured struct {
+	name string
+	node ts.Node
+}
+
+// collectEvents 一次 query 扫描收集全部捕获与函数容器（按文档序）。
+func collectEvents(qs *Queries, root *ts.Node, src []byte) ([]captured, []ts.Node) {
+	var all []captured
+	var containers []ts.Node // function/main/report（按文档序）
+	qc := ts.NewQueryCursor()
+	matches := qc.Matches(qs.query, root, src)
+	for m := matches.Next(); m != nil; m = matches.Next() {
+		for _, c := range m.Captures {
+			all = append(all, captured{name: captureName(qs, c.Index), node: c.Node})
+			switch c.Node.Kind() {
+			case "function", "main", "report":
+				containers = append(containers, c.Node)
+			}
+		}
+	}
+	qc.Close()
+	return all, containers
+}
+
+// makeContainerOf 返回"字节偏移 → 容器索引"的查找函数（-1 = 模块级）。
+//
+// 二分查找：容器的字节区间互不重叠且按文档序，因此可直接对 EndByte 二分。
+// 作用域按函数隔离（PLAN §7.2）：整文件线性跟踪会跨函数泄漏——实测
+// saxmt400_slk.4gl（15 个 WITH FORM）里函数 A 的表单泄漏到函数 B 的字段上，
+// 全量语料 2.8 万条误报；按函数隔离后归零。
+func makeContainerOf(containers []ts.Node) func(pos uint) int {
+	return func(pos uint) int {
+		lo, hi := 0, len(containers)
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if containers[mid].EndByte() <= pos {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo < len(containers) && containers[lo].StartByte() <= pos && pos < containers[lo].EndByte() {
+			return lo
+		}
+		return -1
+	}
+}
+
+// FormFieldsAt 返回指定字节位置上可用的表单字段名（供补全用）。
+//
+// 与 Check 走完全相同的绑定跟踪逻辑，只是遇到 pos 之后的绑定就停止——
+// 补全要看的是"光标处"的表单，而不是整文件跑完的最终状态。
+//
+// 返回字段名（按字母序去重）与表单字面量；无绑定时返回 nil。
+func (r *Resolver) FormFieldsAt(tree *ts.Tree, src []byte, refPath string,
+	qs *Queries, pos uint) ([]string, string) {
+
+	if tree == nil || qs == nil {
+		return nil, ""
+	}
+	root := tree.RootNode()
+	if root == nil {
+		return nil, ""
+	}
+	all, containers := collectEvents(qs, root, src)
+	if len(all) == 0 {
+		return nil, ""
+	}
+	containerOf := makeContainerOf(containers)
+	sortByStart(all, func(c captured) uint { return c.node.StartByte() })
+
+	currentForm := map[int]*Resolved{}
+	namedForms := map[int]map[string]*Resolved{}
+	var at *Resolved
+
+	resolveCache := map[string]*Resolved{}
+	resolveForm := func(literal string) *Resolved {
+		if res, ok := resolveCache[literal]; ok {
+			return res
+		}
+		res := r.Resolve(literal, refPath)
+		resolveCache[literal] = res
+		return res
+	}
+
+	for _, c := range all {
+		// 只看光标之前的绑定：之后的 DISPLAY FORM 不能影响当前位置。
+		if c.node.StartByte() > pos {
+			break
+		}
+		ci := containerOf(c.node.StartByte())
+		switch c.name {
+		case "formpath":
+			if literal := unquote(parser.TextOf(&c.node, src)); literal != "" {
+				if res := resolveForm(literal); res != nil {
+					currentForm[ci] = res
+				}
+			}
+		case "formname":
+			name := parser.TextOf(&c.node, src)
+			if name != "" && currentForm[ci] != nil {
+				if namedForms[ci] == nil {
+					namedForms[ci] = map[string]*Resolved{}
+				}
+				namedForms[ci][strings.ToLower(name)] = currentForm[ci]
+			}
+		case "displayform":
+			name := strings.ToLower(parser.TextOf(&c.node, src))
+			var res *Resolved
+			if nf := namedForms[ci]; nf != nil {
+				res = nf[name]
+			}
+			if res == nil {
+				res = resolveForm(name)
+			}
+			if res != nil {
+				currentForm[ci] = res
+			}
+		}
+	}
+
+	// 光标所在容器决定用哪个表单。
+	at = currentForm[containerOf(pos)]
+	if at == nil || at.Index == nil {
+		return nil, ""
+	}
+
+	seen := map[string]bool{}
+	var fields []string
+	for _, sym := range at.Index.Symbols {
+		switch sym.Kind {
+		case index.KindFormItem, index.KindField:
+			if sym.Name != "" && !seen[sym.Lower] {
+				seen[sym.Lower] = true
+				fields = append(fields, sym.Name)
+			}
+		}
+	}
+	sort.Slice(fields, func(i, j int) bool {
+		return strings.ToLower(fields[i]) < strings.ToLower(fields[j])
+	})
+	return fields, at.Literal
 }

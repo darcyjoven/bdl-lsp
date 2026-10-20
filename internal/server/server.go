@@ -185,6 +185,10 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleReferences(ctx, reply, req)
 	case protocol.MethodTextDocumentFormatting:
 		return s.handleFormatting(ctx, reply, req)
+	case protocol.MethodTextDocumentCompletion:
+		return s.handleCompletion(ctx, reply, req)
+	case protocol.MethodCompletionItemResolve:
+		return s.handleCompletionResolve(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}
@@ -246,6 +250,10 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			ReferencesProvider:         true,
 			DocumentSymbolProvider:     true,
 			DocumentFormattingProvider: true,
+			CompletionProvider: &protocol.CompletionOptions{
+				// `.` 之后给记录成员/表单字段；手工触发（Ctrl+Space）也支持。
+				TriggerCharacters: []string{"."},
+			},
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "bdl-lsp",

@@ -338,7 +338,7 @@ Block P2 已完成：
       `editor.formatOnSave`（不替用户强制开启）；Zed 用 `format_on_save`。
 - [ ] 空白/逗号/运算符规范化——不做：全量 diff 风险高、收益低。
 
-### 部署（P5 🟡 CLI 已完成 2026-10-21）
+### 部署（P5 ✅ CLI + VSCode 已完成 2026-10-21）
 
 > 完整实现记录：[PLAN-P5-DEPLOY.md](PLAN-P5-DEPLOY.md)。
 
@@ -356,13 +356,31 @@ Block P2 已完成：
 - [x] 实机验证：本机 sshd 上 rsync、scp、回退、单文件四条路径全部通过。
 - [x] VSCode：4 条命令（部署/当前文件/预演/列目标）、输出通道、
       诊断发布到 Problems、`bdl.deploy.target` 设置。
-- [ ] Zed tasks 模板（`.zed/tasks.json` 调 CLI）——文档模板待补。
+- [x] Zed tasks 模板：[DEPLOY-ZED.md](DEPLOY-ZED.md) 给出 `task: spawn`
+      模板与 PATH 问题说明；Zed README 已链接。
 - [ ] Windows scp 实测（代码路径已就绪，需在 Windows 跑一次）。
 - [ ] 单文件远程编译超时；编译产物（`.42m`）是否拉回待确认。
 
-### 版本与增强（P6）
+### 版本与增强（P6 🟡 进行中）
 
-- [ ] 补全（关键字/函数/字段）。
+#### 补全（✅ 已完成 2026-10-21）
+
+> 实现记录：[PLAN-P6-COMPLETION.md](PLAN-P6-COMPLETION.md)。
+
+- [x] 关键字补全：清单由 `scripts/generate-keywords.mjs` 从 grammar 源码抽取
+      （BDL 361 / PER 76），`make lint` 会校验不漂移（改 grammar 忘了重生成 → 失败）。
+- [x] 同文件符号补全：函数、报表、MAIN、变量、常量、TYPE、记录、字段、参数。
+- [x] 跨文件补全：其它已打开文档里的函数/报表/main（不做全工作区索引，见决策）。
+- [x] **表单字段补全**：复用 P3b 的 `Resolver.FormFieldsAt`，按光标位置取当前
+      表单（绑定之前的补全不给字段）。
+- [x] `.` 之后只给字段/成员，不给关键字。
+- [x] 注释/字符串里不补全（用语法树判定，字符串里的 `--` 也能正确处理）。
+- [x] `completionItem/resolve` 已声明（部分客户端不支持时会不显示文档字段）。
+- [ ] 记录成员按类型精确推导——不做：Genero 弱类型，收益低于复杂度。
+- [ ] 全工作区符号索引——需后台索引 + 持久化缓存（PLAN §7.6），当前只看已打开文档。
+
+#### 其余 P6 项
+
 - [ ] 重命名。
 - [ ] Code Action（字段不存在时提示、忽略）。
 - [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。

@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check manifest-check e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check keywords keywords-check manifest-check e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -55,7 +55,7 @@ fmt:
 	$(GO) fmt ./...
 
 ## lint: fmt 检查 + vet
-lint: vet
+lint: vet keywords-check
 	@GOFMT="$$(GOBIN="$$($(GO) env GOROOT)/bin" command -v gofmt || echo "$$($(GO) env GOROOT)/bin/gofmt")"; \
 	out=$$("$$GOFMT" -l . | grep -v '^artifacts/' || true); \
 	if [ -n "$$out" ]; then echo "以下文件未格式化："; echo "$$out"; exit 1; fi; \
@@ -81,6 +81,14 @@ grammars:
 grammars-check:
 	@node scripts/generate-tm-grammars.mjs --check
 	@node scripts/verify-tm-grammars.mjs
+
+## keywords: 从 grammar 源码重新生成补全用的关键字清单
+keywords:
+	@node scripts/generate-keywords.mjs
+
+## keywords-check: 校验关键字清单与 grammar 同步（grammar 加了关键字就必须重新生成）
+keywords-check:
+	@node scripts/generate-keywords.mjs --check
 
 ## manifest-check: 校验 VSCode 清单与语言配置（JSON/正则/扩展名映射）
 manifest-check:
