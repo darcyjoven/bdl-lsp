@@ -32,7 +32,7 @@
 
 - `bdl-lsp` 是 LSP 二进制的归属仓库；Release/无感下载暂不排期，开发期用本地构建路径。
 - 本地目录名与远程仓库名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`。
-- 三个新仓库均已 `git init -b main` 并完成首次提交；三个仓库的 `origin` 均已配置，尚未 push。
+- 三个新仓库均已 `git init -b main` 并完成首次提交；三个仓库的 `origin` 均已配置并完成首次 push。
 
 ## 文档
 

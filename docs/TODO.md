@@ -35,7 +35,7 @@
 - [x] `vscode-extension` 配置 `origin` → `git@github.com:darcyjoven/vscode-bdl.git`。
 - [x] `zed-extension` 配置 `origin` → `git@github.com:darcyjoven/zed-bdl.git`。
 - [x] 配置 GitHub SSH key（`ssh -T git@github.com` 已验证）。
-- [ ] 首次 push 三个仓库（`git push -u origin main`）。
+- [x] 首次 push 三个仓库（`git push -u origin main`）。
 - [ ] `bdl-lsp` GitHub Actions：
   - [ ] Linux + Windows CGO 构建/测试；
   - [ ] 语料冒烟（可手动/定时）；

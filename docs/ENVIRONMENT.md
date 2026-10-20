@@ -313,7 +313,7 @@ gh auth status
 - [ ] 安装并验证 Linux 的 Rust/wasm/wasi-sdk、VSCode CLI、xvfb、gh。
 - [ ] 准备 Windows 机器/虚拟机，安装 Go + MinGW-w64 + Node + Git + VSCode。
 - [ ] 验证 Windows 下 `scp` 到测试服务器；记录命令与日志。
-- [ ] 配置 GitHub SSH key，完成 `bdl-lsp` / `vscode-bdl` / `zed-bdl` 首次 push。
+- [x] 配置 GitHub SSH key，完成 `bdl-lsp` / `vscode-bdl` / `zed-bdl` 首次 push。
 - [ ] `gh` 可选；发布暂不排期，需要时再登录。
 - [ ] 准备测试服务器（Genero、`fglform`/`fglcomp`、SSH），记录路径映射样例。
 - [ ] 把环境验证结果记录到 `artifacts/env/`（日志/版本输出），不提交。

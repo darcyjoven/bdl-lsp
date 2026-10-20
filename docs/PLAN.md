@@ -102,9 +102,9 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 
 | 本地目录 | 远程仓库 | 职责 | Git 状态 |
 |---|---|---|---|
-| `bdl-lsp` | `git@github.com:darcyjoven/bdl-lsp.git` | Go LSP 服务 + CLI + 文档 + 脚本 + 过程产物 + LSP Release | 已初始化，`origin` 已配置，待 push |
-| `vscode-extension` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、语言配置、命令、打包 | 已初始化，`origin` 已配置，待 push |
-| `zed-extension` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展清单、Rust/WASM 启动逻辑、Tree-sitter 查询 | 已初始化，`origin` 已配置，待 push |
+| `bdl-lsp` | `git@github.com:darcyjoven/bdl-lsp.git` | Go LSP 服务 + CLI + 文档 + 脚本 + 过程产物 + LSP Release | 已初始化，`origin` 已配置并推送 |
+| `vscode-extension` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、语言配置、命令、打包 | 已初始化，`origin` 已配置并推送 |
+| `zed-extension` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展清单、Rust/WASM 启动逻辑、Tree-sitter 查询 | 已初始化，`origin` 已配置并推送 |
 | `tree-sitter-bdl` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` grammar（独立维护） | 已有仓库 |
 | `tree-sitter-per` | `github.com/darcyjoven/tree-sitter-per` | `.per` grammar（独立维护） | 已有仓库 |
 
@@ -112,7 +112,7 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 
 - 本地目录名与远程名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`；文档中“仓库”一般指本地目录。
 - `bdl-lsp` 现在是自己源码与 LSP 二进制的**唯一 Release 源**；不再把二进制托管到扩展仓库。
-- 三个仓库都已配置 `origin`，首次 push 需要 GitHub SSH 凭据。
+- 三个仓库都已配置 `origin`，并已完成首次 push（main）。
 
 ### 3.1.1 分发拓扑（设计保留，暂不排期）
 
@@ -479,7 +479,7 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - ⬜ Zed 扩展最小骨架 + WASM 构建（需安装 Rust/wasm target/wasi-sdk）。
 - ⬜ VSCode 最小客户端 + 启动真实 `bdl-lsp`（Linux + Windows）。
 - ⬜ 本地二进制闭环：`bdl-lsp` 构建 → 扩展通过本地路径启动（Release/自动下载暂不排期）。
-- ⬜ 首次 push `bdl-lsp`、`vscode-bdl`、`zed-bdl`（需要 GitHub SSH 凭据）。
+- ✅ 首次 push `bdl-lsp`、`vscode-bdl`、`zed-bdl` 完成。
 - ✅ 版本策略确定：当前 2.50 基线；5.0 暂不排期。
 - 产出：`RESEARCH.md`、`ENVIRONMENT.md`、技术选型定稿。
 
@@ -668,7 +668,7 @@ zed-extension/
 
 | # | 决定 |
 |---|---|
-| Q1 | `bdl-lsp` → `git@github.com:darcyjoven/bdl-lsp.git`；`vscode-extension` → `git@github.com:darcyjoven/vscode-bdl.git`；`zed-extension` → `git@github.com:darcyjoven/zed-bdl.git`。三个仓库 `origin` 均已配置，尚未 push。 |
+| Q1 | `bdl-lsp` → `git@github.com:darcyjoven/bdl-lsp.git`；`vscode-extension` → `git@github.com:darcyjoven/vscode-bdl.git`；`zed-extension` → `git@github.com:darcyjoven/zed-bdl.git`。三个仓库 `origin` 均已配置并完成首次 push。 |
 | Q2 | 部署同步以 `ssh + rsync` 为主，`scp` 作为轻量备选/回退；v1 不做纯 Go SFTP。 |
 | Q3 | 字段校验默认 `warning`，仅在表单唯一解析成功时报告。 |
 | Q4 | **不复用** 现有 `bdl` id；`bdl-plugin` 是轻量语法插件，本插件是全功能版。Zed 扩展 id 定为 **`4gl-full`**，两者可共存。 |
@@ -687,13 +687,12 @@ zed-extension/
 ## 14. 下一步（先环境与计划，不写功能代码）
 
 1. 按 [ENVIRONMENT.md](ENVIRONMENT.md) 完成 **Linux + Windows** 环境安装与验证，勾选 TODO 中的环境清单。
-2. 首次 push 三个仓库：`bdl-lsp`、`vscode-bdl`、`zed-bdl`（需要 GitHub SSH 凭据）。
-3. 建立 CI 基线（**只构建/测试，不发布**）：
+2. 建立 CI 基线（**只构建/测试，不发布**）：
    - `bdl-lsp`：Linux/Windows CGO 构建、测试、语料冒烟；
    - `vscode-bdl` / `zed-bdl`：客户端 CI。
-4. 写 `docs/PLAN-DETAILED-P1.md`：把 P1 拆到包/文件/接口/测试用例，给出每步验收命令。
-5. 固化 `scripts/dev-env.sh` / `dev-env.ps1` 与环境检查脚本。
-6. 规划确认后再开始 LSP 骨架与编辑器最小客户端代码。
+3. 写 `docs/PLAN-DETAILED-P1.md`：把 P1 拆到包/文件/接口/测试用例，给出每步验收命令。
+4. 固化 `scripts/dev-env.sh` / `dev-env.ps1` 与环境检查脚本。
+5. 规划确认后再开始 LSP 骨架与编辑器最小客户端代码。
 
 ---
 
