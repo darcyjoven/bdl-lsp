@@ -2,6 +2,7 @@
 
 > 配套文档：[粗略计划](PLAN.md)、[调研记录](RESEARCH.md)  
 > 本文件记录**已验证**的版本与命令，以及后续选型的理由。所有版本在进入实现时写入锁文件（`go.mod`/`go.sum`、`pnpm-lock.yaml`、`Cargo.lock`）。
+> v1 验证平台：**Linux + Windows**；macOS 在 v1 之后补齐。环境安装清单见 [ENVIRONMENT.md](ENVIRONMENT.md)。
 
 ---
 
@@ -109,13 +110,13 @@ Genero 源码 (.4gl/.global/.per)
 2. 环境变量 `BDL_LSP_PATH`
 3. 工作区 `.bdl-lsp/bin/bdl-lsp`
 4. 扩展 `globalStorageUri` 缓存
-5. GitHub Release 下载（带 SHA256 校验、进度提示、代理/超时处理）
+5. 从 `vscode-bdl` Release 下载（tag `lsp-vX.Y.Z`；带 SHA256 校验、进度提示、代理/超时处理）
 
 #### Zed
 
 | 依赖 | 版本 | 说明 |
 |---|---|---|
-| Zed | 稳定版（CI 跟踪） | 目标编辑器 |
+| Zed | 稳定版（Linux/Windows，CI 跟踪） | 目标编辑器 |
 | Rust | stable（锁定 CI 版本） | 扩展编译 |
 | target | `wasm32-wasip2` | Zed 扩展运行形态 |
 | wasi-sdk | 最新（Zed 可自动下载；CI 显式安装） | grammar WASM 编译 |
@@ -130,6 +131,8 @@ Genero 源码 (.4gl/.global/.per)
 - `Worktree::which()` / `read_text_file()` / `root_path()`
 - `Extension::language_server_command()` 返回 `zed::Command`
 - `set_language_server_installation_status()` 提示安装状态
+
+**下载源**：与 VSCode 相同，从 `vscode-bdl` Release 取对应平台的 LSP 二进制（Q9 待确认）；`current_platform()` 选资产，`download_file` 下载后 `make_file_executable`。v1 需在 Linux 与 Windows 验证 Zed 扩展加载与 LSP 启动。
 
 **限制**：Zed 扩展不能注册任意命令；部署用 CLI + `.zed/tasks.json`，LSP 暴露 `workspace/executeCommand` 作为可选入口。
 
@@ -161,9 +164,10 @@ tree-sitter parse -q /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per
 
 | 方案 | 阶段 | 说明 |
 |---|---|---|
-| 系统 `ssh` + `scp`/`rsync` | MVP | 零额外依赖；Windows 需 OpenSSH Client（rsync 可选） |
-| Go `golang.org/x/crypto/ssh` + `github.com/pkg/sftp` | v2 | 纯 Go、跨平台；注意选择 Go 1.24 兼容版本 |
-| 远程编译 | MVP | 调 `fglform` / `fglcomp`，解析 `file:line: error:` 输出 |
+| 系统 `ssh` + `rsync` | **v1 主路径** | Linux 客户端默认；增量上传、dry-run |
+| 系统 `ssh` + `scp` | **v1 备选/回退** | Windows 10+ 自带 OpenSSH Client；无 rsync 时逐文件上传 |
+| Go `golang.org/x/crypto/ssh` + `github.com/pkg/sftp` | 远期可选 | v1 不做；只有 Windows 无 rsync/scp 的极端场景才考虑 |
+| 远程编译 | v1 | 调 `fglform` / `fglcomp`，解析 `file:line: error:` 输出 |
 | 本地编译 | 可选 | 若用户机器装有 Genero，可切换本地权威校验 |
 
 **安全基线**：不存密码、默认严格 host key、显式触发、dry-run、日志脱敏、命令参数转义。
@@ -172,35 +176,36 @@ tree-sitter parse -q /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per
 
 | 项 | 方案 |
 |---|---|
-| CI | GitHub Actions |
+| `bdl-lsp` CI | **无远程，不使用 GitHub Actions**；本地 `scripts/ci-local.sh`（fmt/vet/test/语料） |
+| `bdl-lsp` 发布 | 本地 `scripts/release.sh` → Linux/Windows 二进制 + `SHA256SUMS` → 上传 `vscode-bdl` Release（Q9） |
+| 扩展 CI | `vscode-bdl`、`zed-bdl` 各自 GitHub Actions |
 | Go 检查 | `gofmt`/`gofumpt`、`go vet`、`golangci-lint`、`go test -race`、语料冒烟 |
-| 构建矩阵 | Linux amd64/arm64、macOS amd64/arm64、Windows amd64（按需） |
-| 交叉编译 | 优先原生 runner；Linux arm64 可用 `aarch64-linux-gnu-gcc`；Windows 用 MinGW-w64 |
-| 发布 | tag → 构建 → 原始二进制 + `SHA256SUMS` → GitHub Release |
+| 构建矩阵（v1） | **Linux amd64 + Windows amd64**；arm64/macOS 后续 |
+| 编译方式 | 原生 runner/本机：Linux gcc；Windows MinGW-w64 gcc；macOS 后续 |
 | VSCode | `pnpm install` → typecheck → test → `vsce package`；tag 时发布 |
 | Zed | `cargo check --target wasm32-wasip2`；注册表 PR 手工/自动 |
 | 缓存 | Go module/build、pnpm store、Cargo target；注意 cgo 缓存命中率 |
 
 **构建矩阵建议**：
 
-| 目标 | Runner | CC | 备注 |
+| 目标 | 环境 | CC | v1 |
 |---|---|---|---|
-| linux/amd64 | ubuntu-22.04 | gcc | glibc 2.35 基线；后续评估 musl 静态 |
-| linux/arm64 | ubuntu-24.04-arm 或交叉工具链 | gcc-aarch64-linux-gnu | 原生优先 |
-| darwin/amd64 | macos-13 | clang | Intel |
-| darwin/arm64 | macos-14 | clang | Apple Silicon |
-| windows/amd64 | windows-2022 | MinGW-w64 gcc | CGO 需要；产物 `.exe` |
-| windows/arm64 | 按需 | llvm-mingw | 可选 |
+| linux/amd64 | Ubuntu 22.04/24.04 | gcc | ✅ 必验 |
+| windows/amd64 | Windows 10/11 + MinGW-w64 | gcc (MinGW-w64) | ✅ 必验 |
+| linux/arm64 | 交叉工具链/ARM runner | gcc-aarch64-linux-gnu | 后续 |
+| darwin/amd64 | macOS 13 | clang | 后续 |
+| darwin/arm64 | macOS 14 | clang | 后续 |
 
 **产物命名**：
 
 ```text
 bdl-lsp-linux-amd64
-bdl-lsp-linux-arm64
-bdl-lsp-darwin-amd64
-bdl-lsp-darwin-arm64
 bdl-lsp-windows-amd64.exe
 SHA256SUMS
+# v1 之后：
+# bdl-lsp-linux-arm64
+# bdl-lsp-darwin-amd64
+# bdl-lsp-darwin-arm64
 ```
 
 构建参数：`CGO_ENABLED=1`、`-trimpath`、`-ldflags "-s -w -X main.version=<tag>"`。
@@ -287,7 +292,9 @@ printf 'Content-Length: 107\r\n\r\n%s' \
 | Zed | 无法端到端加载 dev extension | 在桌面环境安装，或仅 CI/手工检查 |
 | VSCode | 无法运行扩展 e2e | 安装 VSCode + `xvfb`（CI）；本机可先做单元测试 |
 | `fglcomp`/`fglform` | 无法本机权威校验 | 依赖测试服务器；部署模块做 mock + 真机验证 |
-| GitHub 远程 | 无法 push/发布 | 待确认仓库地址 |
+| Windows 构建环境 | 无法验证 Windows 二进制 | 安装 Go + MinGW-w64，按 [ENVIRONMENT.md](ENVIRONMENT.md) 检查 |
+| GitHub 远程 | 无法 push/发布 | `vscode-bdl`/`zed-bdl` remote 已配置；push 需 SSH 凭据；`bdl-lsp` 按设计无远程 |
+| `gh` CLI | 无法上传 LSP Release | 安装并 `gh auth login`；发布前 `gh auth status` |
 
 ---
 
@@ -301,7 +308,7 @@ printf 'Content-Length: 107\r\n\r\n%s' \
 | 最新 `go.lsp.dev/* v1.0.1` | 暂缓 | 要求 Go 1.26；等工具链升级后评估 |
 | 完整 AST pretty-printer | 暂缓 | 风险高、diff 大；先做保守的缩进/空白/大小写 |
 | `.per` 全文件格式化 | 否 | LAYOUT 是字符画，列位置有语义；只格式化小节 |
-| 纯 Go SFTP（v1） | 暂缓 | 系统 ssh/rsync 更快落地；v2 再补 |
+| 纯 Go SFTP（v1） | 否 | 用户已选 ssh + rsync 主、scp 备；v1 不做纯 Go 同步 |
 | VSIX 内置多平台二进制 | 暂缓 | 体积大、更新不灵活；下载 + 手动路径优先 |
 | 单仓库 monorepo | 否 | 用户明确要求三个独立仓库；编辑器扩展需独立发布 |
 
@@ -327,6 +334,6 @@ printf 'Content-Length: 107\r\n\r\n%s' \
 | Grammar 维护 | tree-sitter CLI 0.26.5、Node 24、语料脚本 |
 | 测试 | `go test`、`go test -race`、go-cmp、vitest、@vscode/test-electron、cargo check |
 | 语料/分析 | Python 3.12、jq、grep、tree-sitter parse |
-| 构建/发布 | GitHub Actions、`gh` CLI、`sha256sum` |
-| 部署验证 | OpenSSH、rsync、Genero 服务器（`fglform`/`fglcomp`） |
+| 构建/发布 | 本地 Go 构建、`gh` CLI、`sha256sum`；扩展仓库 GitHub Actions |
+| 部署验证 | OpenSSH（ssh/scp）、rsync、Genero 服务器（`fglform`/`fglcomp`） |
 | 文档 | Markdown、Mermaid（可选） |

@@ -12,26 +12,32 @@
 - `.per` 内部一致性校验
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 
-> 当前状态：**粗略计划阶段**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
-> 详细计划将在确认本文档中的待定项后拆分为可执行任务。
+> 当前状态：**粗略计划阶段（v0.2）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
+> 已确认：扩展仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows。
+> 剩余待确认：Q4/Q5/Q7/Q8/Q9（见 [TODO](docs/TODO.md)）。
 
 ## 仓库组成
 
-| 仓库 | 内容 | 状态 |
-|---|---|---|
-| `bdl-lsp/` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化 |
-| `vscode-extension/` | VSCode 客户端、TextMate 语法、VSIX 打包 | 已初始化 |
-| `zed-extension/` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | 已初始化 |
-| `tree-sitter-bdl/` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
-| `tree-sitter-per/` | `.per` 语法（已有仓库） | 已存在 |
+| 本地目录 | 远程仓库 | 内容 | 状态 |
+|---|---|---|---|
+| `bdl-lsp/` | **无（本地管理）** | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化 |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | 已初始化，remote 已配置 |
+| `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | 已初始化，remote 已配置 |
+| `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
+| `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |
 
-三个新仓库均已 `git init -b main`。远程地址、发布渠道待确认。
+说明：
+
+- `bdl-lsp` 按约定**只在本地管理**，不配置远程；LSP 二进制通过 `vscode-bdl` 的 GitHub Release 对外分发（详见计划）。
+- 本地目录名与远程仓库名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`。
+- 三个新仓库均已 `git init -b main` 并完成首次提交；两个扩展仓库的 `origin` 已配置，尚未 push。
 
 ## 文档
 
 - [粗略计划](docs/PLAN.md) —— 目标、范围、架构、里程碑、风险
 - [技术链与工具](docs/TECH-STACK.md) —— 版本、选型理由、构建命令、本机环境注意事项
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
+- [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
 - [待办与待确认](docs/TODO.md) —— 近期任务、需要用户拍板的问题
 
 ## 目录约定
@@ -45,13 +51,13 @@
 
 `vscode-extension/` 与 `zed-extension/` 只保留发布所需内容；跨仓库的测试脚本和过程记录统一放在 `bdl-lsp/`。
 
-## 开发环境（本机已确认）
+## 开发环境
 
-- Go 1.24.4，CGO 可用，gcc 13.3
-- Node 24.21.0，npm 12.1.0，pnpm 12.14.0
-- `tree-sitter` CLI 0.26.5（`tree-sitter-per/node_modules/.bin/tree-sitter`）
-- Rust、Zed、VSCode CLI、`fglcomp` / `fglform` **尚未安装**
-- 沙箱内 `$HOME` 与 `/home/darcy/go` 不可写，Go/CLI 缓存需指向工作区；详见技术链文档
+- **v1 验证平台：Linux + Windows**；macOS 在 v1 之后补齐（代码保持可移植）。
+- 本机已确认：Go 1.24.4、CGO、gcc 13.3、Node 24.21.0、pnpm 12.14.0、tree-sitter CLI 0.26.5。
+- 本机缺失：Rust/wasm target、Zed、VSCode CLI、`fglcomp`/`fglform`、Windows 构建环境。
+- 沙箱内 `$HOME` 与 `/home/darcy/go` 不可写，Go/CLI 缓存需指向工作区。
+- 完整的 Linux/Windows 环境清单、验证命令和待办见 [环境配置](docs/ENVIRONMENT.md)。
 
 ## 快速验证（已完成）
 
