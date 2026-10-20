@@ -183,6 +183,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleDefinition(ctx, reply, req)
 	case protocol.MethodTextDocumentReferences:
 		return s.handleReferences(ctx, reply, req)
+	case protocol.MethodTextDocumentFormatting:
+		return s.handleFormatting(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}
@@ -238,11 +240,12 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 
 	result := protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{
-			TextDocumentSync:       protocol.TextDocumentSyncKindIncremental,
-			HoverProvider:          true,
-			DefinitionProvider:     true,
-			ReferencesProvider:     true,
-			DocumentSymbolProvider: true,
+			TextDocumentSync:           protocol.TextDocumentSyncKindIncremental,
+			HoverProvider:              true,
+			DefinitionProvider:         true,
+			ReferencesProvider:         true,
+			DocumentSymbolProvider:     true,
+			DocumentFormattingProvider: true,
 		},
 		ServerInfo: &protocol.ServerInfo{
 			Name:    "bdl-lsp",

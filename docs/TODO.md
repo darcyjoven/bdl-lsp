@@ -316,13 +316,27 @@ Block P2 已完成：
 - [ ] 50 模块人工标注——以自动标注（模块一致性 97.2%）+ 抽样人工复核替代；
       完整人工标注待真实用户环境。
 
-### 格式化（P4）
+### 格式化（P4 ✅ 已完成 2026-10-21）
 
-- [ ] 4GL 缩进（块结构表）。
-- [ ] 关键字大小写/空白/逗号规则。
-- [ ] `.per` 小节格式化（LAYOUT 不动）。
-- [ ] 幂等/语义保持/ERROR 守卫测试。
-- [ ] Format on save 集成。
+> 完整实现记录：[PLAN-P4-FORMAT.md](PLAN-P4-FORMAT.md)。
+
+- [x] `.4gl` 缩进（块结构表）：按祖先链上块节点算深度；行首是
+      `END/ELSE/CATCH` 回退一级；同一行开多个块（`DEFINE x RECORD`）
+      只贡献一级缩进。
+- [x] 关键字大小写：只改匿名 token，`upper`/`lower`/`unchanged` 可选；
+      跳过 `&` 开头的预处理指令（`&INCLUDE` 大小写敏感，改了会破坏解析）。
+- [x] 缩进字符与宽度：`indentStyle` auto/tab/space、`indentSize` 0=跟随编辑器；
+      优先级：显式配置 > 编辑器请求（`insertSpaces`/`tabSize`）> 4 空格兜底。
+- [x] **`.per` 不做任何格式化**（用户明确要求）；`.per` 请求直接返回空。
+- [x] 空白/逗号/运算符**不改**——只改关键字与行首缩进，避免全量 diff。
+- [x] 幂等/ERROR 守卫测试：`internal/format` 18 个单测、`internal/server`
+      8 个协议级测试；`cmd/fmt-audit` 全语料 7699 文件
+      → 成功 7683、拒绝 16（语法错误）、幂等失败 **0**、新增 ERROR **0**。
+- [x] 含语法错误的文件整体拒绝格式化（`tree.HasError()`），返回原文。
+- [x] Format on save：VSCode 通过 `contributes.configurationDefaults` 把
+      `[bdl].editor.defaultFormatter` 设为本扩展，用户只需打开
+      `editor.formatOnSave`（不替用户强制开启）；Zed 用 `format_on_save`。
+- [ ] 空白/逗号/运算符规范化——不做：全量 diff 风险高、收益低。
 
 ### 部署（P5）
 

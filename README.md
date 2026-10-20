@@ -7,13 +7,13 @@
 - 语法高亮、语义高亮
 - 函数、变量、参数、表单字段的跳转与引用
 - 文档/工作区符号、悬停信息
-- 4GL 与 `.per` 格式化
+- 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化）
 - 跨文件校验：4GL 中使用的表单字段是否真的存在于对应 `.per`
 - `.per` 内部一致性校验
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 1–7 + P2 Zed + P3a GLOBALS + P3b 字段校验 已完成**；下一步 P4 格式化。
+> 当前状态：**P1 Block 1–7 + P2 Zed + P3a GLOBALS + P3b 字段校验 + P4 格式化 已完成**；下一步 P5 部署与远程编译。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
 > 见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)；
 > P3b：4GL 字段存在性校验与 .per 内部一致性，见 [docs/PLAN-P3B-FIELD.md](docs/PLAN-P3B-FIELD.md)。
@@ -46,6 +46,7 @@
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
 - [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
 - [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
+- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)
 
 ## 目录约定
 
@@ -116,7 +117,8 @@ bash scripts/corpus-smoke.sh 60
 | Zed 扩展（`4gl-full`） | ✅ P2 |
 | GLOBALS 模组全局变量（跨文件跳转/来源/警告） | ✅ P3a |
 | 字段校验（4GL ↔ `.per`） | ✅ P3b |
+| 4GL 格式化（`.per` 不格式化） | ✅ P4 |
 
-性能（7138 行 / 329 KB）：`didOpen` 51 ms，`didChange` 往返 0.7 ms。
+性能（7138 行 / 329 KB）：`didOpen` 133 ms，`didChange` 往返 6.0 ms（含字段校验防抖）。
 
 详见 [P1 详细计划](docs/PLAN-DETAILED-P1.md)。

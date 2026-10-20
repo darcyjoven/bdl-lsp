@@ -69,7 +69,7 @@ Genero BDL（Business Development Language，4GL）由 Four Js 提供，典型�
 | F2 | 跳转/引用 | 函数、`MAIN`、`REPORT`、模块级变量、参数、局部变量、记录字段、常量、类型；4GL 字段 ↔ `.per` item |
 | F3 | 符号/悬停 | 文档符号、工作区符号、悬停显示类型/定义位置/所属模块 |
 | F4 | 诊断 | 语法错误、`.per` 内部一致性、4GL 字段不存在于表单 |
-| F5 | 格式化 | 4GL 文档格式化（保守、可配置）；`.per` 仅格式化非布局小节 |
+| F5 | 格式化 | 4GL 文档格式化（缩进可配 tab/空格与宽度、关键字大小写可配）；**`.per` 不格式化** |
 | F6 | 部署/编译 | 上传到目标服务器，调用 `fglform`/`fglcomp`，编译输出映射为诊断 |
 | F7 | 双编辑器 | VSCode 扩展 + Zed 扩展共享同一个 Go LSP 与同一套配置 |
 | F8 | 工程化 | 三个 Git 仓库、CI、跨平台构建、发布物、中文文档、测试基线 |
@@ -177,7 +177,7 @@ GitHub Release
 | 语言模型 | `internal/bdl`、`internal/per` | 作用域、符号、记录字段、表单 item/SCREEN RECORD |
 | 功能 | `internal/features` | definition/references/hover/symbols/completion/diagnostics/semantic tokens |
 | 校验 | `internal/validate` | 4GL 字段存在性、`.per` 内部一致性 |
-| 格式化 | `internal/format` | 4GL/`.per` 格式化、幂等与安全守卫 |
+| 格式化 | `internal/format` | 4GL 格式化（缩进 + 关键字大小写）、幂等与安全守卫；`.per` 不格式化 |
 | 部署 | `internal/deploy` | 配置、上传、远程编译、输出解析 |
 | 配置 | `internal/config` | LSP 设置、工作区配置、默认值 |
 | 日志 | `internal/logging` | `slog`、文件/ stderr、脱敏 |
@@ -204,8 +204,8 @@ GitHub Release
 | `.per` 内部校验 | ✅ | 布局/属性语义完善 | 重复 item、SCREEN RECORD 引用、布局引用 |
 | GLOBALS 模组全局变量 | ✅（P3a 完成） | 跨文件 references、大纲分组 | 跳转/来源标注/两类警告，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
 | 4GL 字段存在性 | ✅（P3b 完成） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 与 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
-| 4GL 格式化 | ✅（缩进/大小写/空白） | 重排、对齐、SQL 格式化 | 保守，不改变换行结构 |
-| `.per` 格式化 | ✅（非 LAYOUT 小节） | 布局对齐 | 绝不改 LAYOUT 的列位置 |
+| 4GL 格式化 | ✅（P4 完成：缩进 + 关键字大小写） | 重排、对齐、空白/逗号/运算符规范化 | 不改空白与换行结构 |
+| `.per` 格式化 | ❌ 不做（用户明确要求） | — | 表单文件一律不格式化 |
 | 部署 + 编译 | ✅（ssh + rsync；scp 备选） | 多目标、回滚、编译产物归档 | 见 7.4 |
 | 补全 | ⬜ | ✅ | 关键字/函数/字段 |
 | Code Action | ⬜ | ✅ | 快速修复 |
@@ -342,20 +342,26 @@ GitHub Release
 
 ### 7.3 格式化
 
-**4GL 格式化分三阶段**，每阶段都可独立开关：
+> **实现范围已收窄**（用户 2026-10-20 明确要求，见 [P4 记录](PLAN-P4-FORMAT.md)）：
+> 只做**关键字大小写**与**行首缩进**；不做空白/逗号/运算符规范化，不做对齐
+> 增强；**`.per` 完全不格式化**。原三阶段设想的 2、3 阶段取消——Genero 语料里
+> 大量手工对齐的 SQL 与记录声明，重排会产出全量 diff，review 成本大于收益。
 
-1. **缩进**：按 CST 块结构（`IF/END IF`、`FOR/END FOR`、`WHILE`、`CASE`、`INPUT`、`DIALOG`、`MENU`、`FUNCTION`、`REPORT` 等）重排行首空白；保留空行。
-2. **空白/大小写**：关键字大小写（默认大写）、逗号后空格、二元运算符两侧空格、括号内侧不留空格；不合并/拆分语句行。
-3. **可选增强**：连续赋值/声明对齐、注释列对齐。默认关闭，避免大面积 diff。
+1. **缩进**：按 CST 块结构（`IF`/`FOR`/`WHILE`/`CASE`/`INPUT`/`DIALOG`/`MENU`/
+   `FUNCTION`/`REPORT`/`RECORD`/`GLOBALS` 等）重排行首空白；保留空行；
+   块注释内部不动。缩进字符（tab/空格）与宽度可配（`format.indentStyle` /
+   `format.indentSize`），默认跟随编辑器。
+2. **关键字大小写**：`format.keywords` = `unchanged`（默认）/ `upper` / `lower`。
+   只改匿名 token，标识符/字面量/注释/预处理指令原文保留。
 
-`.per` 格式化只处理 `ATTRIBUTES`、`INSTRUCTIONS`、`TABLES` 等小节的行结构、逗号/分号与缩进；**LAYOUT 的字符画与列位置保持原样**（只允许去行尾空白）。
+**`.per` 不做任何格式化**：`textDocument/formatting` 对 `.per` 直接返回空。
 
 **安全守卫**：
 
-- 格式化范围内存在 `ERROR` / `MISSING` 时，不返回编辑，并在日志说明。
-- 所有编辑最小化；保留字符串、注释、预处理指令、SQL 字符串原文。
+- 文件含 `ERROR` 时不返回编辑（返回原文），并在日志说明。
+- 保留字符串、注释、预处理指令、SQL 字符串原文；`&INCLUDE` 等不被改写（大小写敏感）。
 - 幂等性测试：`format(format(x)) == format(x)`。
-- 语义保持测试：格式化前后解析树（忽略位置）等价；或至少不新增 ERROR。
+- 全语料回归：不新增 ERROR（`cmd/fmt-audit`）。
 - 范围格式化在 v1.1 提供；v1 只做整文档。
 
 ### 7.4 部署与远程编译
@@ -517,11 +523,13 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - 语料评估：`cmd/field-audit` 全量 1725 条发现，自动标注可疑率 2.8% < 5%。
 - 实现记录与踩坑：[PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md)。
 
-### P4 格式化（约 5–7 个工作块）
+### P4 格式化（✅ 已完成 2026-10-21）
 
-- 4GL 三阶段格式化；`.per` 小节格式化。
-- 幂等/语义保持/错误守卫测试；VSCode/Zed 格式化集成。
-- 验收：200 文件语料幂等，格式化后无新增 ERROR，抽样人工 review 通过。
+- 4GL 格式化：关键字大小写（可选）+ 行首缩进（可选 tab/空格与宽度）；
+  **`.per` 不做任何格式化**。
+- 幂等/ERROR 守卫测试；VSCode/Zed 集成（含 `defaultFormatter` 默认值）。
+- 实现记录与踩坑：[PLAN-P4-FORMAT.md](PLAN-P4-FORMAT.md)。
+- 验收：全量 7699 文件语料幂等失败 **0**、新增 ERROR **0**（目标 200 文件）。
 
 ### P5 部署与远程编译（约 3–5 个工作块）
 

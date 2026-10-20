@@ -64,10 +64,27 @@ type Settings struct {
 	FieldDiagnostics DiagnosticLevel `json:"fieldDiagnostics"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
+	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
+	Format FormatSettings `json:"format"`
 	// Limits 资源保护阈值。
 	Limits Limits `json:"limits"`
 	// LogLevel 日志级别。
 	LogLevel string `json:"logLevel"`
+}
+
+// FormatSettings 控制 4GL 格式化（P4）。
+//
+// 用户要求（2026-10-20）：关键字大写/小写/不变；缩进 tab/空格可选、
+// 个数可选。.per 不做任何格式化（server 层直接拒绝）。
+type FormatSettings struct {
+	// Keywords 是关键字大小写：unchanged（默认）/ upper / lower。
+	Keywords string `json:"keywords"`
+	// IndentStyle 是缩进风格：auto（默认，跟随编辑器请求的
+	// tabSize/insertSpaces）/ tab / space。
+	IndentStyle string `json:"indentStyle"`
+	// IndentSize 是每级缩进的空格数：0（默认，跟随编辑器）/ 正数。
+	// IndentStyle=tab 时忽略。
+	IndentSize int `json:"indentSize"`
 }
 
 // GlobalsSettings 控制 GLOBALS 模组全局变量相关的解析与诊断（P3a）。
@@ -99,6 +116,11 @@ func Default() Settings {
 			UnresolvedSourceDiagnostics: LevelWarning,
 		},
 		FieldDiagnostics: LevelWarning,
+		Format: FormatSettings{
+			Keywords:    "unchanged",
+			IndentStyle: "auto",
+			IndentSize:  0,
+		},
 		Limits: Limits{
 			MaxFileBytes:   2 * 1024 * 1024, // 2 MB
 			MaxFileLines:   20000,
@@ -230,6 +252,17 @@ func (m *Manager) merge(s *Settings) {
 	if s.PerRoots != nil {
 		m.cur.PerRoots = s.PerRoots
 	}
+
+	// P4：格式化
+	if s.Format.Keywords != "" {
+		m.cur.Format.Keywords = s.Format.Keywords
+	}
+	if s.Format.IndentStyle != "" {
+		m.cur.Format.IndentStyle = s.Format.IndentStyle
+	}
+	if s.Format.IndentSize > 0 {
+		m.cur.Format.IndentSize = s.Format.IndentSize
+	}
 }
 
 // Get 返回当前配置的快照。
@@ -267,6 +300,23 @@ func (s Settings) Validate() []string {
 		}
 	}
 
+	switch s.Format.Keywords {
+	case "", "unchanged", "upper", "lower":
+	default:
+		problems = append(problems, fmt.Sprintf("未知 format.keywords %q（支持 unchanged/upper/lower）", s.Format.Keywords))
+	}
+	switch s.Format.IndentStyle {
+	case "", "auto", "tab", "space":
+	default:
+		problems = append(problems, fmt.Sprintf("未知 format.indentStyle %q（支持 auto/tab/space）", s.Format.IndentStyle))
+	}
+	if s.Format.IndentSize < 0 {
+		problems = append(problems, "format.indentSize 不能为负数")
+	}
+	if s.Format.IndentSize > 16 {
+		problems = append(problems, "format.indentSize 过大（上限 16）")
+	}
+
 	if s.Limits.MaxIssues <= 0 {
 		problems = append(problems, "limits.maxIssues 必须为正数")
 	}
@@ -282,6 +332,7 @@ func (s Settings) Validate() []string {
 		"globals.unresolvedSourceDiagnostics": s.Globals.UnresolvedSourceDiagnostics,
 		"fieldDiagnostics":                    s.FieldDiagnostics,
 	} {
+		// （format 的取值校验在下面单独做）
 		switch lvl {
 		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:
 		case "":
