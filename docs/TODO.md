@@ -47,15 +47,18 @@
 
 完整清单、安装命令、常见问题见 [ENVIRONMENT.md](ENVIRONMENT.md)。
 
-### 2.1 Linux（本机）
+### 2.1 Linux（本机，已完成基础安装）
 
-- [ ] Go 1.24+、`CGO_ENABLED=1`、gcc。
-- [ ] Node 24、pnpm、tree-sitter CLI 0.26.5。
-- [ ] Rust stable + `wasm32-wasip2` + wasi-sdk。
-- [ ] VSCode + CLI + `xvfb`（e2e）。
-- [ ] OpenSSH client、`rsync`、`scp`、`gh` CLI。
-- [ ] `bash bdl-lsp/scripts/dev-env.sh` 后 Go 构建缓存指向可写目录。
-- [ ] 跑通 `go test`/grammar 解析冒烟（骨架就绪后）。
+- [x] Go 1.24.4、`CGO_ENABLED=1`、gcc 13.3。
+- [x] Node 24.21、pnpm 12.14、tree-sitter CLI 0.26.5。
+- [x] Rust 1.99 + `wasm32-wasip2` + wasi-sdk 34（`scripts/install-toolchain.sh`）。
+- [x] VSCode CLI 1.142（headless 模式可用）。
+- [x] OpenSSH、`rsync`、`scp`、`gh` 2.102。
+- [x] `scripts/dev-env.sh` 后 Go 构建缓存指向可写目录。
+- [x] `scripts/env-check.sh` 通过（必需项齐全）。
+- [x] 冒烟：双 grammar 解析、Go/CGO、`zed_extension_api` wasm 编译。
+- [ ] Linux Xvfb（需 root 安装 `xvfb x11-xkb-utils xkb-data`）；当前用 headless 替代。
+- [ ] 骨架就绪后跑 `go test`。
 
 ### 2.2 Windows（v1 必验）
 
@@ -79,24 +82,27 @@
 
 ### 2.4 环境脚本
 
-- [ ] `scripts/dev-env.sh`（已有，补 Windows 说明）。
-- [ ] `scripts/dev-env.ps1`。
-- [ ] `scripts/env-check.sh`、`scripts/env-check.ps1`。
-- [ ] `scripts/corpus-check.sh`、`scripts/format-corpus.sh`、`scripts/field-check-corpus.sh`。
-- [ ] `scripts/release-check.sh`（本地检查 tag/版本/校验和，CI 为主）。
+- [x] `scripts/dev-env.sh`。
+- [x] `scripts/dev-env.ps1`。
+- [x] `scripts/env-check.sh`、`scripts/env-check.ps1`。
+- [x] `scripts/install-toolchain.sh`（无 root 安装）。
+- [ ] `scripts/corpus-check.sh`、`scripts/format-corpus.sh`、`scripts/field-check-corpus.sh`（P1/P3 时加）。
 
 ---
 
 ## 3. P0 剩余技术验证
 
-- [ ] Zed 扩展最小骨架：`extension.toml`（id `4gl-full`）、两个 language、空 `lib.rs`，`cargo check --target wasm32-wasip2` 通过。
+- [x] `zed_extension_api 0.7.0` + `wasm32-wasip2` 编译验证（`artifacts/spike-rust`，可生成 `.wasm`）。
+- [ ] Zed 扩展最小骨架：`extension.toml`（id `4gl-full`）、两个 language、`lib.rs`。
 - [ ] 验证 Zed 能加载 ABI 15 grammar + BDL scanner（Linux + Windows dev extension）。
 - [ ] VSCode 最小客户端：启动返回固定 initialize 的 Go server，确认激活/连接。
 - [ ] 验证本地 `bdl-lsp` 二进制路径启动：`--version`、日志、无 stdout 污染（Linux + Windows）。
 - [ ] 用真实 `bdl-lsp` 二进制在 VSCode 中打开 `ammr110.4gl`，确认无 stdout 污染、日志可读。
 - [ ] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 升到 `v0.25.0`，补“真正解析文件”的测试（ABI 15）。
 - [ ] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。
+- [x] 本机验证 CGO 构建 + 双 grammar 运行（Linux）。
 - [ ] 验证 Windows 下 CGO 构建 + 运行 LSP（可先用 spike）。
+- [x] 无桌面 VSCode CLI headless 模式验证（用于 e2e）。
 
 ---
 

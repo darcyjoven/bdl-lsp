@@ -56,10 +56,19 @@
 ## 开发环境
 
 - **v1 验证平台：Linux + Windows**；macOS 在 v1 之后补齐（代码保持可移植）。
-- 本机已确认：Go 1.24.4、CGO、gcc 13.3、Node 24.21.0、pnpm 12.14.0、tree-sitter CLI 0.26.5。
-- 本机缺失：Rust/wasm target、Zed、VSCode CLI、`fglcomp`/`fglform`、Windows 构建环境。
-- 沙箱内 `$HOME` 与 `/home/darcy/go` 不可写，Go/CLI 缓存需指向工作区。
-- 完整的 Linux/Windows 环境清单、验证命令和待办见 [环境配置](docs/ENVIRONMENT.md)。
+- Linux 已就绪（本机验证）：Go 1.24.4 + CGO + gcc 13.3、Node 24.21 + pnpm 12.14、
+  tree-sitter 0.26.5、Rust 1.99 + wasm32-wasip2 + wasi-sdk 34、VSCode CLI 1.142、gh 2.102、rsync/scp。
+- Windows：脚本与清单已就绪（`scripts/dev-env.ps1`、`scripts/env-check.ps1`），待实机执行。
+- 尚未具备：Zed 客户端（无图形界面）、`fglcomp`/`fglform`（依赖远程服务器）、真实测试服务器。
+
+```bash
+cd bdl-lsp
+bash scripts/install-toolchain.sh    # 安装缺失工具链（幂等；无 root 也可用）
+source scripts/dev-env.sh            # 环境变量
+bash scripts/env-check.sh            # 环境检查
+```
+
+完整的 Linux/Windows 清单、验证命令、沙箱安装记录见 [环境配置](docs/ENVIRONMENT.md)。
 
 ## 快速验证（已完成）
 

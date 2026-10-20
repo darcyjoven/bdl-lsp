@@ -2,7 +2,8 @@
 
 > 目标：在 **Linux + Windows** 上完成 v1 开发与验证；macOS 在 v1 之后补齐。  
 > 本文只列“需要装什么、怎么验证、卡住怎么查”，不包含功能代码。  
-> 配套：[粗略计划](PLAN.md)、[技术链](TECH-STACK.md)、[待办](TODO.md)。
+> 配套：[粗略计划](PLAN.md)、[技术链](TECH-STACK.md)、[待办](TODO.md)。  
+> **本机（沙箱）已安装的组件与验证结果见第 9 节。**
 
 ---
 
@@ -21,7 +22,7 @@
 | Rust + wasm32-wasip2 | ✅ | ✅ | Zed 扩展 | 是 |
 | wasi-sdk | ✅ | ✅ | Zed grammar WASM | 是 |
 | Zed | ✅ | ✅（官方 Windows 版） | Zed 端验证 | 是 |
-| `gh` CLI | ✅ | ✅ | 发布 LSP 二进制 | 是 |
+| `gh` CLI | ✅ | ✅ | 可选（发布暂不排期） | 否 |
 | `fglform` / `fglcomp` | 服务器 | 服务器 | 权威编译 | 否（远程） |
 
 ---
@@ -83,12 +84,22 @@ npm ci                      # 正常环境；本沙箱可能被 allowScripts 拦
 
 ### 2.5 Rust / WASM（Zed 扩展）
 
+普通开发机（`$HOME` 可写）：
+
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
 rustup target add wasm32-wasip2
 rustc --version
 cargo --version
+```
+
+无 root/沙箱（`$HOME` 不可写）：用脚本安装到 `artifacts/toolchain/`：
+
+```bash
+cd bdl-lsp
+bash scripts/install-toolchain.sh
+source scripts/dev-env.sh     # 设置 RUSTUP_HOME/CARGO_HOME/WASI_SDK_PATH/PATH
 ```
 
 wasi-sdk：从 `WebAssembly/wasi-sdk` Release 下载，设置：
@@ -104,9 +115,21 @@ Zed 可以自动下载 wasi-sdk；CI 或离线环境需显式准备。
 
 ```bash
 code --version
-# CI/无桌面 Linux 运行扩展测试需要：
-sudo apt-get install -y xvfb
 ```
+
+无桌面 Linux 运行扩展 e2e 的两种方式：
+
+1. **headless ozone（推荐，无需 root）**：
+   ```bash
+   code --ozone-platform=headless --disable-gpu --no-sandbox --version
+   ```
+   本机已验证可用（VSCode 1.142.0）。
+2. **Xvfb**（需要 root 安装 `xvfb x11-xkb-utils xkb-data`）：
+   ```bash
+   sudo apt-get install -y xvfb x11-xkb-utils xkb-data
+   xvfb-run -a code --version
+   ```
+   注意：Xvfb 硬编码调用 `/usr/bin/xkbcomp`，即使用 `PATH`/`XKB_BINDIR` 指向别处也无法绕过，无 root 时不可用。
 
 ### 2.7 `gh` CLI
 
@@ -284,7 +307,7 @@ gh auth status
 ### 5.2 Linux 额外
 
 - [ ] `rsync --version`
-- [ ] `xvfb-run --help`（CI/e2e 需要）
+- [ ] 无桌面时 `code --ozone-platform=headless --version` 可用（推荐）；或 `xvfb-run`（需 root 装 xvfb）
 - [ ] `source bdl-lsp/scripts/dev-env.sh` 后 `go env GOMODCACHE` 指向可写目录
 
 ### 5.3 Windows 额外
@@ -297,26 +320,30 @@ gh auth status
 
 ### 5.4 项目级冒烟
 
-- [ ] 两个 grammar 能解析样例（`tree-sitter parse -q`）
-- [ ] Go + CGO 双 grammar 的 spike 能运行（见 RESEARCH.md）
-- [ ] `cargo check --target wasm32-wasip2`（Zed 骨架就绪后）
+- [x] 两个 grammar 能解析样例（`tree-sitter parse -q`）
+- [x] Go + CGO 双 grammar 的 spike 能运行（见第 9 节）
+- [x] `cargo check --target wasm32-wasip2` + `zed_extension_api 0.7.0` 编译通过
 - [ ] VSCode 扩展能激活（P1 后）
-- [ ] 记录目标 Genero 版本（当前 2.50 基线；5.0 暂不排期）
+- [x] 记录目标 Genero 版本（当前 2.50 基线；5.0 暂不排期）
 
 ---
 
 ## 6. 环境相关待办
 
-- [ ] 写 `scripts/dev-env.ps1`（Windows 对应 `dev-env.sh`）。
-- [ ] 写 `scripts/env-check.sh` 与 `scripts/env-check.ps1`，把第 5 节清单自动化。
+- [x] `scripts/dev-env.sh`（Linux/沙箱）。
+- [x] `scripts/dev-env.ps1`（Windows）。
+- [x] `scripts/env-check.sh` 与 `scripts/env-check.ps1`。
+- [x] `scripts/install-toolchain.sh`（无 root 安装 Rust/wasi-sdk/gh/VSCode）。
 - [ ] 在 `scripts/README.md` 补充 Windows、rsync、scp、gh 的说明。
-- [ ] 安装并验证 Linux 的 Rust/wasm/wasi-sdk、VSCode CLI、xvfb、gh。
-- [ ] 准备 Windows 机器/虚拟机，安装 Go + MinGW-w64 + Node + Git + VSCode。
+- [x] 安装并验证 Linux 的 Rust/wasm/wasi-sdk、VSCode CLI、gh。
+- [ ] Linux Xvfb：需 root 安装 `xvfb x11-xkb-utils xkb-data`；当前用 headless 替代。
+- [ ] 准备 Windows 机器/虚拟机，安装 Go + MinGW-w64 + Node + Git + VSCode + Zed。
+- [ ] Windows 上运行 `scripts\env-check.ps1` 并记录结果。
 - [ ] 验证 Windows 下 `scp` 到测试服务器；记录命令与日志。
-- [x] 配置 GitHub SSH key，完成 `bdl-lsp` / `vscode-bdl` / `zed-bdl` 首次 push。
+- [x] 配置 GitHub SSH key，完成三个仓库首次 push。
 - [ ] `gh` 可选；发布暂不排期，需要时再登录。
 - [ ] 准备测试服务器（Genero、`fglform`/`fglcomp`、SSH），记录路径映射样例。
-- [ ] 把环境验证结果记录到 `artifacts/env/`（日志/版本输出），不提交。
+- [ ] 把环境验证结果记录到 `artifacts/logs/`（已有 `env-check.log`），不提交。
 
 ---
 
@@ -347,10 +374,70 @@ gh auth status
 | `cargo` 报 target 缺失 | 未装 wasm32-wasip2 | `rustup target add wasm32-wasip2` |
 | Zed grammar 编译失败 | wasi-sdk 未配置 | 设置 `WASI_SDK_PATH`，查看 Zed 日志 |
 | `gh: not logged in` | 未认证 | `gh auth login`；检查仓库权限 |
+| Xvfb `Failed to activate virtual core keyboard` | 缺 `/usr/bin/xkbcomp`，且无 root | 用 `code --ozone-platform=headless`；或 root 安装 xvfb/x11-xkb-utils |
+| `rustup` 报 `could not create home directory` | `$HOME` 只读 | `source scripts/dev-env.sh`（设置 RUSTUP_HOME/CARGO_HOME） |
+| wasi clang 报 `cannot open crt1.o` | 未指定 sysroot | `--sysroot=$WASI_SDK_PATH/share/wasi-sysroot` |
 
 ---
 
-## 9. 参考
+## 9. 本机（沙箱）安装记录
+
+> 环境：Ubuntu 24.04、无 root、`$HOME` 只读、8 核 / 15 GB。
+> 工具链统一放在 `bdl-lsp/artifacts/toolchain/`（Git 忽略），由 `scripts/install-toolchain.sh` 安装。
+
+| 组件 | 版本 | 位置 | 验证 |
+|---|---|---|---|
+| Go | 1.24.4（系统） | `/usr/local/go` | `go version`；CGO 构建 spike 通过 |
+| gcc | 13.3.0（系统） | `/usr/bin/gcc` | CGO 编译通过 |
+| Node / npm / pnpm | 24.21.0 / 12.1.0 / 12.14.0 | 系统 + corepack | `node -v` 等 |
+| tree-sitter CLI | 0.26.5 | 链接到 `toolshed` 的 `tree-sitter-per/node_modules/.bin` | 解析 `.4gl`/`.per` 通过 |
+| Rust | 1.99.1 | `artifacts/toolchain/cargo` | `rustc --version` |
+| wasm32-wasip2 | 已安装 | `artifacts/toolchain/rustup` | `rustup target list --installed` |
+| wasi-sdk | 34（clang 23.1.0） | `artifacts/toolchain/wasi-sdk` | 编译 wasm 成功（带 sysroot） |
+| VSCode CLI | 1.142.0 | `artifacts/toolchain/vscode` | `code --version`；headless 模式可用 |
+| gh CLI | 2.102.0 | `artifacts/toolchain/bin/gh` | `gh --version` |
+| OpenSSH / rsync | 9.6p1 / 3.2.7 | 系统 | `ssh -V`、`rsync --version` |
+| Xvfb | 21.1.12（解包） | `artifacts/toolchain/xvfb` | **不可用**：缺 `/usr/bin/xkbcomp` 且无 root |
+| `fglform` / `fglcomp` | — | — | 未安装（依赖远程服务器） |
+| Zed | — | — | 未安装（无图形界面；Windows 端后续验证） |
+
+### 已验证的项目级冒烟
+
+```bash
+source scripts/dev-env.sh
+bash scripts/env-check.sh          # 必需项齐全
+
+# Go + CGO + 双 grammar
+cd artifacts/spike && go build -o spike2 . && ./spike2 bdl <file>.4gl && ./spike2 per <file>.per
+
+# Zed 扩展 API + wasm 目标
+cd artifacts/spike-rust && cargo check --target wasm32-wasip2
+cargo build --target wasm32-wasip2 --release   # 产出 .wasm
+
+# tree-sitter
+tree-sitter parse -q <file>.4gl && tree-sitter parse -q <file>.per
+```
+
+### 本机限制（需在 Windows/桌面环境补）
+
+1. **Zed 未安装**：无图形界面，无法验证 dev extension 真实加载；已用 `zed_extension_api 0.7.0` + `wasm32-wasip2` 编译验证 API 可用。
+2. **Xvfb 不可用**：VSCode e2e 暂用 `--ozone-platform=headless`；CI（有 root）可装 Xvfb。
+3. **无 `fglform`/`fglcomp`**：部署/编译只能先做 mock 输出解析。
+4. **无测试服务器**：`rsync`/`scp` 只验证了本地命令可用，未做真实上传。
+5. **Windows 未验证**：本机无 Windows 环境；脚本与清单已就绪（`dev-env.ps1`、`env-check.ps1`），需在 Windows 机器执行。
+
+### 重装/复现
+
+```bash
+cd bdl-lsp
+bash scripts/install-toolchain.sh        # 安装缺失组件（幂等）
+source scripts/dev-env.sh
+bash scripts/env-check.sh
+```
+
+---
+
+## 10. 参考
 
 - [技术链与工具](TECH-STACK.md)
 - [调研记录](RESEARCH.md)
