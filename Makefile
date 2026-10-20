@@ -1,14 +1,42 @@
 .PHONY: all build test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check e2e-vscode
 
 GO ?= go
-BIN := artifacts/bin/bdl-lsp
+
+# ---- 平台分支 ----
+# Windows 下 CGO 需要本机 MinGW gcc；同时全局 go env（%APPDATA%\go\env）可能被
+# 其他 SDK 改写（如 HarmonyOS 的 GOOS=android / GOARCH=arm64 / CC=clang /
+# CGO_CFLAGS=--target=aarch64-linux-ohos），会让 CGO 直接编译失败。
+# 这里用 GOENV=off 屏蔽该文件，再显式给出 Windows 原生工具链，互不干扰。
+# Linux/macOS 流程保持原样。
+ifeq ($(OS),Windows_NT)
+  WIN_ARCH ?= amd64
+  WIN_CC   ?= gcc
+  WIN_CXX  ?= g++
+  WIN_GOPROXY ?= https://goproxy.cn,direct
+  export GOENV := off
+  export GOOS := windows
+  export GOARCH := $(WIN_ARCH)
+  export CGO_ENABLED := 1
+  export CC := $(WIN_CC)
+  export CXX := $(WIN_CXX)
+  # GOENV=off 会连带丢掉 env 文件里的 GOPROXY，这里补回
+  export GOPROXY := $(WIN_GOPROXY)
+  BIN := artifacts/bin/bdl-lsp.exe
+  EXE := .exe
+  # GnuWin32 make + 本地代码页会把 recipe 里的中文吐成乱码，Windows 下用 ASCII 提示
+  MSG_BUILT := built
+else
+  BIN := artifacts/bin/bdl-lsp
+  EXE :=
+  MSG_BUILT := 已生成
+endif
 
 all: build
 
-## build: 构建本地二进制到 artifacts/bin/bdl-lsp
+## build: 构建本地二进制到 artifacts/bin/bdl-lsp（Windows 为 bdl-lsp.exe）
 build:
 	$(GO) build -trimpath -o $(BIN) .
-	@echo "已生成 $(BIN)"
+	@echo "$(MSG_BUILT) $(BIN)"
 
 ## test: 运行单元测试
 test:

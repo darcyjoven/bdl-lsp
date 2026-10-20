@@ -184,6 +184,37 @@ go build ./...
 
 如果 `gcc` 与 Go 位数不一致（32/64 位），CGO 会失败；统一用 x86_64。
 
+#### 3.1.1 用 `make build` 构建（推荐）
+
+Makefile 已内置平台分支，Windows 下直接：
+
+```powershell
+cd bdl-lsp
+make build        # 产物：artifacts\bin\bdl-lsp.exe
+make clean
+```
+
+Windows 分支做的事：
+
+| 项 | 值 | 原因 |
+|---|---|---|
+| `GOENV` | `off` | 屏蔽全局 `%APPDATA%\go\env`，避免被其他 SDK（如 HarmonyOS 设置 `GOOS=android`/`GOARCH=arm64`/`CC=clang`/`CGO_CFLAGS=--target=aarch64-linux-ohos`）污染 |
+| `GOOS` / `GOARCH` | `windows` / `amd64` | 原生构建 |
+| `CGO_ENABLED` / `CC` / `CXX` | `1` / `gcc` / `g++` | MinGW-w64 编译 tree-sitter |
+| `GOPROXY` | `https://goproxy.cn,direct` | `GOENV=off` 会丢掉 env 文件里的设置，需补回 |
+| `BIN` | `artifacts/bin/bdl-lsp.exe` | 带 `.exe` 后缀 |
+
+可覆盖：`make build WIN_ARCH=arm64 WIN_CC=clang`。
+
+手工构建（不经 make）等价于：
+
+```powershell
+$env:GOENV="off"; $env:GOOS="windows"; $env:GOARCH="amd64"
+$env:CGO_ENABLED="1"; $env:CC="gcc"; $env:CXX="g++"
+$env:GOPROXY="https://goproxy.cn,direct"
+go build -trimpath -o artifacts/bin/bdl-lsp.exe .
+```
+
 ### 3.2 Node / pnpm / Git
 
 ```powershell
@@ -366,6 +397,7 @@ gh auth status
 | `Incompatible language version 15` | go-tree-sitter 太旧 | 固定 `v0.25.0`；检查 `go.mod` |
 | `gcc: command not found`（Windows） | MinGW 不在 PATH | 加 `C:\msys64\mingw64\bin`；`where gcc` |
 | `CGO_ENABLED=0` 导致 parser 不编译 | 环境变量/交叉编译 | 设置 `CGO_ENABLED=1`；不要用纯 Go 构建 |
+| `gcc: error: unrecognized command-line option '--target=aarch64-linux-ohos'`（Windows） | 全局 `go env -w` 被其他 SDK（HarmonyOS 等）改写 | `make build` 已内置 `GOENV=off` 隔离；手工构建也要加 `GOENV=off` |
 | `go: writing stat cache: permission denied` | GOPATH 不可写（本沙箱） | `source scripts/dev-env.sh` |
 | `proxy.golang.org ... i/o timeout` | IPv6/网络 | `GOPROXY=https://goproxy.cn,direct` |
 | `rsync: command not found`（Windows） | 未安装 rsync | 用 scp 回退；或装 cwRsync/MSYS2 |
