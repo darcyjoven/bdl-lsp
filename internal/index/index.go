@@ -362,7 +362,21 @@ func (b *builder) collectDefines(node *ts.Node, scope Scope, container string) [
 
 	names := b.fieldChildren(node, "name")
 	types := b.fieldChildren(node, "types")
-	typeText := b.typeText(node)
+	// 注意：**不能**用 b.typeText(node) 取整条 DEFINE 的类型文本。
+	//
+	// 一条 DEFINE 用未命名子节点混排多个"名字 + 类型"，例如
+	//   DEFINE
+	//       rvu  RECORD LIKE rvu_file.*,
+	//       rvv  RECORD LIKE rvv_file.*,
+	//       sr   RECORD ... END RECORD
+	// 此时 node 的第 1 个 types 子节点是 rvu 的，若把它当整条语句的类型，
+	// 三个变量都会拿到 "RECORD LIKE rvu_file.*"，且 names[i]↔types[i]
+	// 的配对会因两个切片长度不等而错位（sr 的字段挂到 rvu 上）。
+	// 实测 aapr105.4gl / s_aapt110_gl.4gl 因此产生大量误报。
+	//
+	// 单个名字后只有一种类型时，types 长度与 names 一致，逐项配对即可；
+	// 长度不一致说明语法结构与预期不同，此时宁可不给类型（让上层跳过
+	// 语义校验），也不要给出错误的类型。
 
 	for i, nameNode := range names {
 		name := b.text(nameNode)
@@ -380,14 +394,14 @@ func (b *builder) collectDefines(node *ts.Node, scope Scope, container string) [
 			EndByte:   nameNode.EndByte(),
 			DeclStart: node.StartByte(),
 			DeclEnd:   node.EndByte(),
-			TypeText:  typeText,
 		}
 
-		// 对应的类型节点（若有）用于提取记录结构
-		if i < len(types) {
+		// 逐项配对类型节点。长度不一致时不做配对（见上方注释）。
+		if len(types) == len(names) && i < len(types) {
 			if rec := findChild(types[i], "record"); rec != nil {
 				sym.Kind = KindRecord
 				sym.Children = b.collectRecordFields(rec, name)
+				sym.TypeText = b.typeText(types[i])
 			} else {
 				sym.TypeText = b.typeText(types[i])
 			}

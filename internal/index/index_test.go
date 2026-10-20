@@ -2,6 +2,7 @@ package index
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
@@ -467,4 +468,107 @@ func TestRealGlobalFileIndexing(t *testing.T) {
 	if defines+records < 170 {
 		t.Errorf("符号数过少：defines=%d records=%d（期望合计 ≥170）", defines, records)
 	}
+}
+
+// TestMultiVariableDefineTypes 验证一条 DEFINE 里多个"名字 + 类型"的配对。
+//
+// 回归：collectDefines 曾用 b.typeText(node) 取整条语句的类型，导致所有
+// 变量都拿到第一个变量的类型，且 names[i]↔types[i] 在长度不等时错位——
+// 实测 aapr105.4gl 的 `rvu RECORD LIKE ..., rvv RECORD LIKE ..., sr RECORD ...`
+// 里 rvu 拿到了 sr 的字段，语义校验大面积误报。
+func TestMultiVariableDefineTypes(t *testing.T) {
+	src := `MAIN
+    DEFINE
+        rvu  RECORD LIKE rvu_file.*,
+        rvv  RECORD LIKE rvv_file.*,
+        sr   RECORD
+                 rva04 LIKE rva_file.rva04,
+                 rvb22 LIKE rvb_file.rvb22
+             END RECORD
+    DISPLAY rvu.x
+END MAIN
+`
+	fi := buildIndex(t, src)
+
+	byName := map[string]*Symbol{}
+	for _, s := range fi.Symbols {
+		byName[s.Name] = s
+	}
+
+	// rvu/rvv 是 RECORD LIKE（无子字段），sr 有 2 个子字段
+	rvu, ok := byName["rvu"]
+	if !ok {
+		t.Fatal("找不到 rvu")
+	}
+	if len(rvu.Children) != 0 {
+		t.Errorf("rvu 不该有子字段（RECORD LIKE table.*），实际 %d 个: %v",
+			len(rvu.Children), childNames(rvu))
+	}
+	if !strings.Contains(strings.ToUpper(rvu.TypeText), "RVU_FILE") {
+		t.Errorf("rvu 的类型应是 RECORD LIKE rvu_file.*，实际 %q", rvu.TypeText)
+	}
+
+	sr, ok := byName["sr"]
+	if !ok {
+		t.Fatal("找不到 sr")
+	}
+	if len(sr.Children) != 2 {
+		t.Fatalf("sr 应有 2 个子字段，实际 %d: %v", len(sr.Children), childNames(sr))
+	}
+	got := strings.Join(childNames(sr), ",")
+	if got != "rva04,rvb22" {
+		t.Errorf("sr 的子字段应为 rva04,rvb22，实际 %s", got)
+	}
+}
+
+// TestSingleVariableDefineType 单变量 DEFINE 的类型仍应正确。
+func TestSingleVariableDefineType(t *testing.T) {
+	src := "DEFINE g_count LIKE type_file.num5\nMAIN\nEND MAIN\n"
+	fi := buildIndex(t, src)
+	for _, s := range fi.Symbols {
+		if s.Name == "g_count" {
+			if !strings.Contains(strings.ToUpper(s.TypeText), "TYPE_FILE") {
+				t.Errorf("g_count 类型应含 type_file，实际 %q", s.TypeText)
+			}
+			return
+		}
+	}
+	t.Fatal("找不到 g_count")
+}
+
+// TestInlineRecordDefine 内联 RECORD 的字段与类型都应完整。
+func TestInlineRecordDefine(t *testing.T) {
+	src := `DEFINE rec RECORD
+    a INTEGER,
+    b STRING
+END RECORD
+MAIN
+END MAIN
+`
+	fi := buildIndex(t, src)
+	for _, s := range fi.Symbols {
+		if s.Name != "rec" {
+			continue
+		}
+		if s.Kind != KindRecord {
+			t.Errorf("rec 应为 KindRecord，实际 %s", s.Kind)
+		}
+		if len(s.Children) != 2 {
+			t.Fatalf("rec 应有 2 个字段，实际 %d", len(s.Children))
+		}
+		if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(s.TypeText)), "RECORD") {
+			t.Errorf("rec 的 TypeText 应以 RECORD 开头，实际 %q", s.TypeText)
+		}
+		return
+	}
+	t.Fatal("找不到 rec")
+}
+
+// childNames 返回符号子节点名列表。
+func childNames(s *Symbol) []string {
+	out := make([]string, 0, len(s.Children))
+	for _, c := range s.Children {
+		out = append(out, c.Name)
+	}
+	return out
 }

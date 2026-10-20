@@ -111,12 +111,12 @@ $ go run ./cmd/record-audit            # 全量 7683 个 .4gl
 文件总数          : 7683
 rec.member 引用   : 2085436
 rec.* 通配        : 99174（语法树无 property，不校验）
-可校验（本地类型）: 281160
-跳过（LIKE 等）   : 1804276
-报告成员不存在    : 157（占可校验的 0.1%）
+可校验（本地类型）: 271760
+跳过（LIKE 等）   : 1813676
+报告成员不存在    : 20（占可校验的 0.0%）
 ```
 
-**0.1%**，且抽查确认为真阳性：
+**0.007%**（索引 bug 修复前是 157 条 / 0.1%），且抽查确认真阳性：
 
 ```genero
 -- abaq102-2.4gl:613（记录里只有 tc_ibb03/tc_ibb04）
@@ -124,18 +124,21 @@ rec.* 通配        : 99174（语法树无 property，不校验）
 ```
 
 ```genero
--- aect001.4gl:2305（该函数里的 tm 只有 a1..d2）
-DISPLAY BY NAME tm.sfb85,tm.sfb01,tm.ecm03
+-- ghrr034.4gl:307（该文件的 sr1 是内联 RECORD，成员是 hrat01/hrat02/...
+-- 与 m1..m12，从来没有 hrct05 / wshu）
+LET sr.hrct05 = sr1.hrct05
 ```
+
+> 修完下面的 index bug 后，157 条降到 20 条——**其余 137 条都是那个 bug
+> 造成的假阳性**，这是本轮最有价值的一次修复。
 
 ## 5. 默认关闭的理由
 
 记录成员静态上只能靠 `TYPE..END RECORD` 的字段列表判断，而：
 
 - `DEFINE r LIKE table.*` —— 字段在数据库 schema 里，静态不可见
-  （这部分被"opaque 跳过"处理掉了，占 1804276/2085436 = 87%）；
-- 索引在「一条 DEFINE 声明多个变量、类型各异」时会错配名字与类型
-  （见 §6 最后一条），这类符号可信度不足。
+  （这部分被"opaque 跳过"处理掉了，占 1813676/2085436 = 87%）；
+
 
 按 PLAN §7.2 与风险表的决定：**默认 off**，由用户开启并观察。
 配置项 `recordMemberDiagnostics`，级别同其他诊断（off/error/warning/...）。
@@ -161,8 +164,46 @@ DISPLAY BY NAME tm.sfb85,tm.sfb01,tm.ecm03
 | 索引多变量 DEFINE 错配未修 | 只能靠 TypeText 检查兜底 | 应修 `internal/index`（见下） |
 | 数组元素的成员访问不校验 | `arr[i].field` 是下标表达式 | 未排期 |
 
-> **待修的上游问题**：`internal/index` 的 `collectDefines` 在
-> `DEFINE a RECORD LIKE x.*, b RECORD ... END RECORD` 这种多变量、
-> 类型长度不等的语句里，按 `names[i]` ↔ `types[i]` 配对，
-> 当类型节点数与名字数不匹配时会把后面的记录字段挂到前面的变量上。
-> 本轮用 TypeText 前缀检查兜底，但根因在 index，应单独修复并加测试。
+## 8. 上游 index bug（已修）
+
+评估过程中发现并修复了 `internal/index` 的一个真实 bug：
+
+```go
+// 修复前：typeText 取整条 DEFINE 语句的类型，赋给每个变量
+typeText := b.typeText(node)
+for i, nameNode := range names {
+    sym.TypeText = typeText          // ← 所有变量拿到同一个（第一个）类型
+    if i < len(types) {
+        if rec := findChild(types[i], "record"); rec != nil { ... }
+    }
+}
+```
+
+一条 DEFINE 用未命名子节点混排多个"名字 + 类型"时（语料里很常见）：
+
+```genero
+DEFINE
+    rvu  RECORD LIKE rvu_file.*,
+    rvv  RECORD LIKE rvv_file.*,
+    sr   RECORD
+             rva04 LIKE rva_file.rva04,
+             ...
+         END RECORD
+```
+
+后果：
+- 三个变量都拿到 `"RECORD LIKE rvu_file.*"` 作为 TypeText；
+- `names` 有 3 项、`types` 也有 3 项，但 `sr` 的记录字段被 `collectRecordFields`
+  挂到了**错的那个变量**上（实测 `rvu` 拿到了 `sr` 的 10 个字段）；
+- 记录字段还以 `KindField` 泄漏到顶层符号表。
+
+**修复**：
+1. 只有在 `len(types) == len(names)` 时才逐项配对（结构不符时宁可不给类型，
+   让上层跳过语义校验，也不给错误类型）；
+2. 类型文本改为 `b.typeText(types[i])`（逐项），不再复用整条语句的。
+
+回归测试：`TestMultiVariableDefineTypes` / `TestSingleVariableDefineType` /
+`TestInlineRecordDefine`（`internal/index/index_test.go`）。
+
+在此之前，`recordname.go` 用"TypeText 是否以 RECORD 开头"做兜底检查；
+修复后该检查作为防御性断言保留（index 若再退化仍能挡住误报）。
