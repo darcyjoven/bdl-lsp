@@ -4,6 +4,7 @@
 //
 //	bdl-lsp serve              以 stdio 提供 LSP（默认）
 //	bdl-lsp check <file>...    解析文件并输出问题（用于冒烟测试/CI）
+//	bdl-lsp deploy             上传到远程服务器并远程编译（见 internal/deploy）
 //	bdl-lsp version            打印版本
 package main
 
@@ -17,6 +18,7 @@ import (
 
 	"github.com/darcyjoven/bdl-lsp/internal/check"
 	"github.com/darcyjoven/bdl-lsp/internal/cmdline"
+	"github.com/darcyjoven/bdl-lsp/internal/deploycli"
 	"github.com/darcyjoven/bdl-lsp/internal/logging"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
@@ -42,6 +44,8 @@ func run(args []string) int {
 		return 0
 	case "check":
 		return runCheck(args)
+	case "deploy":
+		return deploycli.Run(args, version)
 	case "serve", "--stdio":
 		return runServe(args)
 	default:

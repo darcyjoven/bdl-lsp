@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 1–7 + P2 Zed + P3a GLOBALS + P3b 字段校验 + P4 格式化 已完成**；下一步 P5 部署与远程编译。
+> 当前状态：**P1–P3b 已完成；P4 格式化、P5 部署（CLI + VSCode）已完成**；下一步 P6 补全/重命名/语义高亮。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
 > 见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)；
 > P3b：4GL 字段存在性校验与 .per 内部一致性，见 [docs/PLAN-P3B-FIELD.md](docs/PLAN-P3B-FIELD.md)。
@@ -46,7 +46,8 @@
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
 - [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
 - [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
-- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)
+- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)
+- 部署用法：[示例配置](examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
 
 ## 目录约定
 
@@ -118,6 +119,7 @@ bash scripts/corpus-smoke.sh 60
 | GLOBALS 模组全局变量（跨文件跳转/来源/警告） | ✅ P3a |
 | 字段校验（4GL ↔ `.per`） | ✅ P3b |
 | 4GL 格式化（`.per` 不格式化） | ✅ P4 |
+| 部署 + 远程编译（CLI / VSCode） | ✅ P5 |
 
 性能（7138 行 / 329 KB）：`didOpen` 133 ms，`didChange` 往返 6.0 ms（含字段校验防抖）。
 

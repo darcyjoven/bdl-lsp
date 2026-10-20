@@ -206,7 +206,7 @@ GitHub Release
 | 4GL 字段存在性 | ✅（P3b 完成） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 与 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
 | 4GL 格式化 | ✅（P4 完成：缩进 + 关键字大小写） | 重排、对齐、空白/逗号/运算符规范化 | 不改空白与换行结构 |
 | `.per` 格式化 | ❌ 不做（用户明确要求） | — | 表单文件一律不格式化 |
-| 部署 + 编译 | ✅（ssh + rsync；scp 备选） | 多目标、回滚、编译产物归档 | 见 7.4 |
+| 部署 + 编译 | ✅（P5 完成：rsync 主 / scp 备，显式回退） | 多目标回滚、编译产物归档 | 见 7.4 与 [P5 记录](PLAN-P5-DEPLOY.md) |
 | 补全 | ⬜ | ✅ | 关键字/函数/字段 |
 | Code Action | ⬜ | ✅ | 快速修复 |
 | 语义高亮 | ⬜ | ✅ | 两编辑器均支持 |
@@ -531,11 +531,14 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - 实现记录与踩坑：[PLAN-P4-FORMAT.md](PLAN-P4-FORMAT.md)。
 - 验收：全量 7699 文件语料幂等失败 **0**、新增 ERROR **0**（目标 200 文件）。
 
-### P5 部署与远程编译（约 3–5 个工作块）
+### P5 部署与远程编译（✅ CLI + VSCode 已完成 2026-10-21）
 
 - 配置、CLI、上传（rsync 主 / scp 备）、远程编译、输出解析、诊断映射。
-- VSCode 命令/状态栏；Zed 任务模板。
-- 验收：Linux 上 rsync 与 scp 两条路径、Windows 上 scp 路径均通过；dry-run、真实服务器编译、失败/超时/部分成功场景。
+- VSCode 命令/输出通道/诊断发布；Zed 任务模板。
+- 实现记录与踩坑：[PLAN-P5-DEPLOY.md](PLAN-P5-DEPLOY.md)；Zed 用法：[DEPLOY-ZED.md](DEPLOY-ZED.md)。
+- 验收：Linux 上 rsync、scp、rsync→scp 回退、单文件部署四条路径实测通过；
+  dry-run、失败/部分成功/退出码语义已验证。
+- 待补：Windows scp 实测；单文件编译超时；编译产物归档。
 
 ### P6 打磨与发布（持续）
 

@@ -338,16 +338,27 @@ Block P2 已完成：
       `editor.formatOnSave`（不替用户强制开启）；Zed 用 `format_on_save`。
 - [ ] 空白/逗号/运算符规范化——不做：全量 diff 风险高、收益低。
 
-### 部署（P5）
+### 部署（P5 🟡 CLI 已完成 2026-10-21）
 
-- [ ] 配置 schema + 示例（含 transport、include/exclude、delete=false）。
-- [ ] `bdl-lsp deploy` 子命令：dry-run、rsync 主路径、scp 回退。
-- [ ] Windows scp 逐文件上传与错误聚合。
-- [ ] 远程输出解析（`file:line: error`）。
-- [ ] VSCode 命令/输出通道/状态栏。
-- [ ] Zed tasks 模板。
-- [ ] 超时/失败/部分成功/回滚策略。
-- [ ] 行尾/路径/大小写检查。
+> 完整实现记录：[PLAN-P5-DEPLOY.md](PLAN-P5-DEPLOY.md)。
+
+- [x] 配置 + 示例（`examples/deploy.json`）：targets/upload/compile、
+      include/exclude、`mode`、`fallback`、`delete=false`、`strictHostKey`。
+      未知字段直接报错（避免拼错字段名静默部署到错目录）。
+- [x] `bdl-lsp deploy` 子命令：`-dry-run`、`-target`、`-list`、`-json`、
+      `-no-compile`、`-no-upload`、可只部署指定文件。
+- [x] rsync 主路径（`--delay-updates`、`--files-from` 避免命令行过长）。
+- [x] scp 逐文件上传 + 失败聚合（"部分成功"不显示成成功）。
+- [x] rsync 缺失/失败 → scp **显式**回退（摘要与 JSON 都标注，不静默降级）。
+- [x] 远程输出解析：`file:line[:col]: error: -code: msg`，映射回本地路径。
+- [x] 行尾检查（CRLF 上传前告警）、远程路径 POSIX 校验、越界路径拒绝。
+- [x] 退出码区分：0 成功 / 1 部署失败 / 2 配置或参数错误。
+- [x] 实机验证：本机 sshd 上 rsync、scp、回退、单文件四条路径全部通过。
+- [x] VSCode：4 条命令（部署/当前文件/预演/列目标）、输出通道、
+      诊断发布到 Problems、`bdl.deploy.target` 设置。
+- [ ] Zed tasks 模板（`.zed/tasks.json` 调 CLI）——文档模板待补。
+- [ ] Windows scp 实测（代码路径已就绪，需在 Windows 跑一次）。
+- [ ] 单文件远程编译超时；编译产物（`.42m`）是否拉回待确认。
 
 ### 版本与增强（P6）
 
