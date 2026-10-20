@@ -15,7 +15,7 @@
 | `field-check-corpus.sh` | 字段校验标注集评估 |
 | `format-corpus.sh` | 格式化幂等/语义保持评估 |
 | `deploy-check.sh` | 部署 dry-run / rsync / scp 回退验证（需测试服务器） |
-| `release.sh` | Linux/Windows 构建、校验和、上传 `vscode-bdl` Release |
+| `release.sh` | 本地发布备用：Linux/Windows 构建、校验和、上传 `bdl-lsp` Release |
 | `zed-check.sh` | Zed 扩展 `cargo check`（wasm32-wasip2） |
 
 约定：
@@ -24,5 +24,5 @@
 - 路径以脚本所在目录为基准，不依赖调用者 cwd。
 - 不提交任何 `artifacts/` 下的输出。
 - 需要网络/账号的步骤（下载、发布）显式提示并支持 dry-run。
-- `bdl-lsp` 无远程仓库：发布脚本从本地构建，产物上传到 `vscode-bdl` Release（Q9）。
+- `bdl-lsp` 有独立远程仓库：CI 在 tag `lsp-vX.Y.Z` 构建并发布资产；本地 `release.sh` 作为备用。
 - Windows 优先保证 `scp` 路径；`rsync` 作为可选增强，不阻塞 v1。

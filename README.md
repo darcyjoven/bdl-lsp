@@ -11,16 +11,18 @@
 - 跨文件校验：4GL 中使用的表单字段是否真的存在于对应 `.per`
 - `.per` 内部一致性校验
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
+- 目标 Genero **2.50–5.0**（当前 grammar 以 2.50 为基线，5.0 后续增量支持）
 
-> 当前状态：**粗略计划阶段（v0.2）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
-> 已确认：扩展仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows。
-> 剩余待确认：Q4/Q5/Q7/Q8/Q9（见 [TODO](docs/TODO.md)）。
+> 当前状态：**粗略计划阶段（v0.3）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
+> 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
+> 无感下载、`bdl-lsp` 独立 Release、Zed 新 id `bdl-full`、Genero 2.50–5.0 目标。
+> 细节与可微调项见 [TODO](docs/TODO.md)。
 
 ## 仓库组成
 
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
-| `bdl-lsp/` | **无（本地管理）** | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化 |
+| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物、LSP Release | 已初始化，remote 已配置 |
 | `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | 已初始化，remote 已配置 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | 已初始化，remote 已配置 |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
@@ -28,9 +30,9 @@
 
 说明：
 
-- `bdl-lsp` 按约定**只在本地管理**，不配置远程；LSP 二进制通过 `vscode-bdl` 的 GitHub Release 对外分发（详见计划）。
+- `bdl-lsp` 同时是 LSP 二进制发布源（tag `lsp-vX.Y.Z`）；两个扩展从该仓库无感下载，详见计划。
 - 本地目录名与远程仓库名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`。
-- 三个新仓库均已 `git init -b main` 并完成首次提交；两个扩展仓库的 `origin` 已配置，尚未 push。
+- 三个新仓库均已 `git init -b main` 并完成首次提交；三个仓库的 `origin` 均已配置，尚未 push。
 
 ## 文档
 
@@ -38,7 +40,7 @@
 - [技术链与工具](docs/TECH-STACK.md) —— 版本、选型理由、构建命令、本机环境注意事项
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
 - [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
-- [待办与待确认](docs/TODO.md) —— 近期任务、需要用户拍板的问题
+- [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
 
 ## 目录约定
 

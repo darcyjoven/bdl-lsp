@@ -1,51 +1,54 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 说明：这里是“下一步做什么”的短清单；完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
+> 当前阶段：**规划与环境准备，不写功能代码**。  
+> 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
 
-## 0. 决策状态
-
-### 已确认
+## 0. 已确认决策
 
 | # | 决定 |
 |---|---|
-| Q1 | `vscode-extension` → `git@github.com:darcyjoven/vscode-bdl.git`；`zed-extension` → `git@github.com:darcyjoven/zed-bdl.git`；`bdl-lsp` **本地管理，无远程**。 |
+| Q1 | `bdl-lsp` → `git@github.com:darcyjoven/bdl-lsp.git`；`vscode-extension` → `git@github.com:darcyjoven/vscode-bdl.git`；`zed-extension` → `git@github.com:darcyjoven/zed-bdl.git`。三个 `origin` 已配置，尚未 push。 |
 | Q2 | 部署同步：`ssh + rsync` 为主，`scp` 为轻量备选/回退；v1 不做纯 Go SFTP。 |
 | Q3 | 字段校验默认 `warning`，只在表单唯一解析成功时报告。 |
-| Q6 | v1 在 **Windows + Linux** 验证通过即可；macOS 后续兼容，不作为 v1 阻塞项。 |
+| Q4 | **不复用** `bdl` id；`bdl-plugin` 保持轻量，本插件是全功能版。新 Zed 扩展 id 拟用 **`bdl-full`**（最终可微调），两者共存。 |
+| Q5 | VSCode **先本地 VSIX**；稳定后再评估市场发布。 |
+| Q6 | v1 在 **Windows + Linux** 验证通过；macOS 后续兼容。 |
+| Q7 | LSP 二进制**无感自动下载**：自动匹配平台/版本、下载、校验、缓存、启动；手动路径/离线包兜底。 |
+| Q8 | 目标 **Genero 2.50–5.0**；当前 grammar 为 **2.50** 基线，5.0 后续增量支持。 |
+| Q9 | LSP 二进制使用 **`bdl-lsp` 自己的 Release**（tag `lsp-vX.Y.Z`）。 |
 
-### 仍待确认
+### 实现前可微调
 
-- [ ] **Q4 Zed 扩展 id**：复用现有 `bdl`（替换 `bdl-plugin`）还是新 id？建议复用。
-- [ ] **Q5 VSCode 发布**：先本地 VSIX，还是一开始准备市场发布？建议先本地。
-- [ ] **Q7 LSP 分发**：下载安装（推荐）还是 VSIX 内置？
-- [ ] **Q8 Genero 版本**：目标 2.50 / 3.x / 4.x？是否有旧式 `SCREEN` 表单需求？
-- [ ] **Q9 LSP 二进制托管**：因 `bdl-lsp` 无远程，是否把 `bdl-lsp-*` 产物托管到 `vscode-bdl` 的 Release（tag `lsp-vX.Y.Z`）？建议是。
-
-> 未确认项按建议默认推进文档；涉及发布前再拍板。
+- [ ] Zed 扩展 id 最终名称（建议 `bdl-full`）。
+- [ ] 5.0 支持排期（v1.1 / v2）。
+- [ ] VSCode 市场发布的时间点与 publisher。
 
 ---
 
 ## 1. Git、远程与发布
 
 - [x] 三个仓库 `git init -b main` 并完成首次提交。
+- [x] `bdl-lsp` 配置 `origin` → `git@github.com:darcyjoven/bdl-lsp.git`。
 - [x] `vscode-extension` 配置 `origin` → `git@github.com:darcyjoven/vscode-bdl.git`。
 - [x] `zed-extension` 配置 `origin` → `git@github.com:darcyjoven/zed-bdl.git`。
-- [x] `bdl-lsp` 保持无 remote（本地管理）。
 - [ ] 配置 GitHub SSH key，验证 `ssh -T git@github.com`。
-- [ ] 首次 push `vscode-bdl`、`zed-bdl`（`git push -u origin main`）。
-- [ ] 确认 Q9；确定 LSP Release 的 tag 规则（`lsp-vX.Y.Z`）与资产命名。
-- [ ] 设计 `scripts/release.sh`：构建 Linux/Windows → `SHA256SUMS` → `gh release create/upload` 到 `vscode-bdl`。
-- [ ] 在扩展里固定“默认 LSP 版本/最低版本”，启动时用 `--version` 校验。
-- [ ] 为 `bdl-lsp` 做本地备份策略（无远程，避免单机丢失）。
+- [ ] 首次 push 三个仓库（`git push -u origin main`）。
+- [ ] `bdl-lsp` GitHub Actions：
+  - [ ] Linux + Windows CGO 构建/测试；
+  - [ ] 语料冒烟（可手动/定时）；
+  - [ ] tag `lsp-vX.Y.Z` 构建 Linux/Windows 二进制 + `SHA256SUMS`，自动上传 Release。
+- [ ] 扩展固定“目标 LSP 版本/最低版本”，启动时无感下载对应版本并用 `--version` 校验。
+- [ ] Release 失败不覆盖已有版本；保留上一个可用版本。
+- [ ] 发布说明包含 LSP/扩展/grammar/Genero 版本矩阵。
 
 ---
 
 ## 2. 环境配置（P0，优先）
 
-完整清单、安装命令、常见问题见 [ENVIRONMENT.md](ENVIRONMENT.md)。本节只列可执行勾选项。
+完整清单、安装命令、常见问题见 [ENVIRONMENT.md](ENVIRONMENT.md)。
 
 ### 2.1 Linux（本机）
 
@@ -65,13 +68,14 @@
 - [ ] VSCode + CLI。
 - [ ] OpenSSH Client：`ssh -V`、`scp -V` 可用。
 - [ ] rsync 可选（cwRsync/MSYS2/WSL）；v1 不强依赖。
-- [ ] Rust + `wasm32-wasip2` + wasi-sdk；安装 Zed Windows 官方版并验证启动。
+- [ ] Rust + `wasm32-wasip2` + wasi-sdk。
+- [ ] Zed Windows 官方版安装 + dev extension 加载。
 - [ ] `git config --global core.autocrlf false`；`.4gl`/`.per` 保持 LF。
 - [ ] 用 `scp` 连通测试服务器（或 dry-run 记录命令）。
 
 ### 2.3 账号/服务器
 
-- [ ] GitHub SSH key；`gh auth login` 并确认 `vscode-bdl` Release 权限。
+- [ ] GitHub SSH key；`gh auth login`，确认 `bdl-lsp` Actions/Release 权限。
 - [ ] 测试服务器：Genero、`fglform`/`fglcomp`、SSH key 登录、`remoteRoot` 样例。
 - [ ] 记录本地路径 ↔ 远程路径映射（Windows 盘符也要覆盖）。
 - [ ] 不在仓库/配置样例中写密码、私钥、生产主机。
@@ -80,22 +84,23 @@
 
 - [ ] `scripts/dev-env.sh`（已有，补 Windows 说明）。
 - [ ] `scripts/dev-env.ps1`。
-- [ ] `scripts/env-check.sh`、`scripts/env-check.ps1`，把清单自动化。
+- [ ] `scripts/env-check.sh`、`scripts/env-check.ps1`。
 - [ ] `scripts/corpus-check.sh`、`scripts/format-corpus.sh`、`scripts/field-check-corpus.sh`。
-- [ ] `scripts/release.sh`（本地构建 + 上传 `vscode-bdl` Release）。
+- [ ] `scripts/release-check.sh`（本地检查 tag/版本/校验和，CI 为主）。
 
 ---
 
 ## 3. P0 剩余技术验证
 
-- [ ] Zed 扩展最小骨架：`extension.toml`、两个 language、空 `lib.rs`，`cargo check --target wasm32-wasip2` 通过。
-- [ ] 验证 Zed 能加载 ABI 15 grammar + BDL scanner（真实 dev extension，Linux）。
+- [ ] Zed 扩展最小骨架：`extension.toml`（id `bdl-full`）、两个 language、空 `lib.rs`，`cargo check --target wasm32-wasip2` 通过。
+- [ ] 验证 Zed 能加载 ABI 15 grammar + BDL scanner（Linux + Windows dev extension）。
 - [ ] VSCode 最小客户端：启动返回固定 initialize 的 Go server，确认激活/连接。
-- [ ] 验证 LSP 二进制下载：平台识别、chmod、`--version`、SHA256（Linux + Windows）。
+- [ ] 验证 LSP 二进制无感下载：平台识别、chmod、`--version`、SHA256、缓存/回退（Linux + Windows）。
 - [ ] 用真实 `bdl-lsp` 二进制在 VSCode 中打开 `ammr110.4gl`，确认无 stdout 污染、日志可读。
 - [ ] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 升到 `v0.25.0`，补“真正解析文件”的测试（ABI 15）。
 - [ ] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。
 - [ ] 验证 Windows 下 CGO 构建 + 运行 LSP（可先用 spike）。
+- [ ] 调研 Genero 5.0 与 2.50 的语法差异，形成升级清单（不要求在 v1 实现）。
 
 ---
 
@@ -105,7 +110,7 @@
   - [ ] 包/文件清单与接口签名（`internal/server`、`document`、`parser`、`index`）
   - [ ] LSP 方法清单与能力协商字段
   - [ ] 每个任务的验收命令
-  - [ ] VSCode 扩展文件级任务
+  - [ ] VSCode 扩展文件级任务（无感下载/缓存/回退）
   - [ ] 测试 fixture 清单
   - [ ] Windows 构建/验证步骤
 - [ ] `docs/PLAN-DETAILED-P3.md`（字段校验）
@@ -116,13 +121,14 @@
 - [ ] `docs/FORMATTER.md`（规则表与示例）
 - [ ] `docs/DEPLOY.md`（配置 schema、rsync/scp、安全、错误处理）
 - [ ] `docs/TESTING.md`（测试矩阵、Linux/Windows 命令）
-- [ ] `docs/RELEASE.md`（本地构建 → vscode-bdl Release → 扩展版本）
+- [ ] `docs/RELEASE.md`（bdl-lsp CI → `lsp-vX.Y.Z` Release → 扩展无感下载）
+- [ ] `docs/GENERO-VERSIONS.md`（2.50–5.0 支持矩阵与差异）
 
 ---
 
 ## 5. 工程骨架（P1）
 
-### bdl-lsp（无远程，本地 CI）
+### bdl-lsp
 
 - [ ] `go.mod`：Go 1.24，固定 `go-tree-sitter v0.25.0`、`go.lsp.dev/*`、grammar 模块。
 - [ ] `cmd/bdl-lsp/main.go`：`--version`、`--stdio`、`--log-level`、`deploy` 子命令占位。
@@ -132,28 +138,29 @@
 - [ ] `internal/index`：工作区扫描、`FileIndex` 骨架、按需解析 `.per`。
 - [ ] `internal/features`：documentSymbol、definition（函数/变量）、hover。
 - [ ] 诊断：解析 ERROR/MISSING → `publishDiagnostics`。
+- [ ] 配置：`bdl.generoVersion`（默认 2.50）。
 - [ ] `Makefile`：`build`、`test`、`lint`、`corpus`、`release`。
-- [ ] `scripts/ci-local.sh`：fmt/vet/test/语料冒烟。
+- [ ] GitHub Actions：Linux + Windows 构建/测试；tag Release。
 - [ ] 本地产物：Linux amd64 + Windows amd64（v1）。
 
 ### vscode-extension（→ `vscode-bdl`）
 
 - [ ] `package.json`：languages、grammars、configuration、commands、activationEvents。
 - [ ] `src/extension.ts` + `client.ts`：启动 LSP、documentSelector、配置同步。
-- [ ] `src/server/binary.ts`：查找/下载/校验/版本检查；默认从 `vscode-bdl` Release 下载。
+- [ ] `src/server/binary.ts`：**无感下载**（平台/版本匹配、SHA256、缓存、回退、并发保护）；从 `bdl-lsp` Release 下载。
 - [ ] `syntaxes/bdl.tmLanguage.json`、`syntaxes/per.tmLanguage.json`（先覆盖关键字/字符串/注释/数字/函数/类型）。
 - [ ] `language-configuration/*.json`：注释、括号、自动闭合。
 - [ ] 命令：`bdl.restartServer`、`bdl.showOutput`、`bdl.deploy.currentFile`（占位）。
-- [ ] 打包：`vsce package` 生成 VSIX。
+- [ ] 打包：`vsce package` 生成 VSIX（先本地）。
 - [ ] 测试：Linux + Windows 激活、server 启动、格式化/跳转 smoke。
 - [ ] GitHub Actions：Linux + Windows 构建/测试。
 
-### zed-extension（→ `zed-bdl`）
+### zed-extension（→ `zed-bdl`，id `bdl-full`）
 
-- [ ] `extension.toml`：id、grammars（bdl/per）、language_servers。
-- [ ] `languages/bdl/*`：从 `bdl-plugin` 迁移/改进 queries。
+- [ ] `extension.toml`：id `bdl-full`、grammars（bdl/per）、language_servers。
+- [ ] `languages/bdl/*`：从 `bdl-plugin` 迁移/改进 queries（不共享 id）。
 - [ ] `languages/per/*`：从 `tree-sitter-per/queries` 迁移 + outline/brackets。
-- [ ] `src/lib.rs`：`language_server_command`、PATH/工作区/下载三条路径；从 `vscode-bdl` Release 下载。
+- [ ] `src/lib.rs`：`language_server_command`；PATH/工作区/下载三条路径；从 `bdl-lsp` Release 无感下载。
 - [ ] `Cargo.toml`：`zed_extension_api = "0.7.0"`，`cdylib`。
 - [ ] `cargo check --target wasm32-wasip2`。
 - [ ] Zed dev extension 手工验证清单（Linux + Windows）。
@@ -193,8 +200,10 @@
 - [ ] 超时/失败/部分成功/回滚策略。
 - [ ] 行尾/路径/大小写检查。
 
-### 增强（P6）
+### 版本与增强（P6）
 
+- [ ] Genero 5.0 语法差异清单与 grammar 增量。
+- [ ] 5.0 支持时回归 2.50 语料。
 - [ ] 补全（关键字/函数/字段）。
 - [ ] 重命名。
 - [ ] Code Action（字段不存在时提示、忽略）。
@@ -212,9 +221,11 @@
 - [ ] 15k 文件索引性能。
 - [ ] 字段上下文误报率。
 - [ ] 无本机 `fglcomp`/`fglform` 导致的部署验证缺口。
-- [ ] `bdl-lsp` 无远程 → 无云端 CI/Release；本地发布脚本与备份。
+- [ ] 自动下载失败/企业内网/代理。
+- [ ] 扩展与 LSP 版本错配；回退策略。
 - [ ] Windows 无 rsync → scp 回退的稳定性/性能。
 - [ ] Zed Windows 行为差异（路径、进程、扩展加载）。
+- [ ] Genero 5.0 新语法未覆盖。
 - [ ] macOS 延后带来的构建差异。
 - [ ] 沙箱环境（HOME/GOPATH/GOPROXY）对文档/CI 的影响。
 
@@ -231,3 +242,4 @@
 5. 不把中间产物、日志、缓存提交进 Git。
 6. 影响用户行为的变更写明迁移/兼容说明。
 7. 涉及平台的功能至少记录 Linux/Windows 验证结果；macOS 单独标注。
+8. 涉及 Genero 版本的行为标注 2.50 / 5.0 支持范围。

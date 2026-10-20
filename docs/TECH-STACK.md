@@ -110,7 +110,7 @@ Genero 源码 (.4gl/.global/.per)
 2. 环境变量 `BDL_LSP_PATH`
 3. 工作区 `.bdl-lsp/bin/bdl-lsp`
 4. 扩展 `globalStorageUri` 缓存
-5. 从 `vscode-bdl` Release 下载（tag `lsp-vX.Y.Z`；带 SHA256 校验、进度提示、代理/超时处理）
+5. 无感下载：从 `bdl-lsp` Release（tag `lsp-vX.Y.Z`）自动下载；SHA256 校验、缓存、回退、代理/超时处理
 
 #### Zed
 
@@ -132,7 +132,7 @@ Genero 源码 (.4gl/.global/.per)
 - `Extension::language_server_command()` 返回 `zed::Command`
 - `set_language_server_installation_status()` 提示安装状态
 
-**下载源**：与 VSCode 相同，从 `vscode-bdl` Release 取对应平台的 LSP 二进制（Q9 待确认）；`current_platform()` 选资产，`download_file` 下载后 `make_file_executable`。v1 需在 Linux 与 Windows 验证 Zed 扩展加载与 LSP 启动。
+**下载源**：与 VSCode 相同，从 `bdl-lsp` Release 取对应平台的 LSP 二进制；`current_platform()` 选资产，`download_file` 下载后 `make_file_executable`，并结合 `set_language_server_installation_status` 实现无感安装。v1 需在 Linux 与 Windows 验证 Zed 扩展加载与 LSP 启动。
 
 **限制**：Zed 扩展不能注册任意命令；部署用 CLI + `.zed/tasks.json`，LSP 暴露 `workspace/executeCommand` 作为可选入口。
 
@@ -145,6 +145,8 @@ Genero 源码 (.4gl/.global/.per)
 | tree-sitter-bdl / per | 固定 tag/revision | 由 Go module 固定 |
 
 **ABI 结论**：grammar 由 tree-sitter 0.26.5 生成，`LANGUAGE_VERSION=15`；Go 绑定必须 `go-tree-sitter >= v0.25.0`。若未来 grammar 升级 ABI，需要同步升级 Go 绑定并跑语料回归。
+
+**Genero 版本**：当前 `tree-sitter-bdl` 覆盖 **2.50**（即 2.5）语法；产品目标 2.50–5.0，5.0 新语法作为后续增量。解析/诊断通过 `bdl.generoVersion` 等配置区分；未知语法只报语法诊断。升级 5.0 grammar 必须回归 2.50 语料。
 
 **本机 CLI 配置**（`~/.cache` 不可写）：
 
@@ -176,14 +178,14 @@ tree-sitter parse -q /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per
 
 | 项 | 方案 |
 |---|---|
-| `bdl-lsp` CI | **无远程，不使用 GitHub Actions**；本地 `scripts/ci-local.sh`（fmt/vet/test/语料） |
-| `bdl-lsp` 发布 | 本地 `scripts/release.sh` → Linux/Windows 二进制 + `SHA256SUMS` → 上传 `vscode-bdl` Release（Q9） |
+| `bdl-lsp` CI | GitHub Actions：Linux/Windows、CGO、fmt/vet/test、语料冒烟；本地 `scripts/ci-local.sh` 备用 |
+| `bdl-lsp` 发布 | tag `lsp-vX.Y.Z` → Actions 构建 Linux/Windows 二进制 + `SHA256SUMS` → `bdl-lsp` Release |
 | 扩展 CI | `vscode-bdl`、`zed-bdl` 各自 GitHub Actions |
 | Go 检查 | `gofmt`/`gofumpt`、`go vet`、`golangci-lint`、`go test -race`、语料冒烟 |
-| 构建矩阵（v1） | **Linux amd64 + Windows amd64**；arm64/macOS 后续 |
-| 编译方式 | 原生 runner/本机：Linux gcc；Windows MinGW-w64 gcc；macOS 后续 |
-| VSCode | `pnpm install` → typecheck → test → `vsce package`；tag 时发布 |
-| Zed | `cargo check --target wasm32-wasip2`；注册表 PR 手工/自动 |
+| 构建矩阵（v1） | **Linux amd64 + Windows amd64**（`bdl-lsp` Actions）；arm64/macOS 后续 |
+| 编译方式 | GitHub Actions：ubuntu + windows runner；Linux gcc / Windows MinGW-w64；macOS 后续 |
+| VSCode | `pnpm install` → typecheck → test → `vsce package`；**先本地安装**，市场发布后续 |
+| Zed | `cargo check --target wasm32-wasip2`（Linux/Windows）；注册表 PR 后续 |
 | 缓存 | Go module/build、pnpm store、Cargo target；注意 cgo 缓存命中率 |
 
 **构建矩阵建议**：
@@ -214,8 +216,8 @@ SHA256SUMS
 
 | 项 | 方案 |
 |---|---|
-| 编辑器设置 | VSCode `settings.json`（`bdl.*`）；Zed `settings.json` + 初始化选项 |
-| 工作区配置 | `.bdl-lsp/config.json`、`.bdl-lsp/deploy.json`（两个编辑器共用） |
+| 编辑器设置 | VSCode `settings.json`（`bdl.*`）；Zed `settings.json` + 初始化选项；含 `bdl.generoVersion`（默认 2.50） |
+| 工作区配置 | `.bdl-lsp/config.json`、`.bdl-lsp/deploy.json`（两个编辑器共用）；`bdl.generoVersion` 可覆盖 |
 | 配置校验 | 启动时校验并给出可读错误；未知字段警告 |
 | 日志 | `slog`；stderr + 可选文件；简单大小轮转（不引入额外库） |
 | 缓存 | `$XDG_CACHE_HOME/bdl-lsp` 或系统临时目录；不放仓库 |
@@ -293,8 +295,8 @@ printf 'Content-Length: 107\r\n\r\n%s' \
 | VSCode | 无法运行扩展 e2e | 安装 VSCode + `xvfb`（CI）；本机可先做单元测试 |
 | `fglcomp`/`fglform` | 无法本机权威校验 | 依赖测试服务器；部署模块做 mock + 真机验证 |
 | Windows 构建环境 | 无法验证 Windows 二进制 | 安装 Go + MinGW-w64，按 [ENVIRONMENT.md](ENVIRONMENT.md) 检查 |
-| GitHub 远程 | 无法 push/发布 | `vscode-bdl`/`zed-bdl` remote 已配置；push 需 SSH 凭据；`bdl-lsp` 按设计无远程 |
-| `gh` CLI | 无法上传 LSP Release | 安装并 `gh auth login`；发布前 `gh auth status` |
+| GitHub 远程 | 无法 push/发布 | 三个仓库 remote 已配置；push 需 SSH 凭据 |
+| `gh` CLI | 本地排查/手工 Release 备用 | 安装并 `gh auth login`；CI Release 为主 |
 
 ---
 
