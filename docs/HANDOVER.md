@@ -1,0 +1,196 @@
+# 会话交接（HANDOVER）
+
+> 更新时间：2026-10-21  
+> 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
+
+---
+
+## 1. 一句话状态
+
+**P1–P6 全部功能已完成并推送**；剩下的是需要真实环境才能验的项（Windows / Zed GUI / macOS）
+和两个待排期的增强（数据库 schema 索引、工作区级符号索引）。
+
+## 2. 三个仓库（都已推送，工作树干净）
+
+| 目录 | 远程 | HEAD | 内容 |
+|---|---|---|---|
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `173cce5` | Go LSP 服务器 + CLI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a` | VSCode 插件 |
+| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `8fa1bff` | Zed 插件 |
+
+依赖的两个 grammar 仓库（本地 `replace`，未打 tag）：
+
+- `/code/workspace/tree-sitter-bdl`
+- `/code/workspace/tree-sitter-per`
+
+## 3. 当前能力矩阵
+
+### LSP 方法（20 个）
+
+```text
+initialize / initialized / shutdown / exit
+textDocument/didOpen / didChange / didClose
+textDocument/hover / definition / references
+textDocument/documentSymbol / workspace/symbol
+textDocument/formatting              ← P4
+textDocument/completion / completionItem/resolve   ← P6
+textDocument/prepareRename / rename  ← P6
+textDocument/codeAction              ← P6
+textDocument/semanticTokens/full     ← P6
+workspace/didChangeConfiguration
+```
+
+### 功能与阶段
+
+| 功能 | 阶段 | 记录文档 |
+|---|---|---|
+| 高亮（TextMate，grammar 生成）+ 语法诊断 | P1/P2 | [PLAN-DETAILED-P1](docs/PLAN-DETAILED-P1.md) |
+| 大纲 / 悬停 / 定义 / 引用 | P1 | 同上 |
+| GLOBALS 模组全局变量（跨文件跳转/来源/两类警告） | P3a | [PLAN-P3A-GLOBALS](docs/PLAN-P3A-GLOBALS.md) |
+| 4GL 字段 ↔ `.per` 校验 + `.per` 内部一致性 | P3b | [PLAN-P3B-FIELD](docs/PLAN-P3B-FIELD.md) |
+| 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化） | P4 | [PLAN-P4-FORMAT](docs/PLAN-P4-FORMAT.md) |
+| 部署 + 远程编译（rsync 主 / scp 备） | P5 | [PLAN-P5-DEPLOY](docs/PLAN-P5-DEPLOY.md)、[DEPLOY-ZED](docs/DEPLOY-ZED.md) |
+| 补全（关键字/符号/表单字段） | P6 | [PLAN-P6-COMPLETION](docs/PLAN-P6-COMPLETION.md) |
+| 重命名（仅当前文件） | P6 | [PLAN-P6-RENAME](docs/PLAN-P6-RENAME.md) |
+| Code Action（拼错→「改为 X」） | P6 | [PLAN-P6-CODEACTION](docs/PLAN-P6-CODEACTION.md) |
+| 语义高亮（仅自定义符号） | P6 | [PLAN-P6-SEMTOK](docs/PLAN-P6-SEMTOK.md) |
+| record `BY NAME` 成员校验（**默认 off**） | P6 | [PLAN-P6-RECORDMEMBER](docs/PLAN-P6-RECORDMEMBER.md) |
+
+## 4. 验收基线（当前实测值）
+
+| 项目 | 结果 |
+|---|---|
+| `go test -race ./...` | 13 个包全绿，**269 个测试函数** |
+| VSCode e2e | **33/33** |
+| `make lint` | 通过（含 `keywords-check` 防清单漂移） |
+| 语料规模 | `.4gl` 7699 / `.per` 7409（`/code/workspace/tiptop-gp`） |
+| 解析成功率 | `.4gl` 7683/7699（16 个真实语法错误） |
+| 格式化审计（`cmd/fmt-audit`） | 成功 7683、幂等失败 **0**、新增 ERROR **0** |
+| GLOBALS 解析 | 8403 resolved / 107 not-found |
+| 字段校验（`cmd/field-audit`） | 1725 条发现，模块一致率 97.2% |
+| record 成员（`cmd/record-audit`） | 可校验 271760 处，报出 **20**（0.007%） |
+| 性能（7138 行 / 329 KB） | didOpen 133ms，didChange 6.0ms |
+
+## 5. 配置项（VSCode `bdl.*` / Zed `settings.*` 同名）
+
+```text
+generoVersion                       2.50
+syntaxDiagnostics                   error
+missingDiagnostics                  warning
+server.path / server.logLevel / trace.server
+globals.fileNotFoundDiagnostics     warning
+globals.unresolvedSourceDiagnostics warning
+globals.searchPaths                 []
+fieldDiagnostics                    warning
+perRoots                            []
+recordMemberDiagnostics             off        ← P6，默认关闭
+format.keywords                     unchanged  （unchanged/upper/lower）
+format.indentStyle                  auto       （auto/tab/space）
+format.indentSize                   0          （0 = 跟随编辑器）
+deploy.target                       ""
+limits.maxFileBytes                 2097152
+limits.maxFileLines                 20000
+limits.maxIssues                    200
+limits.parseTimeoutMs               2000
+```
+
+## 6. 环境约束（每次开工先做）
+
+```bash
+cd /code/workspace/bdl-lsp
+source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找不到
+```
+
+- 沙箱：无 root、`$HOME` 只读、8C/15GB；缓存都在 `bdl-lsp/artifacts/`
+- `make build` → `artifacts/bin/bdl-lsp`
+- 过程产物、日志、缓存一律放 `artifacts/`（已在 `.gitignore`）
+- **`go build` 不加 `-o` 会把二进制写进仓库根**（历史踩过，`field-audit` 曾被误提交）
+
+## 7. 已知坑（写在这里避免重复踩）
+
+1. **typed-nil 陷阱**：`ts.NewQuery` 返回 `*QueryError`（具体类型），
+   赋给预声明的 `error` 接口后 `err != nil` 永远为真 → 功能静默禁用。
+   必须单独声明 `qerr`。
+2. **ssh 远程命令不要额外包引号**：`exec` 调用没有本地 shell 剥引号，
+   加一层会让远程把整串当文件名。只对插值进脚本的值用 `shellQuote`。
+3. **glob 不能用 `filepath.Match`**：它不支持 `**`，
+   `**/*.4gl` 会"合法但永不匹配" → 静默传 0 个文件。
+4. **格式化要跳过 `&` 开头的预处理指令**：grammar 外部扫描器大小写敏感，
+   大写 `&include` 会破坏解析。
+5. **记录/变量作用域必须按函数隔离**：整文件平坦映射会跨函数泄漏
+   （P3b 踩过 2.8 万误报，P6 record 又踩过同类 5 次）。
+6. **`vscode.executeCodeActionProvider` 的 kind 参数要字符串** `"quickfix"`，
+   传 `CodeActionKind` 对象会报 Invalid argument。
+7. **Go 的 `const` 必须用 `=`**，不能用 `:=`（本轮踩了两次）。
+8. **e2e 前必须 `npm run build`**：`test:e2e` 已改成先 build，否则用旧 `dist` 会
+   出现"命令不存在"的假失败。
+
+## 8. 下一步候选（按建议顺序）
+
+### A. Windows 实测（成本低，价值高）
+
+代码路径已就绪，但从未在 Windows 跑过：
+
+- `scripts/build.ps1`（无需 make）
+- `scripts/e2e-vscode.ps1`
+- 部署：Windows 无 rsync → 自动回退 scp（逐文件 + 路径归一已实现）
+
+### B. 数据库 schema 索引（能显著提升 record 校验覆盖面）
+
+现状：`DEFINE r LIKE table.*` 占语料 **87%** 的 record 成员引用，静态看不到列名，
+全部跳过。有 schema 索引后可校验比例从 13% → 接近 100%。
+
+需要决策：schema 来源（`.sch`/`.sql` 文件？数据库连接？）。
+
+### C. 工作区级符号索引（解锁跨文件重命名 + 更全的补全）
+
+现状：重命名和补全都只看当前文件/已打开文档。
+计划要求 15k 文件 < 60s，需要后台任务 + 持久化缓存。
+
+### D. Zed 侧验证
+
+本机无 GUI，需在有显示器的机器上手动加载 dev extension。
+注意 Zed 不消费 LSP semantic tokens（走 `highlights.scm`），已在 README 说明。
+
+### E. 暂不排期
+
+- Genero 5.0 语法
+- GitHub Release / 二进制自动下载
+- VSCode Marketplace / Zed registry 发布
+- macOS
+
+## 9. 常用命令
+
+```bash
+# 测试
+cd bdl-lsp && source scripts/dev-env.sh
+go test -race ./...
+make lint                      # vet + gofmt + keywords-check
+make e2e-vscode                # 需要 VSCode 可执行文件
+make bench                     # 性能基线
+
+# 语料评估
+go run ./cmd/fmt-audit                    # 格式化幂等 + ERROR
+go run ./cmd/field-audit                  # 字段校验误报率
+go run ./cmd/record-audit                 # record 成员误报率（约 20 分钟）
+FMT_DEBUG=<file> go run ./cmd/fmt-audit   # 单文件格式化调试
+
+# 手工验证 LSP
+./artifacts/bin/bdl-lsp version
+./artifacts/bin/bdl-lsp check testdata/sample.4gl
+./artifacts/bin/bdl-lsp deploy -list -workspace <ws>
+./artifacts/bin/bdl-lsp deploy -dry-run -workspace <ws>
+```
+
+## 10. 文档地图
+
+| 文档 | 内容 |
+|---|---|
+| [README](README.md) | 仓库总览、快速开始、能力表 |
+| [PLAN](docs/PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
+| [FEATURES](docs/FEATURES.md) | 功能基线清单（编号 1–34）+ 阶段映射 |
+| [TODO](docs/TODO.md) | 已完成/待办逐项清单（最详细的进度记录） |
+| [ENVIRONMENT](docs/ENVIRONMENT.md) | 工具链、沙箱约束 |
+| [TECH-STACK](docs/TECH-STACK.md) | 版本与选型理由 |
+| [RESEARCH](docs/RESEARCH.md) | 语料统计、CST 结构 |
+| `PLAN-P*.md` | 各阶段实现记录：需求映射、决策、踩坑、验收输出 |

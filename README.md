@@ -39,6 +39,7 @@
 
 ## 文档
 
+- **[会话交接（HANDOVER）](docs/HANDOVER.md)** —— 接手新会话先读这一份
 - [功能清单](docs/FEATURES.md) —— 功能基线（标注来源：用户提供 / 协助规划）
 - [P1 详细计划](docs/PLAN-DETAILED-P1.md) —— 当前阶段的实现清单与验收
 - [粗略计划](docs/PLAN.md) —— 目标、范围、架构、里程碑、风险
