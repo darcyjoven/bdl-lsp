@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 1 已完成**（LSP 骨架 + 解析诊断 + check CLI）。代码已开始实现。
+> 当前状态：**P1 Block 2 已完成**（LSP 骨架 + 解析诊断 + 增量同步 + check CLI）。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -82,6 +82,7 @@ make build                     # 构建 artifacts/bin/bdl-lsp
 make test                      # 单元测试
 make lint                      # gofmt + vet
 make check                     # 样例冒烟
+make bench                     # LSP 延迟基准
 
 # 解析检查（可用于 CI）
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
@@ -99,12 +100,14 @@ bash scripts/corpus-smoke.sh 60
 | 能力 | 状态 |
 |---|---|
 | LSP initialize / shutdown / exit | ✅ |
-| didOpen / didChange（整文替换）/ didClose | ✅ |
+| didOpen / didChange（真增量）/ didClose | ✅ |
 | tree-sitter 语法诊断（ERROR/MISSING） | ✅ |
 | `.4gl` / `.global` / `.per` 双语言 | ✅ |
+| UTF-16 ↔ 字节位置换算 | ✅ |
 | `check` CLI（文本/JSON） | ✅ |
 | 文档符号 / 跳转 / 引用 / 悬停 | ⏳ Block 3/4 |
-| 增量同步 | ⏳ Block 2 |
 | VSCode 扩展 | ⏳ Block 6 |
+
+性能（7138 行 / 329 KB）：`didOpen` 51 ms，`didChange` 往返 0.7 ms。
 
 详见 [P1 详细计划](docs/PLAN-DETAILED-P1.md)。

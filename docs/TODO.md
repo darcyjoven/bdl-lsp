@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 当前阶段：**P1 实现中**（Block 1 已完成）。  
+> 当前阶段：**P1 实现中**（Block 1、2 已完成）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -146,11 +146,20 @@ Block 1 已完成：
 - [x] 测试：parser 8 个、document 5 个、server 6 个（协议级）+ 2 个 benchmark。
 - [x] `scripts/corpus-smoke.sh`：语料抽样冒烟。
 
+Block 2 已完成：
+
+- [x] `internal/textpos`：UTF-16 ↔ 字节 ↔ tree-sitter Point 换算。
+- [x] `internal/document`：`Change` / `ApplyChanges` / `Tree.Edit` / Store。
+- [x] didChange 增量编辑（含多段、整文替换、非法区间钳制）。
+- [x] 旧树生命周期修正（修复 `ts_tree_delete` 双重释放 SIGSEGV）。
+- [x] `exit` 后进程挂起修正 + LSP 退出码语义。
+- [x] `scripts/lsp-bench.py` + `make bench`。
+- [x] 测试增至 36 个；`go test -race` 通过。
+
 待做：
 
 - [ ] `internal/index`：工作区扫描、`FileIndex`、按需解析 `.per`（Block 3）。
 - [ ] `internal/features`：documentSymbol、definition、references、hover（Block 3/4）。
-- [ ] 增量同步 + `Tree.Edit`（Block 2）。
 - [ ] 配置 `bdl.generoVersion`（默认 2.50）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。

@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
@@ -31,6 +32,7 @@ type Server struct {
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
 	shutdown  bool
+	exitCode  int
 	exitOnce  sync.Once
 	exited    chan struct{}
 	initParms *protocol.InitializeParams
@@ -63,13 +65,36 @@ func (s *Server) ServeStream(ctx context.Context, rwc io.ReadWriteCloser) error 
 
 	conn.Go(ctx, s.handle)
 
+	// exit 与 ctx 取消都要能让服务返回：
+	// 标准输入是 os.Stdin，Close 不会真正关闭它，因此不能只依赖 conn.Done()。
 	select {
 	case <-conn.Done():
+	case <-s.exited:
 	case <-ctx.Done():
 		_ = conn.Close()
 	}
 
 	s.docs.CloseAll()
+
+	// exit 通知后等待读循环退出，避免 stdout 被提前关闭导致响应丢失。
+	select {
+	case <-conn.Done():
+	case <-time.After(200 * time.Millisecond):
+		_ = conn.Close()
+	}
+
+	// LSP 规范：未经 shutdown 就收到 exit，服务器应以非零码退出。
+	s.mu.Lock()
+	code := s.exitCode
+	shutdown := s.shutdown
+	s.mu.Unlock()
+	if code != 0 {
+		return exitError{code: code}
+	}
+	if shutdown {
+		// 正常流程：shutdown 后 exit，读取端的 EOF 是预期结果，不算错误。
+		return nil
+	}
 	return conn.Err()
 }
 
@@ -156,73 +181,26 @@ func (s *Server) handleExit() {
 	s.mu.Lock()
 	shutdown := s.shutdown
 	conn := s.conn
+	if !shutdown {
+		// LSP 规范：未经 shutdown 就收到 exit，应以非零码退出。
+		s.exitCode = 1
+		s.logger.Warn("未收到 shutdown 就收到 exit，将以退出码 1 结束")
+	}
 	s.mu.Unlock()
 
-	if !shutdown {
-		s.logger.Warn("未收到 shutdown 就收到 exit，按 LSP 协议应以失败码退出")
-	}
 	s.exitOnce.Do(func() { close(s.exited) })
-	if conn != nil {
-		_ = conn.Close()
-	}
+	_ = conn // 由 ServeStream 统一关闭，避免与读循环竞争
 }
 
-func (s *Server) handleDidOpen(ctx context.Context, req jsonrpc2.Request) error {
-	var params protocol.DidOpenTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		s.logger.Warn("didOpen 参数解析失败", "error", err)
-		return nil
-	}
+// exitError 表示服务器按 LSP 规范以特定退出码结束。
+type exitError struct{ code int }
 
-	uri := string(params.TextDocument.URI)
-	lang, ok := parser.LangForPath(uri)
-	if !ok {
-		return nil // 只处理 bdl / per，其他文件静默忽略
-	}
-
-	doc := s.docs.Open(uri, lang, params.TextDocument.Version, params.TextDocument.Text)
-	s.logger.Debug("didOpen", "uri", uri, "lang", lang, "version", doc.Version)
-	s.reparse(ctx, doc)
-	return nil
+func (e exitError) Error() string {
+	return fmt.Sprintf("LSP 以退出码 %d 结束（未先收到 shutdown）", e.code)
 }
 
-func (s *Server) handleDidChange(ctx context.Context, req jsonrpc2.Request) error {
-	var params protocol.DidChangeTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		s.logger.Warn("didChange 参数解析失败", "error", err)
-		return nil
-	}
-
-	uri := string(params.TextDocument.URI)
-	doc := s.docs.Get(uri)
-	if doc == nil {
-		s.logger.Debug("didChange 找不到文档，忽略", "uri", uri)
-		return nil
-	}
-
-	// Block 1：整文替换（取最后一次 change 的 text 作为最新全文）。
-	// 增量编辑与增量重解析在 Block 2 实现。
-	if n := len(params.ContentChanges); n > 0 {
-		doc.Update(params.TextDocument.Version, params.ContentChanges[n-1].Text)
-	}
-	s.reparse(ctx, doc)
-	return nil
-}
-
-func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error {
-	var params protocol.DidCloseTextDocumentParams
-	if err := json.Unmarshal(req.Params(), &params); err != nil {
-		s.logger.Warn("didClose 参数解析失败", "error", err)
-		return nil
-	}
-
-	uri := string(params.TextDocument.URI)
-	s.docs.Close(uri)
-	s.logger.Debug("didClose", "uri", uri)
-	// 关闭时清空诊断，避免编辑器残留。
-	s.publish(ctx, uri, 0, nil)
-	return nil
-}
+// ExitCode 返回该错误对应的进程退出码。
+func (e exitError) ExitCode() int { return e.code }
 
 func clientName(info *protocol.ClientInfo) string {
 	if info == nil {

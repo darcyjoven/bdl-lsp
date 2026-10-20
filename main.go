@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -81,6 +82,11 @@ func runServe(args []string) int {
 	logger.Info("bdl-lsp 启动", "version", version, "mode", "stdio")
 
 	if err := srv.Serve(ctx); err != nil {
+		var exitErr interface{ ExitCode() int }
+		if errors.As(err, &exitErr) {
+			logger.Warn("服务退出", "error", err)
+			return exitErr.ExitCode()
+		}
 		logger.Error("服务退出", "error", err)
 		return 1
 	}

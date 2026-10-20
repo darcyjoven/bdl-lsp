@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.2（已按实现修正）  
+> 版本：v0.3（Block 2 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1 已完成**；Block 2–7 待做。  
+> 状态：**Block 1、Block 2 已完成**；Block 3–7 待做。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -13,12 +13,13 @@ v0.1 是纸面拆分；本轮实际落地 Block 1 后，以下内容按真实代
 
 | 项 | v0.1 设想 | 实际 |
 |---|---|---|
-| document 同步 | Block 1 就要增量 | **Block 1 用整文替换**，增量放到 Block 2 |
+| document 同步 | Block 1 就要增量 | Block 1 整文替换；**Block 2 已改为真增量** |
 | `check` 子命令 | 未规划 | **新增**，用于 CI/语料冒烟，价值很高 |
 | grammar 依赖 | 准备用 tag | 暂用 `replace ../tree-sitter-bdl`、`../tree-sitter-per`（grammar 无 tag） |
-| 测试 | 只测 parser | parser + document + **协议级 server 测试**（管道模拟客户端） |
+| 测试 | 只测 parser | parser + document + textpos + **协议级 server 测试** |
 | 二进制大小 | < 10 MB | 实测 **9.3 MB** |
-| 性能 | 1 MB < 300 ms | 实测 332 KB / 7138 行 **55 ms**（含进程启动） |
+| 全量解析 | 1 MB < 300 ms | 329 KB / 7138 行 **51 ms**（didOpen 往返） |
+| 增量编辑 | < 100 ms | **0.7 ms**（didChange 往返，快 70 倍） |
 
 ---
 
@@ -99,29 +100,73 @@ $ 二进制大小                       → 9.3 MB
 
 ---
 
-## 2. 待做：Block 2 增量同步
+## 2. 已完成：Block 2 增量同步
 
-**目标**：didChange 走真正的增量编辑，避免每次全文重解析。
+### 2.1 交付内容
 
-| 任务 | 说明 |
+| 文件 | 内容 |
 |---|---|
-| 2.1 | 解析 `TextDocumentContentChangeEvent`：有 `range` 时按区间替换，无 `range` 时整文替换 |
-| 2.2 | 把 LSP 的 UTF-16 行列转换为字节偏移（与 `diagnostics.go` 的反向换算） |
-| 2.3 | 调用 `Tree.Edit(&ts.InputEdit{...})` 让旧树位置失效 |
-| 2.4 | `pool.Parse(lang, newText, oldTree)` 复用旧树 |
-| 2.5 | `LineIndex` 增量维护（或整文重建，先测性能再决定） |
-| 2.6 | 测试：多轮编辑后诊断位置正确；编辑后 `Tree.Edit` 不 panic |
+| `internal/textpos/textpos.go` | 行索引；UTF-16 列 ↔ 字节偏移 ↔ tree-sitter Point 的双向换算 |
+| `internal/document/document.go` | `Change` 结构、`ApplyChanges`（文本 + `Tree.Edit`）、Store |
+| `internal/server/documents.go` | didChange 处理、`range` 是否存在的判定、多段编辑 |
+| `internal/server/diagnostics.go` | 用 `textpos.Index` 做位置换算；旧树生命周期修正 |
+| `internal/parser/bench_test.go` | 全量 vs 增量基准 |
+| `scripts/lsp-bench.py` | 端到端延迟基准（`make bench`） |
 
-**验收**：
+### 2.2 关键技术点
 
-```bash
-go test -run TestDidChangeIncremental ./internal/server/
-# 典型 5k 行文件增量重解析 < 100 ms
+1. **`range` 字段的“是否存在”**  
+   `go.lsp.dev/protocol v0.12.0` 把 `Range` 定义为**值类型**，无法区分
+   “省略 range（整文替换）”与“range 全零（文件开头插入）”。
+   因此 didChange 改用 `json.RawMessage` 重新解码，用 `*rawRange` 判空。
+
+2. **UTF-16 ↔ 字节列**  
+   编辑器用 UTF-16 码元计列（中文 1 列、emoji 2 列），tree-sitter 用字节列。
+   `textpos.Offset` 反向换算时，若落在代理对中间，钳制到字符起点，保证位置单调。
+
+3. **`Tree.Edit` 的坐标必须与旧文本一致**  
+   顺序为：先用**旧**索引算出 `start/oldEnd/newEnd` 的字节与 `Point`，再改文本，
+   最后 `Tree.Edit`。顺序颠倒会导致树位置漂移。
+
+4. **旧树生命周期**  
+   最初实现里 `reparse` 关闭了 oldTree，随后 `doc.SetTree` 又关闭一次，
+   导致 `ts_tree_delete` **双重释放 → SIGSEGV**。
+   改为：`SetTree` 独占负责关闭旧树，调用方不再单独关闭。
+
+5. **`exit` 后进程不退**  
+   stdio 模式下 `conn.Close()` 不会真正关闭 `os.Stdin`，读循环仍阻塞。
+   改为 `ServeStream` 同时监听 `s.exited` 通道，并在退出前给读循环 200 ms 收尾。
+
+6. **LSP 退出码**  
+   规范要求：未先收到 `shutdown` 就收到 `exit`，进程应以非零码退出。
+   用 `exitError` 携带退出码，`main` 通过 `errors.As` 取出。
+
+### 2.3 验收结果
+
+```text
+$ make test                 → 4 个包全部 ok（36 个测试）
+$ go test -race ./...       → 全部 ok
+$ make bench                → 7138 行 / 329 KB
+                              didOpen  → 诊断:  51.2 ms
+                              didChange 往返:   0.7 ms（10 轮均值）
+$ go test -bench='ParseFull|ParseIncremental' ./internal/parser/
+    BenchmarkParseFull-8          15.9 ms/op    4.63 MB/s
+    BenchmarkParseIncremental-8    0.19 ms/op  380.17 MB/s   ← 快 82 倍
 ```
 
-**风险**：`Tree.Edit` 的 `Point` 用字节列，LSP 用 UTF-16 列，必须换算后再调用，否则位置漂移。
+边界用例（全部通过）：
 
----
+| 场景 | 结果 |
+|---|---|
+| 空文件 | 无崩溃 |
+| 纯注释 / 纯换行 | 无崩溃 |
+| 中文 + emoji | 位置换算正确，无误报 |
+| 100 KB 超长单行 | 正常解析 |
+| CRLF 换行 | 无错误 |
+| 越界编辑区间 | 钳制到行末，不崩溃 |
+| 关闭后再 didChange | 静默忽略 |
+| 未 shutdown 就 exit | 退出码 1 |
+| shutdown + exit | 退出码 0 |
 
 ## 3. 待做：Block 3 符号与悬停
 
@@ -215,11 +260,11 @@ Block 1 ✅
 
 | 限制 | 影响 | 计划 |
 |---|---|---|
-| 无增量编辑 | 每次编辑全文重解析 | Block 2 |
 | hover/definition 等仅声明未实现 | 客户端请求会 MethodNotFound | Block 3/4 |
 | grammar 用 `replace` 指向兄弟目录 | 独立 checkout 无法构建 | 后续为 grammar 打 tag |
 | 无工作区索引 | 无跨文件符号 | Block 3 |
-| 未做性能保护 | 超大文件可能慢 | Block 5 |
+| 未做超大文件保护 | 极大文件可能慢 | Block 5 |
+| 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |
 | 未在 Windows 实测 | Windows 路径/换行未验证 | 你已保证环境正常，CI 覆盖 |
 
 ---
@@ -235,6 +280,7 @@ make test                        # 单元测试
 go test -race ./...              # 竞态检测
 make lint                        # gofmt + vet
 make check                       # 样例冒烟
+make bench                       # LSP 端到端延迟
 bash scripts/corpus-smoke.sh 60  # 语料抽样
 
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl | jq

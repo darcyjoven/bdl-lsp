@@ -41,6 +41,10 @@ check: build
 corpus: build
 	@bash scripts/corpus-smoke.sh
 
+## bench: LSP 端到端延迟基准（didOpen / didChange）
+bench: build
+	@python3 scripts/lsp-bench.py
+
 ## clean: 清理构建产物
 clean:
 	rm -rf artifacts/bin dist

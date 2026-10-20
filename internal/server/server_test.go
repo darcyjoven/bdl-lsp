@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -293,5 +294,231 @@ func TestIgnoredNotificationDoesNotCrash(t *testing.T) {
 	msg := h.readMessage(3 * time.Second)
 	if msg["id"] != float64(1) {
 		t.Fatalf("忽略未知通知后服务异常: %v", msg)
+	}
+}
+
+// sendDidChange 发送一次增量编辑。
+func (h *harness) sendDidChange(uri string, version int, changesJSON string) {
+	h.t.Helper()
+	payload := fmt.Sprintf(`{"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":{"uri":%q,"version":%d},"contentChanges":%s}}`, uri, version, changesJSON)
+	h.send(payload)
+}
+
+func (h *harness) sendDidOpen(uri, lang, text string, version int) {
+	h.t.Helper()
+	payload := fmt.Sprintf(`{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":%q,"languageId":%q,"version":%d,"text":%q}}}`, uri, lang, version, text)
+	h.send(payload)
+}
+
+// drainDiagnostics 读取直到收到目标 uri 的 publishDiagnostics。
+func (h *harness) drainDiagnostics(uri string, timeout time.Duration) []any {
+	h.t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		msg := h.readMessage(time.Until(deadline))
+		if msg["method"] != "textDocument/publishDiagnostics" {
+			continue
+		}
+		p, _ := msg["params"].(map[string]any)
+		if p["uri"] != uri {
+			continue
+		}
+		diags, _ := p["diagnostics"].([]any)
+		return diags
+	}
+	h.t.Fatalf("未在 %v 内收到 %s 的诊断", timeout, uri)
+	return nil
+}
+
+func TestDidChangeIncrementalInsertFixesError(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	const uri = "file:///tmp/inc.4gl"
+	// 故意缺少 END MAIN
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"hello\"\n", 1)
+	if diags := h.drainDiagnostics(uri, 5*time.Second); len(diags) == 0 {
+		t.Fatal("缺少 END MAIN 应产生诊断")
+	}
+
+	// 在第 2 行（0 基，即文件末尾空行）插入 END MAIN
+	h.sendDidChange(uri, 2, `[{"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":0}},"text":"END MAIN\n"}]`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) != 0 {
+		t.Errorf("补全 END MAIN 后应无诊断，实际 %d 条：%v", len(diags), diags)
+	}
+}
+
+func TestDidChangeIncrementalDeleteKeepsDiagnostics(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	const uri = "file:///tmp/del.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"hi\"\nEND MAIN\n", 1)
+	if diags := h.drainDiagnostics(uri, 5*time.Second); len(diags) != 0 {
+		t.Fatalf("干净文件不应有诊断：%v", diags)
+	}
+
+	// 删除 END MAIN 的 "END "（第 2 行 0..4），只剩 MAIN，应产生错误
+	h.sendDidChange(uri, 2, `[{"range":{"start":{"line":2,"character":0},"end":{"line":2,"character":4}},"text":""}]`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Error("删除 END 后应产生语法错误")
+	}
+}
+
+func TestDidChangeMultipleEdits(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	const uri = "file:///tmp/multi.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"a\"\n    DISPLAY \"b\"\nEND MAIN\n", 1)
+	h.drainDiagnostics(uri, 5*time.Second)
+
+	// 一次通知里两处替换：把两个字符串换成有语法错误的写法
+	h.sendDidChange(uri, 2, `[
+		{"range":{"start":{"line":1,"character":4},"end":{"line":1,"character":11}},"text":"DISPLAYX"},
+		{"range":{"start":{"line":2,"character":4},"end":{"line":2,"character":11}},"text":"DISPLAYY"}
+	]`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Error("两次非法替换后应产生诊断")
+	}
+}
+
+func TestDidChangeFullReplace(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	const uri = "file:///tmp/full.4gl"
+	h.sendDidOpen(uri, "bdl", "MAIN\nEND MAIN\n", 1)
+	if diags := h.drainDiagnostics(uri, 5*time.Second); len(diags) != 0 {
+		t.Fatalf("干净文件不应有诊断：%v", diags)
+	}
+
+	// 不带 range → 整文替换为损坏内容
+	h.sendDidChange(uri, 2, `[{"text":"MAIN\n    DISPLAY \"unterminated\n"}]`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Error("整文替换为损坏内容后应产生诊断")
+	}
+}
+
+func TestDidChangeUTF16Positions(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	const uri = "file:///tmp/utf16.4gl"
+	// 含中文，UTF-16 列与字节列不同
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"中文\"\nEND MAIN\n", 1)
+	if diags := h.drainDiagnostics(uri, 5*time.Second); len(diags) != 0 {
+		t.Fatalf("干净文件不应有诊断：%v", diags)
+	}
+
+	// 第 1 行 "    DISPLAY " 共 12 列；UTF-16 列 13 指向第一个引号内
+	// 删除第 1 行 12..18（"中文" + 收尾引号）→ 字符串未闭合
+	h.sendDidChange(uri, 2, `[{"range":{"start":{"line":1,"character":12},"end":{"line":1,"character":18}},"text":""}]`)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Error("UTF-16 列定位错误：删除字符串后应产生诊断")
+	}
+}
+
+func TestDidChangeUnknownDocumentIgnored(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	// 未打开就 didChange：应静默忽略，服务仍然可用
+	h.sendDidChange("file:///tmp/unknown.4gl", 1, `[{"text":"x"}]`)
+
+	h.send(`{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	msg := h.readMessage(3 * time.Second)
+	if msg["id"] != float64(2) {
+		t.Fatalf("未知文档的 didChange 不应影响服务：%v", msg)
+	}
+}
+
+func TestExitWithoutShutdownSetsExitCode(t *testing.T) {
+	pool, err := parser.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(pool, logger, "test")
+
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.ServeStream(ctx, h.stream) }()
+
+	h.send(`{"jsonrpc":"2.0","method":"exit","params":{}}`)
+
+	select {
+	case err := <-done:
+		cancel()
+		var exitErr interface{ ExitCode() int }
+		if !errors.As(err, &exitErr) {
+			t.Fatalf("期望 exitError，实际 %v", err)
+		}
+		if got := exitErr.ExitCode(); got != 1 {
+			t.Errorf("退出码 = %d，期望 1", got)
+		}
+	case <-time.After(3 * time.Second):
+		cancel()
+		t.Fatal("exit 后服务未退出（可能死锁）")
+	}
+}
+
+func TestCleanShutdownReturnsNil(t *testing.T) {
+	pool, err := parser.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	srv := New(pool, logger, "test")
+
+	h := newHarness(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- srv.ServeStream(ctx, h.stream) }()
+
+	h.send(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}`)
+	h.readMessage(3 * time.Second)
+
+	h.send(`{"jsonrpc":"2.0","id":2,"method":"shutdown"}`)
+	h.readMessage(3 * time.Second)
+
+	h.send(`{"jsonrpc":"2.0","method":"exit","params":{}}`)
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("正常退出应返回 nil，实际 %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown+exit 后服务未退出")
 	}
 }
