@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**粗略计划阶段（v0.4）**。代码尚未开始实现；本仓库已建立 Git 跟踪、目录规范和规划文档。
+> 当前状态：**P1 Block 1 已完成**（LSP 骨架 + 解析诊断 + check CLI）。代码已开始实现。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -36,6 +36,8 @@
 
 ## 文档
 
+- [功能清单](docs/FEATURES.md) —— 功能基线（标注来源：用户提供 / 协助规划）
+- [P1 详细计划](docs/PLAN-DETAILED-P1.md) —— 当前阶段的实现清单与验收
 - [粗略计划](docs/PLAN.md) —— 目标、范围、架构、里程碑、风险
 - [技术链与工具](docs/TECH-STACK.md) —— 版本、选型理由、构建命令、本机环境注意事项
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
@@ -70,14 +72,39 @@ bash scripts/env-check.sh            # 环境检查
 
 完整的 Linux/Windows 清单、验证命令、沙箱安装记录见 [环境配置](docs/ENVIRONMENT.md)。
 
-## 快速验证（已完成）
+## 快速开始
 
 ```bash
-# 本机已验证：Go + CGO 同时链接两个 grammar，解析样例 0 错误
-# 注意：spike 是临时验证程序，位于 artifacts/，未提交到 Git
-cd bdl-lsp/artifacts/spike
-./spike bdl /code/workspace/tiptop-gp/tiptop/amm/4gl/ammr110.4gl
-./spike per /code/workspace/tiptop-gp/tiptop/amm/per/ammr110.per
+cd bdl-lsp
+source scripts/dev-env.sh      # 加载工具链（沙箱/CI 需要）
+
+make build                     # 构建 artifacts/bin/bdl-lsp
+make test                      # 单元测试
+make lint                      # gofmt + vet
+make check                     # 样例冒烟
+
+# 解析检查（可用于 CI）
+./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
+./artifacts/bin/bdl-lsp check --json testdata/broken.4gl
+
+# 语料抽样
+bash scripts/corpus-smoke.sh 60
+
+# LSP 服务（编辑器通过 stdio 启动）
+./artifacts/bin/bdl-lsp serve --log-level debug
 ```
 
-具体结果与命令见 [调研记录](docs/RESEARCH.md)。
+## 当前能力
+
+| 能力 | 状态 |
+|---|---|
+| LSP initialize / shutdown / exit | ✅ |
+| didOpen / didChange（整文替换）/ didClose | ✅ |
+| tree-sitter 语法诊断（ERROR/MISSING） | ✅ |
+| `.4gl` / `.global` / `.per` 双语言 | ✅ |
+| `check` CLI（文本/JSON） | ✅ |
+| 文档符号 / 跳转 / 引用 / 悬停 | ⏳ Block 3/4 |
+| 增量同步 | ⏳ Block 2 |
+| VSCode 扩展 | ⏳ Block 6 |
+
+详见 [P1 详细计划](docs/PLAN-DETAILED-P1.md)。

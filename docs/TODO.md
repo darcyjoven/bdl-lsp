@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 当前阶段：**规划与环境准备，不写功能代码**。  
+> 当前阶段：**P1 实现中**（Block 1 已完成）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -106,9 +106,10 @@
 
 ---
 
-## 4. 详细计划（下一步文档，先不写代码）
+## 4. 详细计划（下一步文档）
 
-- [ ] `docs/PLAN-DETAILED-P1.md`
+- [x] `docs/FEATURES.md`（功能基线，含来源标记）
+- [x] `docs/PLAN-DETAILED-P1.md`
   - [ ] 包/文件清单与接口签名（`internal/server`、`document`、`parser`、`index`）
   - [ ] LSP 方法清单与能力协商字段
   - [ ] 每个任务的验收命令
@@ -120,6 +121,7 @@
   - [ ] 4GL 绑定/字段提取规则表
   - [ ] 诊断/忽略配置
   - [ ] 标注集与评估脚本
+  - [ ] record `.*` 成员校验（最后做，默认关闭）
 - [ ] `docs/FORMATTER.md`（规则表与示例）
 - [ ] `docs/DEPLOY.md`（配置 schema、rsync/scp、安全、错误处理）
 - [ ] `docs/TESTING.md`（测试矩阵、Linux/Windows 命令）
@@ -131,18 +133,27 @@
 
 ### bdl-lsp
 
-- [ ] `go.mod`：Go 1.24，固定 `go-tree-sitter v0.25.0`、`go.lsp.dev/*`、grammar 模块。
-- [ ] `cmd/bdl-lsp/main.go`：`--version`、`--stdio`、`--log-level`、`deploy` 子命令占位。
-- [ ] `internal/server`：initialize/shutdown/exit、method 分发、未知方法、panic 恢复。
-- [ ] `internal/document`：didOpen/didChange/didClose、UTF-16 行列转换。
-- [ ] `internal/parser`：parser 池、双 grammar、查询加载、错误节点统计。
-- [ ] `internal/index`：工作区扫描、`FileIndex` 骨架、按需解析 `.per`。
-- [ ] `internal/features`：documentSymbol、definition（函数/变量）、hover。
-- [ ] 诊断：解析 ERROR/MISSING → `publishDiagnostics`。
-- [ ] 配置：`bdl.generoVersion`（默认 2.50）。
-- [ ] `Makefile`：`build`、`test`、`lint`、`corpus`、`release`。
+Block 1 已完成：
+
+- [x] `go.mod`：Go 1.24，`go-tree-sitter v0.25.0`、`go.lsp.dev/*`；grammar 暂用 `replace`。
+- [x] `main.go`：`serve` / `check` / `version` 子命令，`--log-level` / `--log-file`。
+- [x] `internal/server`：initialize/shutdown/exit、method 分发、未知方法、stdio。
+- [x] `internal/document`：Store/Document/LineIndex（didChange 暂为整文替换）。
+- [x] `internal/parser`：parser 池、双 grammar、ABI 校验、ERROR/MISSING 收集。
+- [x] 诊断：解析 ERROR/MISSING → `publishDiagnostics`（UTF-16 换算）。
+- [x] `internal/check`：`check` CLI（文本 / `--json` / `-q`）。
+- [x] `Makefile`：`build`/`test`/`test-race`/`vet`/`lint`/`check`/`corpus`。
+- [x] 测试：parser 8 个、document 5 个、server 6 个（协议级）+ 2 个 benchmark。
+- [x] `scripts/corpus-smoke.sh`：语料抽样冒烟。
+
+待做：
+
+- [ ] `internal/index`：工作区扫描、`FileIndex`、按需解析 `.per`（Block 3）。
+- [ ] `internal/features`：documentSymbol、definition、references、hover（Block 3/4）。
+- [ ] 增量同步 + `Tree.Edit`（Block 2）。
+- [ ] 配置 `bdl.generoVersion`（默认 2.50）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
-- [ ] 本地产物：Linux amd64 + Windows amd64（v1）。
+- [ ] 为 grammar 打 tag，去掉 `replace`。
 
 ### vscode-extension（→ `vscode-bdl`）
 
@@ -206,6 +217,7 @@
 - [ ] 补全（关键字/函数/字段）。
 - [ ] 重命名。
 - [ ] Code Action（字段不存在时提示、忽略）。
+- [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。
 - [ ] 语义高亮（VSCode + Zed）。
 - [ ] 数据库 schema 索引。
 - [ ] 纯 Go SFTP（仅在确有需求时评估）。

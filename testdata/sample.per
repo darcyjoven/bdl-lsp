@@ -1,0 +1,20 @@
+-- 样例：最小 Form Specification
+SCHEMA formonly
+
+LAYOUT (text=%"sample")
+GRID
+{
+  Name:  [f1        ]
+  Phone: [f2        ]
+}
+END
+END
+
+ATTRIBUTES
+EDIT f1 = formonly.cust_name, REQUIRED;
+EDIT f2 = formonly.phone;
+END
+
+INSTRUCTIONS
+SCREEN RECORD sample_rec(formonly.cust_name, formonly.phone)
+END

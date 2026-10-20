@@ -1,0 +1,50 @@
+.PHONY: all build test test-race vet fmt lint check corpus clean help
+
+GO ?= go
+BIN := artifacts/bin/bdl-lsp
+
+all: build
+
+## build: 构建本地二进制到 artifacts/bin/bdl-lsp
+build:
+	$(GO) build -trimpath -o $(BIN) .
+	@echo "已生成 $(BIN)"
+
+## test: 运行单元测试
+test:
+	$(GO) test ./...
+
+## test-race: 带竞态检测运行测试（较慢）
+test-race:
+	$(GO) test -race ./...
+
+## vet: go vet 静态检查
+vet:
+	$(GO) vet ./...
+
+## fmt: 格式化代码
+fmt:
+	$(GO) fmt ./...
+
+## lint: fmt 检查 + vet
+lint: vet
+	@GOFMT="$$(GOBIN="$$($(GO) env GOROOT)/bin" command -v gofmt || echo "$$($(GO) env GOROOT)/bin/gofmt")"; \
+	out=$$("$$GOFMT" -l . | grep -v '^artifacts/' || true); \
+	if [ -n "$$out" ]; then echo "以下文件未格式化："; echo "$$out"; exit 1; fi; \
+	echo "格式检查通过"
+
+## check: 用 testdata 样例做冒烟（应全部通过）
+check: build
+	$(BIN) check testdata/sample.4gl testdata/sample.per
+
+## corpus: 对真实语料抽样做解析冒烟（需 tiptop-gp）
+corpus: build
+	@bash scripts/corpus-smoke.sh
+
+## clean: 清理构建产物
+clean:
+	rm -rf artifacts/bin dist
+
+## help: 列出可用目标
+help:
+	@sed -n 's/^## //p' Makefile

@@ -202,7 +202,7 @@ GitHub Release
 | 悬停 | ✅ | 手册文档、类型推导增强 | 显示签名、类型、定义位置 |
 | 语法诊断 | ✅ | 错误恢复增强 | 基于 ERROR/MISSING 节点 |
 | `.per` 内部校验 | ✅ | 布局/属性语义完善 | 重复 item、SCREEN RECORD 引用、布局引用 |
-| 4GL 字段存在性 | ✅（显式字段） | `BY NAME`、动态 API、schema 列 | 见 6.2 的降级策略 |
+| 4GL 字段存在性 | ✅（显式字段） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 |
 | 4GL 格式化 | ✅（缩进/大小写/空白） | 重排、对齐、SQL 格式化 | 保守，不改变换行结构 |
 | `.per` 格式化 | ✅（非 LAYOUT 小节） | 布局对齐 | 绝不改 LAYOUT 的列位置 |
 | 部署 + 编译 | ✅（ssh + rsync；scp 备选） | 多目标、回滚、编译产物归档 | 见 7.4 |
@@ -318,7 +318,7 @@ GitHub Release
 
 **v1 暂不校验**：
 
-- `INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*` 的记录成员是否存在（需推断记录与表单的对应关系，容易误报）。
+- `INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*` 的记录成员校验：**需要，但最后做**（P6，默认关闭，先评估误报率）。
 - `ui.Form.setFieldValue("form", "field", ...)` 等动态字符串 API。
 - 通过变量/表达式动态打开的表单。
 
@@ -578,7 +578,7 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 | grammar ABI/版本漂移 | 运行崩溃 | 固定 go-tree-sitter v0.25.0 与 grammar revision；CI 解析冒烟；升级单独验证 |
 | `.4gl` 语料本身有 2980 个 ERROR | 误报/噪声 | 解析错误只报语法；语义校验仅在无错误区域；提供忽略配置 |
 | 表单路径/上下文不确定 | 字段误报 | 唯一解析才校验；模块级回退；严格模式可选；忽略列表 |
-| `BY NAME` 记录映射复杂 | 误报 | v1 不做；v1.1 用置信度与显式开启 |
+| `BY NAME` record `.*` 映射复杂 | 误报 | 最后做（P6），默认关闭；评估误报率后再决定是否默认开启 |
 | 格式化破坏代码 | 用户不信任 | 保守三阶段、错误守卫、幂等/语义测试、默认仅缩进 |
 | Zed 无任意命令 | 部署体验差异 | CLI + `.zed/tasks.json`；LSP command/code action 兜底 |
 | Zed/Rust 本机缺失 | 无法本地验证 | 安装 rustup + wasm32-wasip2 + wasi-sdk；CI 持续 `cargo check` |

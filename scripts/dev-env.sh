@@ -19,8 +19,11 @@ export RUSTUP_HOME="$TOOLCHAIN/rustup"
 export CARGO_HOME="$TOOLCHAIN/cargo"
 export WASI_SDK_PATH="$TOOLCHAIN/wasi-sdk"
 
+# gofmt 在 GOROOT/bin 下，且本机 /usr/local/bin 未收录，显式加入 PATH
+GOROOT_BIN="$("$(command -v go)" env GOROOT 2>/dev/null)/bin"
+
 # 本机安装的 CLI：rustc/cargo、wasi clang、code、gh、tree-sitter、Xvfb
-export PATH="$TOOLCHAIN/bin:$CARGO_HOME/bin:$TOOLCHAIN/wasi-sdk/bin:$ROOT/artifacts/bin:$PATH"
+export PATH="$TOOLCHAIN/bin:$CARGO_HOME/bin:$TOOLCHAIN/wasi-sdk/bin:$ROOT/artifacts/bin:$GOROOT_BIN:$PATH"
 
 # 本机 Xvfb 依赖自带的 libXfont2（系统未安装）；其他工具不受影响
 export LD_LIBRARY_PATH="$TOOLCHAIN/xvfb/usr/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
