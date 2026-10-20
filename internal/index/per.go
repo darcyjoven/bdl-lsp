@@ -39,9 +39,60 @@ func BuildPer(tree *ts.Tree, src []byte, version int32) *FileIndex {
 			b.collectPerItems(child)
 		case "instructions":
 			b.collectScreenRecords(child)
+		case "layout":
+			b.collectLayoutRefs(child)
 		}
 	}
 	return fi
+}
+
+// collectLayoutRefs 收集 LAYOUT 段里的 item tag 引用（P3b 内部校验用）。
+//
+// item_tag 只出现在 area（GRID 等容器的文本块）里，节点文本含方括号，
+// 剥掉括号取名字。布局 tag 是“引用”——定义在 ATTRIBUTES；
+// 引用未定义的 tag 会在内部校验里报告。
+func (b *builder) collectLayoutRefs(layout *ts.Node) {
+	// 用 cursor DFS 找全部 item_tag（嵌套在 layout_section/grid/area 下）
+	cursor := b.cursor
+	cursor.Reset(*layout)
+	for {
+		node := cursor.Node()
+		if node.Kind() == "item_tag" {
+			text := b.text(node)
+			tag := strings.TrimSpace(stripBrackets(text))
+			if tag != "" {
+				b.fi.LayoutRefs = append(b.fi.LayoutRefs, LayoutRef{
+					Tag:       tag,
+					Lower:     strings.ToLower(tag),
+					StartByte: node.StartByte(),
+					EndByte:   node.EndByte(),
+				})
+			}
+		}
+		if cursor.GotoFirstChild() {
+			continue
+		}
+		for {
+			if cursor.GotoNextSibling() {
+				break
+			}
+			if !cursor.GotoParent() {
+				return
+			}
+			// 回到 layout 本身之上就结束
+			if cursor.Node().Id() == layout.Id() {
+				return
+			}
+		}
+	}
+}
+
+// stripBrackets 去掉布局 tag 两侧的方括号（[f01] → f01）。
+func stripBrackets(s string) string {
+	if len(s) >= 2 && s[0] == '[' && s[len(s)-1] == ']' {
+		return s[1 : len(s)-1]
+	}
+	return s
 }
 
 // collectPerItems 遍历 ATTRIBUTES 小节。
@@ -94,10 +145,14 @@ func (b *builder) addPerItem(item *ts.Node) {
 
 // addPhantomItem 为 PHANTOM 字段建符号。
 func (b *builder) addPhantomItem(item *ts.Node) {
-	// PHANTOM 节点的名字通常在第 2 个 identifier 上；退化为取第一个 name。
-	nameNode := findChild(item, "name")
-	if nameNode == nil {
-		nameNode = findChild(item, "identifier")
+	// phantom_item: seq(PHANTOM, field_ref, type_clause?, ";")
+	// 名字在 field_ref 的 column 字段里（node-types 实测：无 name/identifier 子节点）。
+	var nameNode *ts.Node
+	if fr := findChild(item, "field_ref"); fr != nil {
+		nameNode = fr.ChildByFieldName("column")
+		if nameNode == nil {
+			nameNode = findChild(fr, "name")
+		}
 	}
 	if nameNode == nil {
 		return
@@ -161,8 +216,13 @@ func (b *builder) addScreenRecord(entry *ts.Node) {
 		if child == nil || child.Kind() != "field_ref" {
 			continue
 		}
-		// field_ref 形如 table.column；符号名用 column 部分。
+		// field_ref 形如 table.column 或裸字段名（SCREEN RECORD sr(sr01)）。
+		// column 部分**有字段名**；裸名是名为 "name" 的**节点类型**
+		// （parse 实测：无字段前缀，ChildByFieldName 取不到，要用 findChild）。
 		col := child.ChildByFieldName("column")
+		if col == nil {
+			col = findChild(child, "name")
+		}
 		if col == nil {
 			continue
 		}

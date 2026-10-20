@@ -59,6 +59,11 @@ type Settings struct {
 	MissingDiagnostics DiagnosticLevel `json:"missingDiagnostics"`
 	// Globals 是 GLOBALS 引入（P3a）相关的配置。
 	Globals GlobalsSettings `json:"globals"`
+	// FieldDiagnostics 是 4GL 字段存在性校验（P3b）的诊断级别，
+	// 默认 warning（Q3 决策：只在表单唯一解析成功时报告）。
+	FieldDiagnostics DiagnosticLevel `json:"fieldDiagnostics"`
+	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
+	PerRoots []string `json:"perRoots"`
 	// Limits 资源保护阈值。
 	Limits Limits `json:"limits"`
 	// LogLevel 日志级别。
@@ -93,6 +98,7 @@ func Default() Settings {
 			FileNotFoundDiagnostics:     LevelWarning,
 			UnresolvedSourceDiagnostics: LevelWarning,
 		},
+		FieldDiagnostics: LevelWarning,
 		Limits: Limits{
 			MaxFileBytes:   2 * 1024 * 1024, // 2 MB
 			MaxFileLines:   20000,
@@ -216,6 +222,14 @@ func (m *Manager) merge(s *Settings) {
 	if s.Globals.SearchPaths != nil {
 		m.cur.Globals.SearchPaths = s.Globals.SearchPaths
 	}
+
+	// P3b：字段校验与表单根（PerRoots 同样用 nil 区分未下发与清空）
+	if s.FieldDiagnostics != "" {
+		m.cur.FieldDiagnostics = s.FieldDiagnostics
+	}
+	if s.PerRoots != nil {
+		m.cur.PerRoots = s.PerRoots
+	}
 }
 
 // Get 返回当前配置的快照。
@@ -266,6 +280,7 @@ func (s Settings) Validate() []string {
 	for name, lvl := range map[string]DiagnosticLevel{
 		"globals.fileNotFoundDiagnostics":     s.Globals.FileNotFoundDiagnostics,
 		"globals.unresolvedSourceDiagnostics": s.Globals.UnresolvedSourceDiagnostics,
+		"fieldDiagnostics":                    s.FieldDiagnostics,
 	} {
 		switch lvl {
 		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:

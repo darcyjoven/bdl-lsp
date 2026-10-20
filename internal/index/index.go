@@ -108,6 +108,20 @@ type FileIndex struct {
 	// （通常是 .global 文件）。块内符号已进 Symbols（Scope 为 ScopeGlobals），
 	// 单独记一个标志便于快速判断。
 	HasGlobalsBlock bool
+	// LayoutRefs 是 .per LAYOUT 里的 item tag 引用（[f01] 形式）。
+	// 定义在 ATTRIBUTES，这里只是引用——供“布局引用了未定义 item”
+	// 的内部校验用（P3b）。仅 per 语言有内容。
+	LayoutRefs []LayoutRef
+}
+
+// LayoutRef 是 LAYOUT 里的一个 item tag 引用。
+type LayoutRef struct {
+	// Tag 是方括号里的名字（已去括号）。
+	Tag string
+	// Lower 是 Tag 的小写形式。
+	Lower     string
+	StartByte uint
+	EndByte   uint
 }
 
 // Lookup 按小写名查找符号，返回所有匹配（不同作用域可能重名）。

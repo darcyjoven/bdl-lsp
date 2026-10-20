@@ -28,11 +28,14 @@ func (s *Server) handleDidOpen(ctx context.Context, req jsonrpc2.Request) error 
 	doc := s.docs.Open(uri, lang, params.TextDocument.Version, params.TextDocument.Text)
 	s.logger.Debug("didOpen", "uri", uri, "lang", lang, "version", doc.Version)
 	s.clearSourceDiags(uri) // 打开新文档：T5 缓存按当前内容重算
+	s.clearFieldDiags(uri)  // P3b：字段诊断缓存同理
 	s.reparseFull(ctx, doc)
 
 	// P3a：本文档可能是其它文档的 GLOBALS 导入目标（.global 常见），
 	// 打开即触发引用方重算（内存版优先于磁盘版）。
 	s.refreshImporters(ctx, uri)
+	// P3b：本文档可能是其它 4gl 的表单（.per 常见），同理。
+	s.refreshFormImporters(ctx, uri)
 	return nil
 }
 
@@ -98,13 +101,17 @@ func (s *Server) handleDidChange(ctx context.Context, req jsonrpc2.Request) erro
 
 	// T5 清空 + 防抖：来源检查是全树 query（大文件 ~27ms），
 	// 不能挂在按键路径上；停顿 400ms 后 reparseFull 恢复完整诊断。
+	// P3b 的字段诊断同策略（同为全树 query）。
 	s.clearSourceDiags(uri)
+	s.clearFieldDiags(uri)
 	s.reparse(ctx, doc, oldTree)
 	s.scheduleSourceRecheck(uri)
 
 	// P3a：本文档可能是其它文档的 GLOBALS 导入目标，内容变化后
 	// 引用方的跳转目标/来源诊断需要重算。
 	s.refreshImporters(ctx, uri)
+	// P3b：.per 内容变化 → 引用它的 4gl 重算字段诊断。
+	s.refreshFormImporters(ctx, uri)
 	return nil
 }
 
@@ -148,6 +155,8 @@ func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error
 	uri := string(params.TextDocument.URI)
 	s.docs.Close(uri)
 	s.indexes.drop(uri)
+	s.clearSourceDiags(uri)
+	s.clearFieldDiags(uri)
 	s.logger.Debug("didClose", "uri", uri)
 	// 关闭时清空诊断，避免编辑器残留。
 	s.publish(ctx, uri, 0, nil, nil)

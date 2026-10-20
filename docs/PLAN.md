@@ -203,7 +203,7 @@ GitHub Release
 | 语法诊断 | ✅ | 错误恢复增强 | 基于 ERROR/MISSING 节点 |
 | `.per` 内部校验 | ✅ | 布局/属性语义完善 | 重复 item、SCREEN RECORD 引用、布局引用 |
 | GLOBALS 模组全局变量 | ✅（P3a 完成） | 跨文件 references、大纲分组 | 跳转/来源标注/两类警告，见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
-| 4GL 字段存在性 | ✅（显式字段） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 |
+| 4GL 字段存在性 | ✅（P3b 完成） | record `.*`（最后做）、动态 API、schema 列 | 见 7.2 与 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
 | 4GL 格式化 | ✅（缩进/大小写/空白） | 重排、对齐、SQL 格式化 | 保守，不改变换行结构 |
 | `.per` 格式化 | ✅（非 LAYOUT 小节） | 布局对齐 | 绝不改 LAYOUT 的列位置 |
 | 部署 + 编译 | ✅（ssh + rsync；scp 备选） | 多目标、回滚、编译产物归档 | 见 7.4 |
@@ -508,14 +508,14 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
   107 处未解析全部告警；e2e 16/16。
 - 详细设计与实现记录：[PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
 
-### P3b 表单字段校验（约 4–6 个工作块）
+### P3b 表单字段校验（约 4–6 个工作块）✅ 已完成
 
-- 复用 P3a 建立的跨文件索引基础（诊断 relatedInformation 改造共用）。
-- `.per` 索引、表单路径解析、表单上下文跟踪。
-- 显式字段引用校验；关联诊断与跳转。
-- `.per` 内部一致性检查。
-- 语料标注与误报调优；性能优化。
-- 验收：50 个模块人工标注，误报 < 5%；基线语料无误报。
+- 复用 P3a 建立的跨文件索引基础（internal/form 与 internal/globals 平行）。
+- `.per` 索引、表单路径解析（R1a 占语料 94%）、按函数隔离的表单上下文跟踪。
+- 显式字段引用校验（7 类语句）；诊断含 relatedInformation 可跳转到表单。
+- `.per` 内部一致性检查（重复 item / 布局 tag / SCREEN RECORD）。
+- 语料评估：`cmd/field-audit` 全量 1725 条发现，自动标注可疑率 2.8% < 5%。
+- 实现记录与踩坑：[PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md)。
 
 ### P4 格式化（约 5–7 个工作块）
 

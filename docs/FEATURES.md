@@ -14,8 +14,8 @@
 | 1 | 语法高亮（`.4gl` / `.global` / `.per`） | 🧑 用户提供 | v1 | ✅ VSCode TextMate + Zed query |
 | 2 | 函数、变量跳转 | 🧑 用户提供 | v1 | ✅ 单文件内；GLOBALS 跨文件见 #12 |
 | 3 | 4GL 与 `.per` 格式化 | 🧑 用户提供 | v1 | 未开始（P4） |
-| 4 | 4GL 中校验字段是否存在 | 🧑 用户提供 | v1（显式字段）；record `.*` 最后 | 未开始（P3b） |
-| 5 | 4GL 与 `.per` 文件的联动功能 | 🧑 用户提供 | v1 | 未开始（P3b 起） |
+| 4 | 4GL 中校验字段是否存在 | 🧑 用户提供 | v1（显式字段）；record `.*` 最后 | ✅ P3b 已完成（语料 2.8% 可疑率、e2e 18/18），见 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
+| 5 | 4GL 与 `.per` 文件的联动功能 | 🧑 用户提供 | v1 | ✅ P3b：.per 变更刷新 4gl 诊断、relatedInformation 跳转 |
 | 6 | Go 实现的 LSP 服务 | 🧑 用户提供 | v1 | ✅ |
 | 7 | VSCode 插件 | 🧑 用户提供 | v1 | ✅（v0.1.0 VSIX，14 e2e） |
 | 8 | Zed 插件 | 🧑 用户提供 | P2 | ✅（`4gl-full`，38 项 query 校验） |

@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-20  
-> 当前阶段：**P3a 已完成**（Block 1–7 + Zed 扩展 + GLOBALS 模组全局变量）；下一步 **P3b 字段校验**。  
+> 当前阶段：**P3a/P3b 已完成**（Block 1–7 + Zed 扩展 + GLOBALS + 字段校验）；下一步 **P4 格式化**。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -289,17 +289,32 @@ Block P2 已完成：
       `searchPaths`）+ VSCode `package.json`（10→13 项）+ 客户端同步 +
       Zed 文档示例；e2e 14 → **16** 用例全通过。
 
-### 字段校验（P3b，原 P3）
+### 字段校验（P3b ✅ 已完成 2026-10-20）
 
-- [ ] 复用 P3a 的跨文件索引与 `relatedInformation` 改造。
-- [ ] `.per` 索引：item 名、类型、绑定列、PHANTOM、定义位置。
-- [ ] `SCREEN RECORD` 解析与字段集合。
-- [ ] 4GL 表单绑定：`WITH FORM`、`OPEN FORM`、`DISPLAY FORM`。
-- [ ] 字段引用：`ON` 列表、`BEFORE/AFTER FIELD`、`NEXT FIELD`、`INFIELD`、`DISPLAY TO`。
-- [ ] 表单路径解析（`42f` → `per`）与多命中策略。
-- [ ] 诊断 + relatedInformation + 忽略配置。
-- [ ] 评估脚本与 50 模块标注。
-- [ ] `.per` 内部校验：重复 item、布局 tag 未定义、SCREEN RECORD 引用不存在。
+> 完整实现记录：[PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md)。
+
+- [x] 复用 P3a 的跨文件索引模式（internal/form 与 internal/globals 平行结构）。
+- [x] `.per` 索引：item 名、类型、PHANTOM、定义位置（既有）+
+      LayoutRefs（新增，供内部校验）；修复 PHANTOM 与 SCREEN RECORD
+      裸字段名提取（名字在 field_ref 里，原实现取不到）。
+- [x] `SCREEN RECORD` 解析与字段集合（含 table.column 与裸名两种形态）。
+- [x] 4GL 表单绑定：`WITH FORM`、`OPEN FORM` + `DISPLAY FORM`（命名绑定）、
+      按函数隔离的作用域跟踪（`(function/main/report) @container`）。
+- [x] 字段引用：`BEFORE/AFTER FIELD`、`ON CHANGE`（branch）、`NEXT FIELD`（hook）、
+      `INPUT FROM`、`CONSTRUCT ON`、`DISPLAY TO`、`INFIELD()`——单 query 多 pattern。
+- [x] 表单路径解析：R1a（../per/，语料 94%）、R1b、R1c（perRoots）、
+      R2（basename 唯一）、R3（模块段消歧）；歧义放弃校验（Q3）。
+- [x] 诊断 `field-not-in-form` + relatedInformation 指向 .per 文件 +
+      配置 `fieldDiagnostics`（默认 warning，可 off）。
+- [x] 评估：`cmd/field-audit` 全量 7699 文件 → 1725 条发现；
+      自动标注（模块段一致性）可疑率 **2.8% < 5%**；人工抽查确认真阳性
+      （语料存在 .4gl/.per 版本漂移，如 aapr106 的 apa18 不在 aapt110.per）。
+- [x] `.per` 内部校验：重复 item、布局 tag 未定义、SCREEN RECORD 引用不存在
+      （三个诊断码，共用 fieldDiagnostics 级别）。
+- [ ] 忽略列表（按文件/字段/表单 glob）——未做；`off` 可整体关闭兜底，
+      精细忽略待真实使用反馈再排期。
+- [ ] 50 模块人工标注——以自动标注（模块一致性 97.2%）+ 抽样人工复核替代；
+      完整人工标注待真实用户环境。
 
 ### 格式化（P4）
 

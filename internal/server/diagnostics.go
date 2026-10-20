@@ -68,6 +68,9 @@ func (s *Server) reparse(ctx context.Context, doc *document.Document, oldTree *t
 	// T5（变量来源）诊断从缓存取：重算走 reparseFull（防抖触发），
 	// 普通编辑路径不做全树 query（7138 行文件 ~27ms，按键不能等）。
 	gDiags = append(gDiags, s.cachedSourceDiags(doc.URI)...)
+	// P3b：字段/.per 内部诊断同样走缓存（reparseFull 重算）；
+	// 与 T5 相同的取舍：打字时这两类警告短暂消失，停顿后恢复。
+	gDiags = append(gDiags, s.cachedFieldDiags(doc.URI)...)
 
 	s.publish(ctx, doc.URI, version, issues, gDiags)
 }
@@ -123,7 +126,12 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	gDiags := s.globalsChecks(ctx, doc, gfi)
 	// T5 重算（unresolvedSourceChecks 内部写缓存）
 	gDiags = append(gDiags, s.unresolvedSourceChecks(doc, gfi)...)
-	// 再补缓存里其它来源（如有）——这里直接用刚算出的结果
+	// P3b：字段校验（4gl）或 .per 内部校验（per），追加进同一次发布
+	if doc.Lang == parser.LangBDL {
+		s.formChecks(doc, &gDiags)
+	} else {
+		s.perChecks(doc, &gDiags)
+	}
 	s.publish(ctx, doc.URI, version, issues, gDiags)
 }
 

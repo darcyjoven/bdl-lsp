@@ -230,7 +230,11 @@ type variableUse struct {
 //	pattern 1 `(variable (identifier) @use)` 只捕获 variable 的直接
 //	identifier（首标识符）——rec.field 的字段侧是 object 的 property，
 //	不在捕获范围（保守规则：字段来自记录结构或 schema）；
-//	pattern 2 跳过 call.name（函数名：来自其他模块，无跨文件函数索引）。
+//	pattern 2 跳过 call.name（函数名：来自其他模块，无跨文件函数索引）；
+//	pattern 3-6 跳过表单字段上下文（P3b 联动修正）：INPUT ... FROM f、
+//	CONSTRUCT ... ON f、DISPLAY ... TO f、NEXT FIELD f、INFIELD(f) 里的
+//	名字是**表单字段**不是程序变量——T5 把它们当变量查会全部误报
+//	（实测：INPUT x FROM f01 的 f01 被 variable-source-unresolved 命中）。
 //
 // 性能实测（7138 行 / 329KB 文件）：
 //   - TreeCursor 逐节点 DFS：didChange 0.7ms → 74ms（每次 CGO 调用太贵）；
@@ -245,6 +249,11 @@ type variableUse struct {
 const queryVariables = `
 (variable (identifier) @use)
 (call name: (variable (identifier) @skip))
+(input field: (variable (identifier) @skip))
+(construct field: (variable (identifier) @skip))
+(display field: (variable (identifier) @skip))
+(hook field: (variable (identifier) @skip))
+(infield_function params: (expression (variable (identifier) @skip)))
 `
 
 // variableQueries 是惰性编译并复用的 query（Query 只读可共享）。

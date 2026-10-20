@@ -51,6 +51,16 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 		}
 	}
 
+	// P3b：perRoots 变化同理重建表单解析器。
+	if !searchPathsEqual(s.lastPerRoots, settings.PerRoots) {
+		s.logger.Info("perRoots 变化，重建表单解析器",
+			"old", s.lastPerRoots, "new", settings.PerRoots)
+		s.lastPerRoots = append([]string(nil), settings.PerRoots...)
+		if s.rootPath != "" {
+			s.newFormResolver(s.rootPath)
+		}
+	}
+
 	// 重新诊断所有打开的文档
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)
