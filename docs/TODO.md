@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-19  
-> 当前阶段：**P1 实现中**（Block 1–3 已完成）。  
+> 当前阶段：**P1 实现中**（Block 1–4 已完成）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -163,10 +163,17 @@ Block 3 已完成：
 - [x] 索引缓存（按 URI+版本失效）。
 - [x] 大小写不敏感匹配；光标取词不依赖语法树。
 
+Block 4 已完成：
+
+- [x] `textDocument/definition`：局部 → 参数 → 全局 → `rec.field` 记录字段。
+- [x] `textDocument/references`：词边界 + 排除注释/字符串 + includeDeclaration。
+- [x] 修复光标落在词首/词中时 `rec.field` 判定失败。
+
 待做：
 
-- [ ] 工作区扫描（当前 `workspace/symbol` 只覆盖已打开文档）。
-- [ ] `definition` / `references`（Block 4）。
+- [ ] 工作区扫描（当前 `workspace/symbol`、`references` 只覆盖已打开文档）。
+- [ ] 跨文件跳转（genero 的 `GLOBALS` / 导入）。
+- [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
 - [ ] 配置 `bdl.generoVersion`（默认 2.50）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。

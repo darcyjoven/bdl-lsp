@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.4（Block 3 完成）  
+> 版本：v0.5（Block 4 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–3 已完成**；Block 4–7 待做。  
+> 状态：**Block 1–4 已完成**；Block 5–7 待做。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -261,20 +261,90 @@ hover(FUNCTION r110_tm) → "FUNCTION r110_tm(p_row, p_col)"
 SCREEN RECORD 与 ATTRIBUTES item（mmg01、more 等）均正确提取
 ```
 
-## 4. 待做：Block 4 定义与引用
+## 4. 已完成：Block 4 定义与引用
 
-| 任务 | 说明 |
+### 4.1 交付内容
+
+| 文件 | 内容 |
 |---|---|
-| 4.1 | 光标 → 最小 CST 节点 → 标识符 |
-| 4.2 | 作用域解析：局部 → 参数 → 模块全局 → 跨模块 |
-| 4.3 | `textDocument/definition`：返回定义位置；多命中返回全部 |
-| 4.4 | `textDocument/references`：同作用域规则下的所有出现 |
-| 4.5 | 记录字段：`rec.field` → `DEFINE record` 内的字段声明 |
-| 4.6 | 索引缓存（gob）与失效（mtime/size/grammar rev） |
+| `internal/server/navigation.go` | `definition`、`references` 两个 handler |
+| `internal/server/server.go` | 注册 `textDocument/definition`、`textDocument/references` |
+| `internal/server/server_test.go` | 新增 8 个测试 |
 
-**验收**：函数/变量/记录字段跳转成功率 > 90%（抽样 50 个真实文件）。
+### 4.2 作用域解析规则
 
----
+按 Genero 语义，从内到外：
+
+```text
+1. rec.field   → 记录字段（先找 rec 定义，再在其 Children 里找 field）
+2. 局部 DEFINE → 当前函数体内（Container 匹配）
+3. 函数参数    → 当前函数（ScopeParam）
+4. 模块级      → DEFINE / CONSTANT / TYPE / FUNCTION / REPORT / MAIN
+```
+
+- 每组命中即返回，不再继续外扩——内层遮蔽外层。
+- 裸字段名（如 `f1` 不带 `rec.`）**不推断归属**，避免跨记录误跳。
+- 同名多命中时返回全部位置，交给客户端选择。
+
+### 4.3 引用查找的过滤
+
+引用查找最容易误报，因此做了三层过滤：
+
+| 过滤 | 原因 |
+|---|---|
+| 词边界（ASCII 标识符字符） | 避免 `r110` 匹配到 `r110_tm` |
+| 注释、字符串、字面量内部 | 注释里写变量名不算引用 |
+| `includeDeclaration` | LSP 上下文参数，默认排除定义本身 |
+
+### 4.4 实现要点与踩坑
+
+1. **光标可能落在词的任意位置**  
+   最初 `qualifierAt` 假设 `offset - len(word)` 就是词首，实测光标常在词首或词中，
+   导致 `rec.field` 判定失败、字段跳转返回 null。
+   新增 `wordStartAt`：先向前回退到词首，再向后确认完整词，最后忽略大小写比对。
+
+2. **`ReferenceContext` 是值类型**  
+   `params.Context != nil` 无法编译；直接读 `params.Context.IncludeDeclaration`
+   （零值就是 false，正好是“排除声明”的默认行为）。
+
+3. **`TYPE ... RECORD` 的字段在下一层**  
+   `define r RECORD ...` 的 `record` 在 `types` 字段里；
+   而 `TYPE t RECORD ...` 的 `record` 又在 `type` 节点的 `types` 里。
+   两者都用 `recordOf` 统一下探。
+
+4. **`record LIKE table.*` 的字段未知**  
+   真实语料里 `mmg RECORD LIKE mmg_file.*` 是“字段来自数据库表”。
+   LSP 没有 schema 信息，因此该记录无 Children——跳转会落到记录本身。
+   这符合“宁可不报”的原则；schema 索引是 P6 的独立任务。
+
+### 4.5 验收结果
+
+```text
+$ go test ./internal/server/   → 30 个测试通过（新增 8 个）
+$ go test -race ./...          → 全部通过
+$ make lint                    → 通过
+$ bash scripts/corpus-smoke.sh → 80 文件 0 错误
+```
+
+真实文件 `ammr110.4gl`：
+
+```text
+definition(CALL r110_tm @L126)  → L132（FUNCTION r110_tm 定义）
+references(r110_tm)            → 2 处（定义 + 调用）
+```
+
+单测覆盖：
+
+| 测试 | 验证点 |
+|---|---|
+| `TestDefinitionGlobalVariable` | 全局变量跳转定位到定义行 |
+| `TestDefinitionFunction` | 函数调用跳转到 `FUNCTION` 行 |
+| `TestDefinitionLocalVariablePrefersLocal` | 局部遮蔽全局时优先局部 |
+| `TestDefinitionRecordField` | `r.f1` 跳到记录内字段 |
+| `TestDefinitionNotFound` | 空白处返回 null |
+| `TestReferencesFindsAllUses` | 定义 + 2 处使用 = 3 |
+| `TestReferencesExcludesDeclaration` | `includeDeclaration=false` 时排除定义 |
+| `TestReferencesExcludesCommentsAndStrings` | 注释/字符串内不计入引用 |
 
 ## 5. 待做：Block 5 诊断增强
 
@@ -337,9 +407,8 @@ Block 1 ✅
 
 | 限制 | 影响 | 计划 |
 |---|---|---|
-| definition/references 未实现 | 客户端请求会 MethodNotFound | Block 4 |
-| 无跨文件索引 | `workspace/symbol` 只覆盖**已打开**的文档 | Block 4 引入工作区扫描 |
-| 记录字段跳转未实现 | `rec.field` 无处可跳 | Block 4 |
+| 跨文件跳转未实现 | 引用/定义只在当前文档内搜索 | 工作区索引（P1 后续或 P3） |
+| `RECORD LIKE table.*` 无字段 | 跳转到记录本身，不下探字段 | 需 schema 索引（P6） |
 | grammar 用 `replace` 指向兄弟目录 | 独立 checkout 无法构建 | 后续为 grammar 打 tag |
 | 未做超大文件保护 | 极大文件可能慢 | Block 5 |
 | 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |

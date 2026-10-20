@@ -134,6 +134,10 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleWorkspaceSymbol(ctx, reply, req)
 	case protocol.MethodTextDocumentHover:
 		return s.handleHover(ctx, reply, req)
+	case protocol.MethodTextDocumentDefinition:
+		return s.handleDefinition(ctx, reply, req)
+	case protocol.MethodTextDocumentReferences:
+		return s.handleReferences(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}

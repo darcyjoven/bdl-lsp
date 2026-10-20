@@ -822,3 +822,201 @@ END
 		}
 	}
 }
+
+func TestDefinitionGlobalVariable(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/def1.4gl"
+	h.openBDL(uri, symSource)
+
+	// 第 11 行 "    LET l_local = g_count" 中 g_count 在第 18 列
+	resp := h.request(20, "textDocument/definition",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":11,"character":19}}`, uri))
+
+	result, ok := resp["result"].([]any)
+	if !ok || len(result) == 0 {
+		t.Fatalf("g_count 应有定义: %v", resp)
+	}
+	loc, _ := result[0].(map[string]any)
+	rng, _ := loc["range"].(map[string]any)
+	start, _ := rng["start"].(map[string]any)
+	if start["line"] != float64(2) {
+		t.Errorf("g_count 定义在第 2 行，实际 %v", start["line"])
+	}
+}
+
+func TestDefinitionFunction(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/def2.4gl"
+	h.openBDL(uri, "MAIN\n    CALL helper(1)\nEND MAIN\n\nFUNCTION helper(x)\n    RETURN x\nEND FUNCTION\n")
+
+	// 第 1 行 "    CALL helper(1)" 中 helper 从第 9 列开始
+	resp := h.request(21, "textDocument/definition",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":1,"character":10}}`, uri))
+	result, _ := resp["result"].([]any)
+	if len(result) == 0 {
+		t.Fatalf("helper 应有定义: %v", resp)
+	}
+	loc, _ := result[0].(map[string]any)
+	rng, _ := loc["range"].(map[string]any)
+	start, _ := rng["start"].(map[string]any)
+	if start["line"] != float64(4) {
+		t.Errorf("helper 定义在第 4 行，实际 %v", start["line"])
+	}
+}
+
+func TestDefinitionLocalVariablePrefersLocal(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	// 局部与全局同名，光标在函数内应跳局部
+	const src = `DEFINE g_val INTEGER
+
+MAIN
+    DEFINE g_val INTEGER
+    LET g_val = 1
+END MAIN
+`
+	const uri = "file:///tmp/def3.4gl"
+	h.openBDL(uri, src)
+
+	resp := h.request(22, "textDocument/definition",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":4,"character":8}}`, uri))
+	result, _ := resp["result"].([]any)
+	if len(result) == 0 {
+		t.Fatalf("应有定义: %v", resp)
+	}
+	loc, _ := result[0].(map[string]any)
+	rng, _ := loc["range"].(map[string]any)
+	start, _ := rng["start"].(map[string]any)
+	if start["line"] != float64(3) {
+		t.Errorf("应优先跳局部定义（第 3 行），实际 %v", start["line"])
+	}
+}
+
+func TestDefinitionRecordField(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const src = `MAIN
+    DEFINE r RECORD
+        f1 LIKE a.b,
+        f2 INTEGER
+    END RECORD
+    LET r.f1 = 1
+END MAIN
+`
+	const uri = "file:///tmp/def4.4gl"
+	h.openBDL(uri, src)
+
+	// 第 5 行 "    LET r.f1 = 1" 中 f1 在第 10 列
+	resp := h.request(23, "textDocument/definition",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":5,"character":10}}`, uri))
+	result, _ := resp["result"].([]any)
+	if len(result) == 0 {
+		t.Fatalf("r.f1 应跳到记录字段定义: %v", resp)
+	}
+	loc, _ := result[0].(map[string]any)
+	rng, _ := loc["range"].(map[string]any)
+	start, _ := rng["start"].(map[string]any)
+	if start["line"] != float64(2) {
+		t.Errorf("f1 定义在第 2 行，实际 %v", start["line"])
+	}
+}
+
+func TestDefinitionNotFound(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/def5.4gl"
+	h.openBDL(uri, symSource)
+
+	resp := h.request(24, "textDocument/definition",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":13,"character":0}}`, uri))
+	if resp["result"] != nil {
+		t.Errorf("空行应返回 null，实际 %v", resp["result"])
+	}
+}
+
+func TestReferencesFindsAllUses(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const src = `DEFINE g_count INTEGER
+
+MAIN
+    LET g_count = 1
+    DISPLAY g_count
+END MAIN
+`
+	const uri = "file:///tmp/ref1.4gl"
+	h.openBDL(uri, src)
+
+	// 第 3 行 "    LET g_count = 1"，g_count 在第 8 列
+	resp := h.request(30, "textDocument/references",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":3,"character":9},"context":{"includeDeclaration":true}}`, uri))
+	result, ok := resp["result"].([]any)
+	if !ok {
+		t.Fatalf("references 失败: %v", resp)
+	}
+	// 定义 1 次 + 使用 2 次
+	if len(result) != 3 {
+		t.Errorf("引用数 = %d，期望 3：%v", len(result), result)
+	}
+}
+
+func TestReferencesExcludesDeclaration(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const src = `DEFINE g_count INTEGER
+
+MAIN
+    LET g_count = 1
+    DISPLAY g_count
+END MAIN
+`
+	const uri = "file:///tmp/ref2.4gl"
+	h.openBDL(uri, src)
+
+	resp := h.request(31, "textDocument/references",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":3,"character":9},"context":{"includeDeclaration":false}}`, uri))
+	result, _ := resp["result"].([]any)
+	if len(result) != 2 {
+		t.Errorf("不含声明时应为 2，实际 %d：%v", len(result), result)
+	}
+}
+
+func TestReferencesExcludesCommentsAndStrings(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const src = `DEFINE g_count INTEGER
+-- g_count 在注释里
+MAIN
+    DISPLAY "g_count 在字符串里"
+    LET g_count = 1
+END MAIN
+`
+	const uri = "file:///tmp/ref3.4gl"
+	h.openBDL(uri, src)
+
+	resp := h.request(32, "textDocument/references",
+		fmt.Sprintf(`{"textDocument":{"uri":%q},"position":{"line":4,"character":9},"context":{"includeDeclaration":true}}`, uri))
+	result, _ := resp["result"].([]any)
+	// 定义 1 + 使用 1；注释与字符串里的不算
+	if len(result) != 2 {
+		t.Errorf("引用数 = %d，期望 2（排除注释与字符串）：%v", len(result), result)
+	}
+}
