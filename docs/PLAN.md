@@ -209,7 +209,7 @@ GitHub Release
 | 部署 + 编译 | ✅（P5 完成：rsync 主 / scp 备，显式回退） | 多目标回滚、编译产物归档 | 见 7.4 与 [P5 记录](PLAN-P5-DEPLOY.md) |
 | 补全 | ✅（P6：关键字/符号/表单字段） | 类型推导、代码片段 | 见 [P6 记录](PLAN-P6-COMPLETION.md) |
 | 重命名 | ✅（P6：仅当前文件） | 跨文件重命名 | 见 [P6 重命名](PLAN-P6-RENAME.md) |
-| Code Action | ⬜ | ✅ | 快速修复 |
+| Code Action | ✅（P6：字段/`.per` 引用拼错） | 自动加 item、批量修复 | 见 [P6 CodeAction](PLAN-P6-CODEACTION.md) |
 | 语义高亮 | ⬜ | ✅ | 两编辑器均支持 |
 
 ---
@@ -548,7 +548,9 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
   记录：[PLAN-P6-COMPLETION.md](PLAN-P6-COMPLETION.md)。
 - ✅ **重命名**（2026-10-21）：prepareRename + rename，只改当前文件，
   七道安全闸门。记录：[PLAN-P6-RENAME.md](PLAN-P6-RENAME.md)。
-- ⬜ Code Action、语义高亮、record `.*` 校验。
+- ✅ **Code Action**（2026-10-21）：字段拼错的「改为 %q」快速修复，
+  编辑距离阈值控制，只给安全修复。记录：[PLAN-P6-CODEACTION.md](PLAN-P6-CODEACTION.md)。
+- ⬜ 语义高亮、record `.*` 校验。
 - ⬜ 缓存与性能、macOS 兼容与构建。
 - 暂不排期：Genero 5.0、GitHub Release/无感下载、市场发布、Zed 注册表 PR。
 - 文档完善、兼容矩阵、用户反馈迭代。

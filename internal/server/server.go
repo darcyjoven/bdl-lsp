@@ -193,6 +193,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handlePrepareRename(ctx, reply, req)
 	case protocol.MethodTextDocumentRename:
 		return s.handleRename(ctx, reply, req)
+	case protocol.MethodTextDocumentCodeAction:
+		return s.handleCodeAction(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}
@@ -254,6 +256,10 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			ReferencesProvider:         true,
 			DocumentSymbolProvider:     true,
 			DocumentFormattingProvider: true,
+			CodeActionProvider: &protocol.CodeActionOptions{
+				// 只发 quickfix：refactor 类动作（提取函数/内联）当前没有实现。
+				CodeActionKinds: []protocol.CodeActionKind{protocol.QuickFix},
+			},
 			RenameProvider: &protocol.RenameOptions{
 				// prepareProvider：先校验能否改名，不能改就不弹输入框。
 				PrepareProvider: true,

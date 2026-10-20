@@ -393,9 +393,21 @@ Block P2 已完成：
       `first` 虽是关键字但也是合法符号，应当能改。
 - [ ] 跨文件重命名——需工作区索引。
 
+#### Code Action（✅ 已完成 2026-10-21）
+
+> 实现记录：[PLAN-P6-CODEACTION.md](PLAN-P6-CODEACTION.md)。
+
+- [x] `textDocument/codeAction`，只声明 quickfix。
+- [x] 字段拼错 → 「改为 %q」：候选来自光标处真实表单（复用 P3b），
+      编辑距离阈值 len/3（夹 1..4）内才提，首个标 isPreferred。
+- [x] `.per` 布局 tag / SCREEN RECORD 引用不存在 → 同样的「改为 %q」。
+- [x] 只处理 source=bdl-lsp 的诊断（部署的 fglcomp 诊断不碰）。
+- [x] 刻意不做：自动加 item 到表单（列宽/schema 无法推断）、创建空 .per、
+      删除字段引用（破坏性）、重复 item 修复（语义不明）。理由写进代码注释。
+- [ ] 批量修复（fix all）——未排期。
+
 #### 其余 P6 项
 
-- [ ] Code Action（字段不存在时提示、忽略）。
 - [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。
 - [ ] 语义高亮（VSCode + Zed）。
 - [ ] 数据库 schema 索引。
