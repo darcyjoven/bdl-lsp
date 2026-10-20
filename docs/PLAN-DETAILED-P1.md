@@ -1,8 +1,9 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.9（Block 7 + P2 Zed 完成）  
+> 版本：v1.0（Block 7 + P2 完成；P3a GLOBALS 已另行规划）  
 > 日期：2026-10-20  
-> 状态：**Block 1–7 与 P2 Zed 已完成**；下一步 P3 字段校验。  
+> 状态：**Block 1–7 与 P2 Zed 已完成**；下一步 P3a GLOBALS 模组全局变量
+> （规划见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)，P3b 字段校验复用其索引基础）。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -200,7 +201,7 @@ type Symbol struct {
 ```
 
 `.per` 的 item 名取 `tag` 字段（`EDIT f1 = ...` 中的 `f1`），而不是右侧绑定列名——
-4GL 的 `AFTER FIELD f1` 用的是 item 名，这一点在 P3 字段校验中至关重要。
+4GL 的 `AFTER FIELD f1` 用的是 item 名，这一点在 P3b 字段校验中至关重要。
 
 ### 3.3 实现要点
 
@@ -896,7 +897,8 @@ Block 1 ✅
    └── Block 6 ✅（VSCode，依赖 1+3+4+5）
           └── Block 7 ✅（CI）
                  └── P2 Zed 扩展 ✅
-                        └── P3 字段校验  ← 下一步
+                        └── P3a GLOBALS 模组全局变量  ← 下一步（已规划）
+                               └── P3b 字段校验（复用 P3a 索引基础）
 ```
 
 ---

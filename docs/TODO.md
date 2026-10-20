@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-20  
-> 当前阶段：**P2 已完成**（Block 1–7 + Zed 扩展）；下一步 P3 字段校验。  
+> 当前阶段：**P2 已完成**（Block 1–7 + Zed 扩展）；下一步 **P3a GLOBALS 模组全局变量**。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -193,8 +193,10 @@ Block 6 已完成（VSCode 客户端）：
 
 待做：
 
-- [ ] 工作区扫描（当前 `workspace/symbol`、`references` 只覆盖已打开文档）。
-- [ ] 跨文件跳转（genero 的 `GLOBALS` / 导入）。
+- [ ] 工作区扫描（当前 `workspace/symbol`、`references` 只覆盖已打开文档）；
+      P3a 先做**按需**加载 `.global` 文件，全量扫描与 P3b 共同评估。
+- [x] 跨文件跳转（genero 的 `GLOBALS` / 导入）→ 已规划为 **P3a**，
+      见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
 - [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
 - [x] 配置 `bdl.generoVersion`（默认 2.50，Block 5 实现，Block 6 在客户端暴露）。
 - [x] GitHub Actions：Linux + Windows 构建/测试（`.github/workflows/build.yml`，不发布 Release）。
@@ -260,8 +262,27 @@ Block P2 已完成：
 
 ## 6. 功能 Backlog（按优先级）
 
-### 字段校验（P3）
+### GLOBALS 模组全局变量（P3a，已规划待实现）
 
+> 用户明确要求（2026-10-20）。完整设计：[PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
+
+- [ ] T1 索引 GLOBALS 块：新增 `ScopeGlobals`；`GlobalsImport` 提取（含变量名形式）。
+- [ ] T2 `internal/globals` 解析器：相对路径（基准=引用文件目录）+
+      `searchPaths`；按需加载 + mtime 缓存；禁 basename 隐式匹配；深度上限 8。
+- [ ] T3 诊断 `globals-file-not-found`（默认 warning）：诊断结构支持
+      `relatedInformation`（与 P3b 共用）；反向依赖刷新（编辑 `.global`
+      → 刷新引用方）。
+- [ ] T4 跳转四级作用域（新增 GLOBALS 级）+ 悬停来源标注（“来源：xxx.global”）。
+- [ ] T5 诊断 `variable-source-unresolved`（默认 warning，可 off）：
+      只查 `variable` 首标识符，放过 `rec.field` 字段侧/`RECORD LIKE table.*`；
+      `scripts/globals-audit.sh` 标注误报 < 5%。
+- [ ] T6 配置 `globals.fileNotFoundDiagnostics` / `unresolvedSourceDiagnostics` /
+      `searchPaths`；VSCode `package.json` + manifest 校验扩展；Zed 文档；
+      e2e 用例 14 → 16。
+
+### 字段校验（P3b，原 P3）
+
+- [ ] 复用 P3a 的跨文件索引与 `relatedInformation` 改造。
 - [ ] `.per` 索引：item 名、类型、绑定列、PHANTOM、定义位置。
 - [ ] `SCREEN RECORD` 解析与字段集合。
 - [ ] 4GL 表单绑定：`WITH FORM`、`OPEN FORM`、`DISPLAY FORM`。
@@ -309,6 +330,9 @@ Block P2 已完成：
 - [ ] BDL scanner 在 WASI 下的编译。
 - [ ] 15k 文件索引性能。
 - [ ] 字段上下文误报率。
+- [ ] P3a 变量来源校验误报率（保守规则 + 标注调优，用户可 off）。
+- [ ] P3a 同名 `.global`（tiptop/config 与 topcust/config 各一个 top.global）
+      导致的解析歧义——已禁止隐式 basename 匹配。
 - [ ] 无本机 `fglcomp`/`fglform` 导致的部署验证缺口。
 - [ ] 扩展与 LSP 版本错配；回退策略。
 - [ ] Windows 无 rsync → scp 回退的稳定性/性能。
