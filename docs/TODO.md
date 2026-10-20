@@ -1,7 +1,7 @@
 # 待办与待确认
 
-> 更新：2026-10-19  
-> 当前阶段：**P1 实现中**（Block 1–5 已完成）。  
+> 更新：2026-10-20  
+> 当前阶段：**P1 实现中**（Block 1–6 已完成，Block 7 待做）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -177,25 +177,43 @@ Block 5 已完成：
 - [x] `scripts/corpus-regress.sh` + `make regress`。
 - [x] 全量回归：per 7407/7409、bdl 7683/7699；18 个失败均为已知文件问题。
 
+Block 6 已完成（VSCode 客户端）：
+
+- [x] `package.json`：`bdl`/`per` 语言、10 项配置、3 条命令、激活事件。
+- [x] `src/server/binary.ts`：设置 > `BDL_LSP_PATH` > 工作区 > PATH 四级查找，失败给可操作提示。
+- [x] `src/client.ts`：启动 LSP、documentSelector、配置同步、追踪级别、重启。
+- [x] `src/extension.ts`：激活、命令注册、失败只提示一次。
+- [x] `scripts/generate-tm-grammars.mjs`：从 grammar 源码生成 TextMate 语法（361 + 76 个关键字全分类）。
+- [x] `scripts/verify-tm-grammars.mjs`：41 项高亮切分校验（含多词短语、注释/字符串屏蔽）。
+- [x] `language-configuration/{bdl,per}.json`：注释、括号、自动闭合、缩进。
+- [x] `vsce package`：VSIX 111 KB / 10 个文件。
+- [x] e2e：真实 VSCode 扩展宿主 14 个用例全通过。
+- [x] 修复服务器不识别 `--stdio`（客户端会自动追加）。
+- [x] `scripts/e2e-vscode.sh` + `make e2e-vscode`。
+
 待做：
 
 - [ ] 工作区扫描（当前 `workspace/symbol`、`references` 只覆盖已打开文档）。
 - [ ] 跨文件跳转（genero 的 `GLOBALS` / 导入）。
 - [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
-- [ ] 配置 `bdl.generoVersion`（默认 2.50）。
+- [x] 配置 `bdl.generoVersion`（默认 2.50，Block 5 实现，Block 6 在客户端暴露）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。
 
 ### vscode-extension（→ `vscode-bdl`）
 
-- [ ] `package.json`：languages、grammars、configuration、commands、activationEvents。
-- [ ] `src/extension.ts` + `client.ts`：启动 LSP、documentSelector、配置同步。
-- [ ] `src/server/binary.ts`：**本地路径解析**（设置/环境变量/工作区）；自动下载/校验/回退暂不排期。
-- [ ] `syntaxes/bdl.tmLanguage.json`、`syntaxes/per.tmLanguage.json`（先覆盖关键字/字符串/注释/数字/函数/类型）。
-- [ ] `language-configuration/*.json`：注释、括号、自动闭合。
-- [ ] 命令：`bdl.restartServer`、`bdl.showOutput`、`bdl.deploy.currentFile`（占位）。
-- [ ] 打包：`vsce package` 生成 VSIX（先本地）。
-- [ ] 测试：Linux + Windows 激活、server 启动、格式化/跳转 smoke。
+Block 6 已完成：
+
+- [x] `package.json`：languages、grammars、configuration、commands、activationEvents。
+- [x] `src/extension.ts` + `client.ts`：启动 LSP、documentSelector、配置同步。
+- [x] `src/server/binary.ts`：**本地路径解析**（设置/环境变量/工作区/PATH）；自动下载/校验/回退暂不排期。
+- [x] `syntaxes/bdl.tmLanguage.json`、`syntaxes/per.tmLanguage.json`（关键字/字符串/注释/数字/函数/类型/字段访问/预处理）。
+- [x] `language-configuration/*.json`：注释、括号、自动闭合、缩进规则。
+- [x] 命令：`bdl.restartServer`、`bdl.showServerInfo`、`bdl.showOutput`。
+- [x] 打包：`vsce package` 生成 VSIX（本地）。
+- [x] 测试：Linux 下 14 个 e2e 用例（激活/server 启动/诊断/跳转/引用/大纲/悬停/配置热更新）。
+- [ ] Windows 下 e2e（Block 7 CI 覆盖）。
+- [ ] 命令 `bdl.deploy.currentFile`（P5，占位未实现）。
 - [ ] GitHub Actions：Linux + Windows 构建/测试。
 
 ### zed-extension（→ `zed-bdl`，id `4gl-full`）

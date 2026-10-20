@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.6（Block 5 完成）  
+> 版本：v0.7（Block 6 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–5 已完成**；Block 6–7 待做。  
+> 状态：**Block 1–6 已完成**；Block 7 待做。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -477,19 +477,129 @@ make regress                      # 全量语料（约 2.5 分钟）
 bash scripts/corpus-regress.sh --limit 300   # 快速抽样
 ```
 
-## 6. 待做：Block 6 VSCode 客户端
+## 6. 已完成：Block 6 VSCode 客户端
 
-| 任务 | 说明 |
-|---|---|
-| 6.1 | `package.json`：`bdl`/`per` 语言、配置项、命令、激活事件 |
-| 6.2 | `src/binary.ts`：路径解析（设置 > 环境变量 > 工作区 > PATH），找不到时给可操作提示 |
-| 6.3 | `src/client.ts`：启动 LSP、`documentSelector`、配置同步、重启命令 |
-| 6.4 | `syntaxes/*.tmLanguage.json`：关键字/字符串/注释/数字/函数/类型 |
-| 6.5 | `language-configuration/*.json`：注释、括号、自动闭合 |
-| 6.6 | `vsce package` 本地 VSIX |
-| 6.7 | e2e：headless 模式下激活 + 打开样例 + 断言诊断 |
+### 6.1 交付内容
 
-**验收**：本机 `code --install-extension` 后打开 `testdata/broken.4gl` 出现错误波浪线。
+```text
+vscode-extension/
+├── package.json                   # bdl/per 语言、10 项配置、3 条命令
+├── tsconfig.json                  # strict + noUnusedLocals
+├── esbuild.mjs                    # 单文件打包（444 KB）
+├── .vscodeignore                  # 排除 src/test/node_modules
+├── src/
+│   ├── extension.ts               # 激活、命令、失败提示
+│   ├── client.ts                  # LanguageClient、配置同步、重启
+│   └── server/binary.ts           # 四级路径查找 + 可操作提示
+├── syntaxes/
+│   ├── bdl.tmLanguage.json        # 由 grammar 生成
+│   └── per.tmLanguage.json
+├── language-configuration/
+│   ├── bdl.json                   # 注释/括号/自动闭合/缩进
+│   └── per.json
+└── test/
+    ├── runTest.js                 # e2e 驱动（7 条沙箱适配）
+    ├── fixtures/{sample.4gl,broken.4gl,sample.per}
+    └── suite/index.js             # 14 个用例
+
+bdl-lsp/scripts/
+├── generate-tm-grammars.mjs       # 从 grammar 源码生成 TextMate 语法
+├── verify-tm-grammars.mjs         # 41 项高亮切分校验
+└── e2e-vscode.sh                  # 一条命令跑完整 e2e
+```
+
+### 6.2 已实现能力
+
+| 能力 | 状态 | 证据 |
+|---|---|---|
+| 语言注册 `bdl` / `per` | ✅ | e2e「语言注册 bdl/per」 |
+| 语法高亮 | ✅ | 41 项切分校验（关键字/多词短语/注释/字符串/数字/预处理/函数名/字段访问） |
+| 大纲符号 | ✅ | e2e「文档大纲包含主要符号」 |
+| 悬停 | ✅ | e2e「函数悬停有内容」 |
+| 定义跳转 | ✅ | e2e「定义跳转可用」（CALL → FUNCTION） |
+| 引用查找 | ✅ | e2e「引用查找可用」 |
+| 语法诊断 | ✅ | e2e「语法错误产生 error 诊断」 |
+| 增量同步 | ✅ | e2e「修复后诊断消失」 |
+| 配置热更新 | ✅ | e2e「配置热更新生效」 |
+| 服务器重启 | ✅ | e2e「重启服务器后仍可用」 |
+| 二进制四级查找 | ✅ | `bdl.server.path` > `BDL_LSP_PATH` > `.bdl-lsp/bin` > PATH |
+| 找不到二进制时提示 | ✅ | 列出已尝试路径 + 4 条解决办法 + 一键打开设置 |
+| VSIX 打包 | ✅ | 111 KB，10 个文件 |
+
+### 6.3 踩坑记录（都写进了代码注释）
+
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| 服务器启动即退，退出码 2 | `vscode-languageclient` 的 stdio 传输**自动追加 `--stdio`**，`cmdline.Parse` 不认 | 新增 `--stdio` flag + 6 个回归测试 |
+| e2e 跑完无任何输出 | 测试入口放在 `/tmp`，`require("vscode")` 拿不到 API | 入口必须在扩展目录内 |
+| 窗口起了又秒退 | `/dev/shm` 不可写 | `--disable-dev-shm-usage` |
+| 无 X 也能跑 | 无 X server | `--ozone-platform=headless` |
+| 静默退出、无错误 | `TMPDIR`/`XDG_RUNTIME_DIR` 不可写或每次被清 | 固定在 `artifacts/e2e/`，`chmod 700` |
+| 后续运行全部失败 | 上轮 VSCode 子进程持有单实例锁 | 启动前 `pkill -f <vscode dir>` |
+| 测试失败但退出码 0 | VSCode 不传递扩展测试结果 | 以 JSON 报告文件判定成败 |
+| 缺省日志级别下提前退出 | 未知（VSCode 1.142 行为） | 必须带 `--verbose` |
+| TextMate `END IF` 切成两个词 | 规则顺序 + 前缀冲突 | 多词层按长度降序，生成时校验前缀冲突 |
+
+### 6.4 验收结果
+
+```text
+$ make grammars-check
+✓ vscode-extension/syntaxes/bdl.tmLanguage.json 已是最新
+✓ vscode-extension/syntaxes/per.tmLanguage.json 已是最新
+✓ 41 项校验全部通过
+
+$ make e2e-vscode
+[e2e] 用例 14/14 通过
+  ✓ 扩展可激活 (129ms)
+  ✓ 语言注册 bdl/per (1ms)
+  ✓ 命令已注册 (11ms)
+  ✓ 识别 .4gl 语言 (142ms)
+  ✓ 识别 .per 语言 (147ms)
+  ✓ 干净文件无诊断 (153ms)
+  ✓ 语法错误产生 error 诊断 (21ms)
+  ✓ 修复后诊断消失 (29ms)
+  ✓ 文档大纲包含主要符号 (55ms)
+  ✓ 函数悬停有内容 (15ms)
+  ✓ 定义跳转可用 (5ms)
+  ✓ 引用查找可用 (35ms)
+  ✓ 重启服务器后仍可用 (42ms)
+  ✓ 配置热更新生效 (584ms)
+
+$ npm run package
+DONE Packaged: 4gl-full-0.1.0.vsix (10 files, 111.54 KB)
+```
+
+关键字覆盖度：
+
+| 语言 | grammar 关键字数 | 分类表覆盖 | 未分类 |
+|---|---|---|---|
+| BDL | 361 | 361 + 3 个组合短语 | 0 |
+| .per | 76 | 76 | 0 |
+
+生成器会校验分类表与 grammar 的双向一致性：新增关键字未分类、或分类表里的词不在 grammar 中，都会打印警告；多词短语前缀冲突会让生成**直接失败**。
+
+### 6.5 复现命令
+
+```bash
+cd bdl-lsp
+source scripts/dev-env.sh
+
+make grammars              # 从 grammar 重新生成 TextMate 语法
+make grammars-check        # 校验语法为最新且切分正确
+make e2e-vscode            # 完整 e2e（构建 + 打包 + 真实扩展宿主）
+bash scripts/e2e-vscode.sh --keep   # 失败时保留日志
+
+cd ../vscode-extension
+npm run typecheck          # 类型检查
+npm run build              # 打包到 dist/
+npm run package            # 生成 VSIX
+```
+
+安装试用：
+
+```bash
+code --install-extension vscode-extension/4gl-full-0.1.0.vsix
+```
 
 ---
 
@@ -510,12 +620,12 @@ bash scripts/corpus-regress.sh --limit 300   # 快速抽样
 
 ```text
 Block 1 ✅
-   ├── Block 2（增量同步）
-   │      └── Block 5（诊断增强）——可与 3 并行
-   ├── Block 3（符号/悬停）
-   │      └── Block 4（定义/引用）
-   └── Block 6（VSCode）——需 1+3+4+5 才完整，但可先接 1 做联调
-          └── Block 7（CI）
+   ├── Block 2 ✅（增量同步）
+   │      └── Block 5 ✅（诊断增强）——可与 3 并行
+   ├── Block 3 ✅（符号/悬停）
+   │      └── Block 4 ✅（定义/引用）
+   └── Block 6 ✅（VSCode，依赖 1+3+4+5）
+          └── Block 7（CI）  ← 下一步
 ```
 
 ---
@@ -530,6 +640,8 @@ Block 1 ✅
 | 超时后不重试 | 极端慢文件会一直用旧诊断 | 可接受；超时阈值可配置 |
 | 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |
 | 未在 Windows 实测 | Windows 路径/换行未验证 | 你已保证环境正常，CI 覆盖 |
+| e2e 仅覆盖 Linux | Windows 上的扩展宿主行为未验证 | Block 7 的 CI 覆盖 |
+| 高亮无主题定制 | 只提供 scope 名称，未随主题调色 | 后续可加 semantic token |
 
 ---
 
@@ -547,6 +659,9 @@ make check                       # 样例冒烟
 make bench                       # LSP 端到端延迟
 make regress                     # 全量语料回归（约 2.5 分钟）
 bash scripts/corpus-smoke.sh 60  # 语料抽样
+make grammars                    # 重新生成 TextMate 语法
+make grammars-check              # 校验高亮切分（41 项）
+make e2e-vscode                  # VSCode 端到端（14 个用例）
 
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl | jq
 ```

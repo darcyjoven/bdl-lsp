@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 5 已完成**（LSP 骨架 + 智能诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI）。
+> 当前状态：**P1 Block 6 已完成**（LSP 骨架 + 智能诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI + VSCode 客户端）。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -23,7 +23,7 @@
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
 | `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化，remote 已配置 |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | 已初始化，remote 已配置 |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | **v0.1.0 可用**，14 个 e2e 用例通过 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | 已初始化，remote 已配置 |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |

@@ -1,4 +1,4 @@
-.PHONY: all build test test-race vet fmt lint check corpus regress bench clean help
+.PHONY: all build test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check e2e-vscode
 
 GO ?= go
 BIN := artifacts/bin/bdl-lsp
@@ -44,6 +44,19 @@ corpus: build
 ## regress: 全量语料回归（较慢，发布前/大改后运行）
 regress: build
 	@bash scripts/corpus-regress.sh
+
+## grammars: 从 grammar 源码重新生成 VSCode 的 TextMate 语法
+grammars:
+	@node scripts/generate-tm-grammars.mjs
+
+## grammars-check: 校验 TextMate 语法为最新且能正确切分样例代码
+grammars-check:
+	@node scripts/generate-tm-grammars.mjs --check
+	@node scripts/verify-tm-grammars.mjs
+
+## e2e-vscode: VSCode 扩展端到端测试（构建 + 打包 + 真实扩展宿主）
+e2e-vscode:
+	@bash scripts/e2e-vscode.sh
 
 ## bench: LSP 端到端延迟基准（didOpen / didChange）
 bench: build
