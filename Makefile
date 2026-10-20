@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check manifest-check e2e-vscode
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check manifest-check e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -98,6 +98,16 @@ endif
 ## build-ps: 用 PowerShell 构建（Windows 无 make 时的等价入口）
 build-ps:
 	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+
+## zed-check: 校验 Zed 扩展（清单 + Tree-sitter query）
+# 需要 zed-extension 与两个 grammar 目录并列；脚本在 zed-extension/tests 下。
+zed-check:
+	@python3 ../zed-extension/tests/verify-manifest.py
+	@node ../zed-extension/tests/verify-queries.mjs
+
+## zed-check-windows: Windows 下的等价入口（无 python3 时只跑 query 校验）
+zed-check-windows:
+	@node ..\zed-extension\tests\verify-queries.mjs
 
 ## bench: LSP 端到端延迟基准（didOpen / didChange）
 bench: build

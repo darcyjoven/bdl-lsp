@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-20  
-> 当前阶段：**P1 实现中**（Block 1–7 已完成，下一步 P2 Zed 扩展）。  
+> 当前阶段：**P2 已完成**（Block 1–7 + Zed 扩展）；下一步 P3 字段校验。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -227,14 +227,34 @@ Block 7 已完成（CI 与健壮性）：
 
 ### zed-extension（→ `zed-bdl`，id `4gl-full`）
 
-- [ ] `extension.toml`：id `4gl-full`、grammars（bdl/per）、language_servers。
-- [ ] `languages/bdl/*`：从 `bdl-plugin` 迁移/改进 queries（不共享 id）。
-- [ ] `languages/per/*`：从 `tree-sitter-per/queries` 迁移 + outline/brackets。
-- [ ] `src/lib.rs`：`language_server_command`；PATH/工作区/本地路径（下载暂不排期）。
-- [ ] `Cargo.toml`：`zed_extension_api = "0.7.0"`，`cdylib`。
-- [ ] `cargo check --target wasm32-wasip2`。
-- [ ] Zed dev extension 手工验证清单（Linux + Windows）。
-- [ ] GitHub Actions：wasm check。
+Block P2 已完成：
+
+- [x] `extension.toml`：id `4gl-full`、schema_version 1、grammars（bdl/per，锁 SHA）、
+      language_servers（`Genero BDL`/`Genero Form` + language_ids → `bdl`/`per`）。
+- [x] `languages/bdl/*`：config.toml、highlights（300 关键字全覆盖）、outline、
+      brackets、indents、injections（sql_body → sql）。
+- [x] `languages/per/*`：config.toml、highlights（76 关键字全覆盖）、outline、
+      brackets、indents（**刻意不动 LAYOUT**）。
+- [x] `src/lib.rs`：`language_server_command` 四级查找（设置 > `BDL_LSP_PATH` >
+      工作区 `.bdl-lsp/bin` > PATH），失败给可操作提示；透传 settings。
+- [x] `Cargo.toml`：`zed_extension_api = "0.7.0"`，`cdylib`，release 优化。
+- [x] `cargo check/build --target wasm32-wasip2`：0 warning，产物 185 KB。
+- [x] `tests/verify-manifest.py`：14 项清单/交叉引用校验。
+- [x] `tests/verify-queries.mjs`：38 项 query 校验（节点名/字面量/编译/命中/
+      关键字覆盖/真实语料抽样）。
+- [x] GitHub Actions：wasm check + manifest + queries 三个 job。
+- [ ] Zed dev extension 手工加载验证（Linux + Windows，本机无图形界面）。
+
+### P2 踩坑记录（写进 query 注释与校验脚本）
+
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| `highlights.scm` 整份不生效 | query 里写了 grammar 没有的 token（`<>` `!=` `>=` `<=` `\|\|` `**` `{` `}`） | 以 `src/node-types.json` 的匿名 token 为准逐个核对 |
+| `Impossible pattern` 编译失败 | `.per` 的 `menu_group.name` 实际是 `identifier \| 关键字` 联合，绑 `(name)` 非法 | 改绑 `(identifier)` |
+| `constant` 的名字匹配不到 | 名字来自隐藏规则 `_constant_statement`，没有可直接绑的字段 | 用子节点匹配 `(constant (identifier) @name)` |
+| 校验脚本误报大量"未知字面量" | 去注释时没跳过字符串内部的 `;`，正则跨行乱配 | 扫描时跟踪字符串状态 |
+| 校验脚本报 `_` 是未知节点 | `_` 是 tree-sitter 通配符，不在 node-types 里 | 显式跳过 |
+| `.per` 样例 8 个语法错误 | 按真实 Genero 写的 `KEY F1 ... ACTION ...`、`PAGE HEADER` 放 `OUTPUT` 里，grammar 不支持 | 按 grammar 实际规则重写样例 |
 
 ---
 

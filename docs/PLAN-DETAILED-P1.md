@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.8（Block 7 完成）  
+> 版本：v0.9（Block 7 + P2 Zed 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–7 已完成**；下一步 P2 Zed 扩展。  
+> 状态：**Block 1–7 与 P2 Zed 已完成**；下一步 P3 字段校验。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -740,6 +740,151 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 ---
 
+## 7A. 已完成：P2 Zed 扩展
+
+仓库 `zed-extension`（远程 `zed-bdl`），扩展 id **`4gl-full`**。
+与轻量 `bdl` 扩展共存：那个只有 grammar，本扩展额外挂 language server。
+
+### 7A.1 交付内容
+
+```text
+zed-extension/
+├── extension.toml              # id/schema_version/grammars/language_servers
+├── Cargo.toml / Cargo.lock     # zed_extension_api 0.7.0, cdylib
+├── src/lib.rs                  # language_server_command 四级查找
+├── languages/bdl/
+│   ├── config.toml             # name/grammar/path_suffixes/注释/括号/缩进兜底
+│   ├── highlights.scm          # 300 个关键字 + 节点规则
+│   ├── outline.scm             # 函数/报表/MAIN/标签/常量/TYPE/模块级 DEFINE
+│   ├── brackets.scm
+│   ├── indents.scm             # 按块结构缩进
+│   └── injections.scm          # sql_body → sql
+├── languages/per/
+│   ├── config.toml
+│   ├── highlights.scm          # 76 个关键字 + 属性/item/菜单
+│   ├── outline.scm
+│   ├── brackets.scm
+│   └── indents.scm             # 刻意不动 LAYOUT
+├── tests/
+│   ├── verify-manifest.py      # 14 项
+│   ├── verify-queries.mjs      # 38 项
+│   └── fixtures/{highlight.4gl,highlight.per}
+└── .github/workflows/build.yml # wasm + manifest + queries 三个 job
+```
+
+### 7A.2 二进制定位（与 VSCode 扩展语义一致）
+
+| 优先级 | 来源 | 说明 |
+|---|---|---|
+| 1 | `lsp.bdl-lsp.binary.path` | 写了就必须存在，否则报错（避免"配了没生效"） |
+| 2 | `BDL_LSP_PATH` | 环境变量 |
+| 3 | `<worktree>/.bdl-lsp/bin/<name>` | 项目内自带 |
+| 4 | `PATH` | 全局安装 |
+
+`<name>` 在 Windows 上是 `bdl-lsp.exe`，通过 `zed::current_platform()` 判断
+（wasm 里不能用 `std::env::consts::OS`）。
+
+### 7A.3 关键约束：LAYOUT 不许缩进
+
+`.per` 的 LAYOUT 段是按列对齐的"画图"区域，列位置有屏幕坐标语义。
+`languages/per/indents.scm` **刻意不为 `(layout)` 声明 `@indent`**——
+Zed 的缩进器只作用于被 `@indent` 命中的范围，不声明就等于不管。
+
+同理，`.per` 的 `config.toml` 里没有用 `increase_indent_pattern` 做
+"以 `=` 结尾就缩进"这类启发式：ATTRIBUTES 里每条都以 `;` 结尾，
+启发式会把它整段越缩越深。
+
+### 7A.4 校验脚本（本轮主要产出）
+
+Zed 的两类错误都**没有可见报错**，只写进 `zed: open log`：
+
+1. query 里出现未知节点名/字面量 → **整份** query 丢弃，高亮全没；
+2. `extension.toml` 字段不一致 → 安装失败或 LSP 静默不启动。
+
+所以写了两个校验脚本，CI 与本地都跑：
+
+**tests/verify-manifest.py（14 项）**
+
+| 检查 | 说明 |
+|---|---|
+| schema_version | 必须为 1 |
+| id 格式 | 小写字母/数字/连字符 |
+| 必备字段 | name/version/repository/authors/description |
+| grammar repository | 必须是 URL |
+| grammar rev | 必须是 40 位 SHA |
+| 语言名唯一 | `languages/*/config.toml` 的 name 不能重复 |
+| grammar 引用 | 每个 language 的 grammar 必须在 `[grammars]` 里 |
+| language_servers.languages | 每个名字必须有对应 config.toml |
+| language_ids | key 必须在 languages 里，value 是合法 languageId |
+| path_suffixes | 不能带前导点 |
+| 必备 query | 每个语言目录至少要有 highlights.scm |
+
+**tests/verify-queries.mjs（38 项）**
+
+| 检查 | 说明 |
+|---|---|
+| 节点名存在性 | 对照 grammar 的 `src/node-types.json` |
+| 字面量存在性 | 排除 `#set!` 的值（那是目标语言名，不是 token） |
+| query 真编译 | 用 `tree-sitter query` 跑 fixture，并统计命中数 |
+| 关键字覆盖率 | grammar 的全部大写 token 是否都被 highlights 覆盖 |
+| 真实语料抽样 | tiptop-gp 均匀抽 15 个文件，逐个编译 query |
+
+第 3 步能挡住"query 语法正确但规则写错、一条都匹配不上"这种最难查的情况。
+
+### 7A.5 本轮抓到的真实错误
+
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| `highlights.scm` 整份不生效 | 写了 grammar 没有的 token：`<>` `!=` `>=` `<=` `\|\|` `**` `{` `}` | 以匿名 token 表为准逐个核对 |
+| `Impossible pattern` | `.per` 的 `menu_group.name` 是 `identifier \| 关键字` 联合 | 改绑 `(identifier)` |
+| `constant` 名字匹配不到 | 名字来自隐藏规则 `_constant_statement`，无直接字段 | 子节点匹配 `(constant (identifier) @name)` |
+| 校验脚本误报"未知字面量" | 去注释没跳过字符串内的 `;`，正则跨行乱配 | 扫描时跟踪字符串状态 |
+| 校验脚本报 `_` 未知 | `_` 是 tree-sitter 通配符 | 显式跳过 |
+| `.per` 样例 8 个错误 | 按真实 Genero 写 `KEY F1 ... ACTION`、`PAGE HEADER` 放 `OUTPUT` 里，grammar 不支持 | 按 grammar 实际规则重写样例 |
+
+顺带发现：`tree-sitter-per` 的 `KEYS` 小节实际规则是 `F1 = "Help"`，
+没有 `KEY` 关键字前缀；`PAGE HEADER` 属于 FORMAT 而非 OUTPUT。
+这与真实 Genero 语法有差距，记录在 grammar 仓库的已知限制里。
+
+### 7A.6 验收结果
+
+```text
+$ cargo check --target wasm32-wasip2
+    Finished `dev` profile ... (0 warning)
+
+$ cargo build --release --target wasm32-wasip2
+    Finished `release` profile ... 
+    target/wasm32-wasip2/release/zed_bdl.wasm   185K
+    magic = 0061736d  (\0asm)
+
+$ python3 tests/verify-manifest.py
+✓ 14 项校验全部通过
+
+$ node tests/verify-queries.mjs
+✓ 38 项校验全部通过
+  （含 9 个 query × 15 个真实语料文件逐个编译）
+```
+
+### 7A.7 复现命令
+
+```bash
+cd zed-extension
+source ../bdl-lsp/scripts/dev-env.sh    # 沙箱/无 root 环境才需要
+
+cargo check --target wasm32-wasip2
+cargo build --release --target wasm32-wasip2
+python3 tests/verify-manifest.py
+node tests/verify-queries.mjs           # 需要两个 grammar 与本仓库并列
+```
+
+安装到 Zed：
+
+```text
+命令面板 → zed: install dev extension → 选择 zed-extension 目录
+```
+
+---
+
 ## 8. 依赖与顺序
 
 ```text
@@ -750,7 +895,8 @@ Block 1 ✅
    │      └── Block 4 ✅（定义/引用）
    └── Block 6 ✅（VSCode，依赖 1+3+4+5）
           └── Block 7 ✅（CI）
-                 └── P2 Zed 扩展  ← 下一步
+                 └── P2 Zed 扩展 ✅
+                        └── P3 字段校验  ← 下一步
 ```
 
 ---
@@ -767,6 +913,8 @@ Block 1 ✅
 | Windows 构建已实测，e2e 未实测 | 用户已在 Windows 验证 `make build` 通过；扩展宿主 e2e 尚未在 Windows 跑过 | `scripts/e2e-vscode.ps1` 与跨平台 `runTest.js` 已就绪，等 Windows 机器跑一次 |
 | e2e 仅覆盖 Linux | Windows 上的扩展宿主行为未验证 | 同上；CI 目前只做构建与单测，未跑 e2e |
 | 高亮无主题定制 | 只提供 scope 名称，未随主题调色 | 后续可加 semantic token |
+| Zed 扩展未在真实 Zed 里加载 | 本机无图形界面 | cargo check/build + query 编译校验已覆盖可自动化部分；需在桌面环境点一次 `install dev extension` |
+| `tree-sitter-per` 的 KEYS/OUTPUT 语法窄于真实 Genero | 真实写法可能报语法错误 | 属 grammar 侧问题，记录在 grammar 仓库；不影响 LSP 其他能力 |
 
 ---
 
