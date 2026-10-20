@@ -406,6 +406,19 @@ Block P2 已完成：
       删除字段引用（破坏性）、重复 item 修复（语义不明）。理由写进代码注释。
 - [ ] 批量修复（fix all）——未排期。
 
+#### 语义高亮（✅ 已完成 2026-10-21）
+
+> 实现记录：[PLAN-P6-SEMTOK.md](PLAN-P6-SEMTOK.md)。
+
+- [x] `textDocument/semanticTokens/full`，legend 6 类型 / 3 修饰位。
+- [x] **只标注用户自定义符号**（函数/变量/常量/类型/字段/参数），
+      不发关键字、字符串、注释、数字——那些 TextMate 已经做得很准，
+      再报一遍会抢同一批 token，客户端合并规则不一致时反而更差。
+- [x] GLOBALS 块内符号带 `static`；常量带 `readonly`；定义处带 `declaration`。
+- [x] 相对编码 + UTF-16 长度（有单测解码后断言严格升序）。
+- [x] Zed 侧不消费 LSP semantic tokens（走 `highlights.scm`），已在文档说明。
+- [ ] 使用处的语义着色——未排期（需全文件符号解析，成本高收益低）。
+
 #### 其余 P6 项
 
 - [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。

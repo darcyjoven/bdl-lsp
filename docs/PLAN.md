@@ -210,7 +210,7 @@ GitHub Release
 | 补全 | ✅（P6：关键字/符号/表单字段） | 类型推导、代码片段 | 见 [P6 记录](PLAN-P6-COMPLETION.md) |
 | 重命名 | ✅（P6：仅当前文件） | 跨文件重命名 | 见 [P6 重命名](PLAN-P6-RENAME.md) |
 | Code Action | ✅（P6：字段/`.per` 引用拼错） | 自动加 item、批量修复 | 见 [P6 CodeAction](PLAN-P6-CODEACTION.md) |
-| 语义高亮 | ⬜ | ✅ | 两编辑器均支持 |
+| 语义高亮 | ✅（P6：仅自定义符号） | 使用处着色 | VSCode 生效；Zed 走 highlights.scm |
 
 ---
 
@@ -550,7 +550,9 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
   七道安全闸门。记录：[PLAN-P6-RENAME.md](PLAN-P6-RENAME.md)。
 - ✅ **Code Action**（2026-10-21）：字段拼错的「改为 %q」快速修复，
   编辑距离阈值控制，只给安全修复。记录：[PLAN-P6-CODEACTION.md](PLAN-P6-CODEACTION.md)。
-- ⬜ 语义高亮、record `.*` 校验。
+- ✅ **语义高亮**（2026-10-21）：只标注用户自定义符号，关键字交给 TextMate。
+  记录：[PLAN-P6-SEMTOK.md](PLAN-P6-SEMTOK.md)。
+- ⬜ record `.*` 校验。
 - ⬜ 缓存与性能、macOS 兼容与构建。
 - 暂不排期：Genero 5.0、GitHub Release/无感下载、市场发布、Zed 注册表 PR。
 - 文档完善、兼容矩阵、用户反馈迭代。

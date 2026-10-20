@@ -195,6 +195,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleRename(ctx, reply, req)
 	case protocol.MethodTextDocumentCodeAction:
 		return s.handleCodeAction(ctx, reply, req)
+	case protocol.MethodSemanticTokensFull:
+		return s.handleSemanticTokensFull(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}
@@ -256,6 +258,18 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			ReferencesProvider:         true,
 			DocumentSymbolProvider:     true,
 			DocumentFormattingProvider: true,
+			// 语义高亮只发用户自定义符号（关键字/字符串交给 TextMate），
+			// 见 semtok.go 顶部说明。
+			//
+			// 用 map 而不是 protocol.SemanticTokensOptions：后者在这个版本里
+			// 是空壳（只有 WorkDoneProgressOptions），没有 legend/full 字段。
+			SemanticTokensProvider: map[string]any{
+				"legend": map[string]any{
+					"tokenTypes":     semanticTokenTypes(),
+					"tokenModifiers": semanticTokenModifiers(),
+				},
+				"full": true,
+			},
 			CodeActionProvider: &protocol.CodeActionOptions{
 				// 只发 quickfix：refactor 类动作（提取函数/内联）当前没有实现。
 				CodeActionKinds: []protocol.CodeActionKind{protocol.QuickFix},
