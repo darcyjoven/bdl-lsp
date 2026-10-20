@@ -1,0 +1,215 @@
+name: build
+
+# 只做构建与测试，**不发布 Release**（用户明确暂不排期）。
+#
+# 目录布局是硬约束：go.mod 里有
+#   replace github.com/darcyjoven/tree-sitter-bdl => ../tree-sitter-bdl
+#   replace github.com/darcyjoven/tree-sitter-per => ../tree-sitter-per
+# 所以必须把 bdl-lsp 检出到子目录，两个 grammar 检出到与之并列的位置。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.24"
+
+jobs:
+  # ---------------------------------------------------------------- Linux
+  linux:
+    name: Linux (CGO)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: 检出 bdl-lsp
+        uses: actions/checkout@v4
+        with:
+          path: bdl-lsp
+
+      - name: 检出 grammar（replace 依赖的兄弟目录）
+        uses: actions/checkout@v4
+        with:
+          repository: darcyjoven/tree-sitter-bdl
+          path: tree-sitter-bdl
+
+      - name: 检出 grammar（replace 依赖的兄弟目录）
+        uses: actions/checkout@v4
+        with:
+          repository: darcyjoven/tree-sitter-per
+          path: tree-sitter-per
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: bdl-lsp/go.sum
+
+      - name: 检查工具链
+        working-directory: bdl-lsp
+        run: |
+          set -eux
+          go version
+          gcc --version | head -1
+          go env CGO_ENABLED GOOS GOARCH
+
+      - name: 构建
+        working-directory: bdl-lsp
+        run: |
+          set -eux
+          make build
+          file artifacts/bin/bdl-lsp
+          ls -l artifacts/bin/
+
+      - name: 单元测试（含竞态检测）
+        working-directory: bdl-lsp
+        run: go test -race ./...
+
+      - name: 静态检查
+        working-directory: bdl-lsp
+        run: |
+          set -eux
+          go vet ./...
+          # gofmt 只检查自己仓库的 Go 文件
+          out=$(gofmt -l . | grep -v '^artifacts/' || true)
+          if [ -n "$out" ]; then
+            echo "以下文件未格式化："; echo "$out"; exit 1
+          fi
+
+      - name: 样例冒烟
+        working-directory: bdl-lsp
+        run: make check
+
+      # 注意：TextMate 语法校验（make grammars-check）不在本仓库 CI 里做。
+      # 它需要 vscode-extension/ 与两个 grammar 目录同时存在，
+      # 属于 vscode-bdl 仓库的职责，见那边的 workflow。
+
+  # -------------------------------------------------------------- Windows
+  # 这一份是"Windows 能不能编译"的唯一自动化证据。
+  # 三个必须显式设置的东西（本地 Makefile 的 Windows 分支同理）：
+  #   GOENV=off        屏蔽 %APPDATA%\go\env 里被其他 SDK 写入的
+  #                    GOOS/GOARCH/CC/CGO_CFLAGS（典型：HarmonyOS SDK 会把
+  #                    CC 写成 clang 并加 --target=aarch64-linux-ohos，
+  #                    导致 CGO 直接报 unrecognized command-line option）；
+  #   GOPROXY          因为 GOENV=off 连带丢掉了 env 文件里的 GOPROXY；
+  #   CGO_ENABLED=1    Windows 上默认是 1，但显式写出来避免被环境覆盖。
+  windows:
+    name: Windows (CGO / MinGW)
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: 检出 bdl-lsp
+        uses: actions/checkout@v4
+        with:
+          path: bdl-lsp
+
+      - name: 检出 grammar（replace 依赖的兄弟目录）
+        uses: actions/checkout@v4
+        with:
+          repository: darcyjoven/tree-sitter-bdl
+          path: tree-sitter-bdl
+
+      - name: 检出 grammar（replace 依赖的兄弟目录）
+        uses: actions/checkout@v4
+        with:
+          repository: darcyjoven/tree-sitter-per
+          path: tree-sitter-per
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: bdl-lsp/go.sum
+
+      # 镜像自带 MinGW，但版本可能偏旧；choco 的 mingw 提供较新的 gcc。
+      # 装完把 bin 目录放到 PATH 最前面，确保 go 用的是它。
+      - name: 安装 MinGW-w64
+        run: |
+          choco install mingw --no-progress -y
+          $mingw = 'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin'
+          if (-not (Test-Path $mingw)) {
+            $gccPath = (Get-Command gcc -ErrorAction SilentlyContinue).Source
+            if (-not $gccPath) { throw '找不到 gcc' }
+            $mingw = Split-Path -Parent $gccPath
+          }
+          $mingw | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "MinGW: $mingw"
+
+      - name: 检查工具链
+        run: |
+          $env:GOENV    = 'off'
+          $env:GOPROXY  = 'https://proxy.golang.org,direct'
+          go version
+          gcc --version | Select-Object -First 1
+          go env CGO_ENABLED GOOS GOARCH CC
+          # 最小 CGO 冒烟：能编出 PE 才算工具链真的可用
+          $tmp = Join-Path $env:RUNNER_TEMP 'cgo-probe'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          Set-Content -Path (Join-Path $tmp 'main.go') -Encoding utf8 -Value @'
+          package main
+
+          /*
+          #include <stdio.h>
+          static void hello(void) { printf("cgo ok\n"); }
+          */
+          import "C"
+
+          func main() { C.hello() }
+          '@
+          Push-Location $tmp
+          try {
+            go mod init probe | Out-Null
+            go run .
+            if ($LASTEXITCODE -ne 0) { throw 'CGO 最小程序构建失败' }
+          } finally {
+            Pop-Location
+          }
+
+      - name: 环境检查脚本
+        working-directory: bdl-lsp
+        run: pwsh -NoProfile -File scripts/env-check.ps1
+        continue-on-error: true   # 环境项缺失不阻断，只作记录
+
+      - name: 构建
+        working-directory: bdl-lsp
+        run: |
+          # 统一走 build.ps1，保证与本地开发同一套环境变量处理
+          pwsh -NoProfile -File scripts/build.ps1 -Version "${{ github.sha }}"
+          if ($LASTEXITCODE -ne 0) { throw 'build.ps1 失败' }
+          Get-ChildItem artifacts\bin
+          # 确认是 PE 而不是误编成 ELF
+          $bytes = [System.IO.File]::ReadAllBytes('artifacts\bin\bdl-lsp.exe')
+          $magic = [System.Text.Encoding]::ASCII.GetString($bytes[0..1])
+          if ($magic -ne 'MZ') { throw "产物不是 PE 文件（magic=$magic）" }
+          Write-Host "产物头：$magic"
+
+      - name: 二进制自检
+        working-directory: bdl-lsp
+        run: |
+          $out = & .\artifacts\bin\bdl-lsp.exe version
+          Write-Host "version -> $out"
+          if ($LASTEXITCODE -ne 0) { throw 'version 子命令失败' }
+          # 真正跑一次解析，确认 CGO 运行时能加载（缺 DLL 会在这里炸）
+          & .\artifacts\bin\bdl-lsp.exe check testdata\sample.4gl testdata\sample.per
+          if ($LASTEXITCODE -ne 0) { throw 'check 子命令失败' }
+
+      - name: 单元测试（含竞态检测）
+        working-directory: bdl-lsp
+        run: |
+          $env:GOENV       = 'off'
+          $env:GOPROXY     = 'https://proxy.golang.org,direct'
+          $env:CGO_ENABLED = '1'
+          $env:CC          = 'gcc'
+          go test -race ./...
+          if ($LASTEXITCODE -ne 0) { throw 'go test -race 失败' }
+
+      - name: 上传产物（仅供排查，不发布）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdl-lsp-windows
+          path: bdl-lsp/artifacts/bin/bdl-lsp.exe
+          if-no-files-found: warn

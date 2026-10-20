@@ -1,8 +1,8 @@
 # P1 详细计划：LSP 骨架 + 解析诊断
 
-> 版本：v0.7（Block 6 完成）  
+> 版本：v0.8（Block 7 完成）  
 > 日期：2026-10-20  
-> 状态：**Block 1–6 已完成**；Block 7 待做。  
+> 状态：**Block 1–7 已完成**；下一步 P2 Zed 扩展。  
 > 上游：[粗略计划](PLAN.md)｜[功能清单](FEATURES.md)｜[环境](ENVIRONMENT.md)
 
 ---
@@ -603,16 +603,140 @@ code --install-extension vscode-extension/4gl-full-0.1.0.vsix
 
 ---
 
-## 7. 待做：Block 7 CI
+## 7. 已完成：Block 7 CI
 
-| 任务 | 说明 |
-|---|---|
-| 7.1 | `bdl-lsp` GitHub Actions：Linux + Windows，CGO，`go test -race` |
-| 7.2 | 语料冒烟（定时/手动，避免每次 PR 跑全量） |
-| 7.3 | `vscode-bdl`：typecheck + build + vsce package 产物上传 |
-| 7.4 | `zed-bdl`：`cargo check --target wasm32-wasip2` |
+| 任务 | 状态 | 落地 |
+|---|---|---|
+| 7.1 | ✅ | `bdl-lsp/.github/workflows/build.yml`：Linux（ubuntu-24.04）+ Windows（windows-2025），CGO，`go test -race` |
+| 7.2 | ✅ | 语料冒烟：CI 跑 `make check`（testdata）；全量 `make regress` 留本地按需 |
+| 7.3 | ✅ | `vscode-bdl/.github/workflows/build.yml`：typecheck + build + vsce package + VSIX 内容断言 |
+| 7.4 | ⬜ | `zed-bdl`：`cargo check --target wasm32-wasip2`（P2 建仓后补） |
 
 **不发布 Release**（用户已明确暂不排期）。
+
+### 7.1 目录布局是硬约束
+
+`bdl-lsp/go.mod` 用 `replace` 指向兄弟目录：
+
+```text
+replace github.com/darcyjoven/tree-sitter-bdl => ../tree-sitter-bdl
+replace github.com/darcyjoven/tree-sitter-per => ../tree-sitter-per
+```
+
+所以 CI 必须把三个仓库检出到并列位置（`path:` 参数），
+否则 `go build` 直接报 `replacement directory ../tree-sitter-bdl does not exist`。
+本地验证过：干净 clone + 并列布局可以正常构建，产物 9.8 MB。
+
+### 7.2 Windows job 的三处必要设置
+
+| 变量 | 值 | 为什么 |
+|---|---|---|
+| `GOENV` | `off` | 屏蔽 `%APPDATA%\go\env`；本地被 HarmonyOS SDK 写脏过（`CC=clang` + `CGO_CFLAGS=--target=aarch64-linux-ohos`），CI 干净但也显式写，保证与本地同路径 |
+| `GOPROXY` | `https://proxy.golang.org,direct` | `GOENV=off` 会连带丢掉 env 文件里的 GOPROXY |
+| `CGO_ENABLED` | `1` | 不能靠默认值 |
+
+额外的两道验证（本地脚本没有）：
+
+1. **最小 CGO 探针** —— 编译并**运行**一个 `import "C"` 的 hello world。
+   只跑 `gcc --version` 证明不了工具链可用。
+2. **PE 头校验** —— 读产物前 2 字节必须是 `MZ`，防止误编成 ELF。
+
+### 7.3 Windows 构建入口：三个等价方式
+
+| 方式 | 命令 | 前置 |
+|---|---|---|
+| Makefile（推荐） | `make build` | 需 make（MSYS2 / mingw32-make / GnuWin32） |
+| PowerShell 脚本 | `powershell -ExecutionPolicy Bypass -File scripts\build.ps1` | 只需 Go + MinGW |
+| make 包装脚本 | `make build-ps` | make + PowerShell |
+
+`build.ps1` 与 Makefile 的 Windows 分支设置**完全相同**的 7 个环境变量，
+区别只在：`build.ps1` 会保存/恢复它们、构建后自动跑 `version` 自检、
+并支持 `-Test / -Race / -Check / -Clean / -Version`。
+
+### 7.4 `.exe` 后缀
+
+`go build -o <显式路径>` **不会**自动补 `.exe`（只有省略 `-o` 时才补）。
+Makefile 的 `$(BIN)` 与 `build.ps1` 的 `-Out` 都已处理。
+
+### 7.5 解析器健壮性（Block 7 顺带修的真实缺陷）
+
+这两个 bug 都是「VSCode 静默降级」类型，肉眼看不出来，因此除了修，还加了自动校验
+（`scripts/verify-vscode-manifest.mjs`，22 项）：
+
+| 缺陷 | 后果 | 修法 |
+|---|---|---|
+| `per.json` 第 12 行 `{ "open": "[", "]" }` 缺 `"close":` | **整个文件不是合法 JSON**，`.per` 的行注释/括号/自动闭合全部失效（语言识别照常） | 补 `"close": "]"` |
+| `bdl.json` 的 `indentationRules` 用了 Oniguruma 的 `(?i)` | JS RegExp 不支持 → VSCode `console.warn` 后**丢弃两条缩进规则**，`IF` 后回车不缩进 | 改用 `{ "pattern": "...", "flags": "i" }` |
+
+### 7.6 关于「.4gl 没被识别」的结论
+
+用户报告「打开 `.4gl` 没识别为 genero-bdl，但 `.per` 识别为 genero form」。
+**实测证明插件声明是正确的**，不是插件问题：
+
+```text
+真实 VSCode 扩展宿主内探测：
+  a.4gl   → bdl      ✓
+  b.global→ bdl      ✓
+  c.per   → per      ✓
+  d.4GL   → bdl      ✓（大小写不敏感）
+  e.GLOBAL→ bdl      ✓
+getLanguages() 含 bdl 与 per；没有任何内置扩展声明 .4gl/.global/.per
+```
+
+`package.json` 的 `contributes.languages` 一直是：
+
+```json
+{ "id": "bdl", "extensions": [".4gl", ".global"], "aliases": ["Genero BDL", "bdl", "4gl"] }
+{ "id": "per", "extensions": [".per"],            "aliases": ["Genero Form", "per"] }
+```
+
+结论：用户本地大概率有 `files.associations` 覆盖或另一个声称 `.4gl` 的扩展。
+排查方式：命令面板 → `Developer: Inspect Editor Tokens and Scopes` 看 language id；
+或设置里搜 `files.associations`。
+为防回归，e2e 加了「扩展名映射」用例钉死这条映射（6 个断言，含大写扩展名）。
+
+### 7.7 验收结果
+
+```text
+$ node scripts/verify-vscode-manifest.mjs
+✓ 22 项校验全部通过
+
+$ make grammars-check
+✓ vscode-extension/syntaxes/bdl.tmLanguage.json 已是最新
+✓ vscode-extension/syntaxes/per.tmLanguage.json 已是最新
+✓ 41 项校验全部通过
+
+$ make e2e-vscode
+[e2e] 用例 14/14 通过
+
+$ cd vscode-extension && npm run package
+DONE Packaged: 4gl-full-0.1.0.vsix (10 files, 113.2 KB)
+
+$ make build && ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
+testdata/sample.4gl: OK
+testdata/sample.per: OK
+共 2 个文件，0 个有问题
+```
+
+### 7.8 复现命令
+
+```bash
+# Linux
+cd bdl-lsp
+source scripts/dev-env.sh
+make build
+make test-race
+make manifest-check
+make grammars-check
+make e2e-vscode
+```
+
+```powershell
+# Windows（无需 make）
+cd bdl-lsp
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Test -Check
+powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
+```
 
 ---
 
@@ -625,7 +749,8 @@ Block 1 ✅
    ├── Block 3 ✅（符号/悬停）
    │      └── Block 4 ✅（定义/引用）
    └── Block 6 ✅（VSCode，依赖 1+3+4+5）
-          └── Block 7（CI）  ← 下一步
+          └── Block 7 ✅（CI）
+                 └── P2 Zed 扩展  ← 下一步
 ```
 
 ---
@@ -639,8 +764,8 @@ Block 1 ✅
 | grammar 用 `replace` 指向兄弟目录 | 独立 checkout 无法构建 | 后续为 grammar 打 tag |
 | 超时后不重试 | 极端慢文件会一直用旧诊断 | 可接受；超时阈值可配置 |
 | 多段编辑假定互不影响 | 极端情况下位置可能偏差 | LSP 规定按顺序应用，已逐段处理 |
-| 未在 Windows 实测 | Windows 路径/换行未验证 | 你已保证环境正常，CI 覆盖 |
-| e2e 仅覆盖 Linux | Windows 上的扩展宿主行为未验证 | Block 7 的 CI 覆盖 |
+| Windows 构建已实测，e2e 未实测 | 用户已在 Windows 验证 `make build` 通过；扩展宿主 e2e 尚未在 Windows 跑过 | `scripts/e2e-vscode.ps1` 与跨平台 `runTest.js` 已就绪，等 Windows 机器跑一次 |
+| e2e 仅覆盖 Linux | Windows 上的扩展宿主行为未验证 | 同上；CI 目前只做构建与单测，未跑 e2e |
 | 高亮无主题定制 | 只提供 scope 名称，未随主题调色 | 后续可加 semantic token |
 
 ---
@@ -661,6 +786,7 @@ make regress                     # 全量语料回归（约 2.5 分钟）
 bash scripts/corpus-smoke.sh 60  # 语料抽样
 make grammars                    # 重新生成 TextMate 语法
 make grammars-check              # 校验高亮切分（41 项）
+make manifest-check              # VSCode 清单/语言配置校验（22 项）
 make e2e-vscode                  # VSCode 端到端（14 个用例）
 
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl | jq

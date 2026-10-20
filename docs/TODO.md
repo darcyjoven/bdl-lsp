@@ -1,7 +1,7 @@
 # 待办与待确认
 
 > 更新：2026-10-20  
-> 当前阶段：**P1 实现中**（Block 1–6 已完成，Block 7 待做）。  
+> 当前阶段：**P1 实现中**（Block 1–7 已完成，下一步 P2 Zed 扩展）。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
@@ -36,10 +36,10 @@
 - [x] `zed-extension` 配置 `origin` → `git@github.com:darcyjoven/zed-bdl.git`。
 - [x] 配置 GitHub SSH key（`ssh -T git@github.com` 已验证）。
 - [x] 首次 push 三个仓库（`git push -u origin main`）。
-- [ ] `bdl-lsp` GitHub Actions：
-  - [ ] Linux + Windows CGO 构建/测试；
-  - [ ] 语料冒烟（可手动/定时）；
-  - [ ] **不发布 Release**（暂不排期）。
+- [x] `bdl-lsp` GitHub Actions：
+  - [x] Linux + Windows CGO 构建/测试（`.github/workflows/build.yml`）；
+  - [x] 语料冒烟（CI 只跑 `make check`；全量 `make regress` 留本地按需）；
+  - [x] **不发布 Release**（暂不排期）——已明确写进 workflow 注释。
 
 ---
 
@@ -197,7 +197,7 @@ Block 6 已完成（VSCode 客户端）：
 - [ ] 跨文件跳转（genero 的 `GLOBALS` / 导入）。
 - [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
 - [x] 配置 `bdl.generoVersion`（默认 2.50，Block 5 实现，Block 6 在客户端暴露）。
-- [ ] GitHub Actions：Linux + Windows 构建/测试（不发布 Release）。
+- [x] GitHub Actions：Linux + Windows 构建/测试（`.github/workflows/build.yml`，不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。
 
 ### vscode-extension（→ `vscode-bdl`）
@@ -212,9 +212,18 @@ Block 6 已完成：
 - [x] 命令：`bdl.restartServer`、`bdl.showServerInfo`、`bdl.showOutput`。
 - [x] 打包：`vsce package` 生成 VSIX（本地）。
 - [x] 测试：Linux 下 14 个 e2e 用例（激活/server 启动/诊断/跳转/引用/大纲/悬停/配置热更新）。
-- [ ] Windows 下 e2e（Block 7 CI 覆盖）。
+- [x] GitHub Actions：Linux 构建/测试 + VSIX 打包（`.github/workflows/build.yml`）。
+
+Block 7 已完成（CI 与健壮性）：
+
+- [x] `scripts/verify-vscode-manifest.mjs`：22 项清单/语言配置校验，`make manifest-check`。
+- [x] 修复 `language-configuration/per.json` 不是合法 JSON（`[` 自动闭合对缺 `"close":`）。
+- [x] 修复 `language-configuration/bdl.json` 缩进规则用了 JS 不支持的 `(?i)` → 改 `flags: "i"`。
+- [x] e2e 增至 14 个用例，新增「扩展名映射」与「语言配置生效」两组。
+- [x] `test/runTest.js` 跨平台化：`Code.exe` 探测、`taskkill` 清理、Linux 专属参数按平台裁剪。
+- [x] `scripts/e2e-vscode.ps1`：Windows 版 e2e 入口。
+- [ ] Windows 下 e2e 实测（代码已就绪，等 Windows 机器跑一次）。
 - [ ] 命令 `bdl.deploy.currentFile`（P5，占位未实现）。
-- [ ] GitHub Actions：Linux + Windows 构建/测试。
 
 ### zed-extension（→ `zed-bdl`，id `4gl-full`）
 

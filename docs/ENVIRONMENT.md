@@ -59,6 +59,58 @@ go env GOVERSION CGO_ENABLED
 
 `CGO_ENABLED=1` 必须是 1（`go env -w CGO_ENABLED=1` 可选）。
 
+#### 2.2.1 编译 LSP（Linux）
+
+本机（`$HOME` 可写、有 root）就是最普通的流程：
+
+```bash
+cd bdl-lsp
+source scripts/dev-env.sh      # 沙箱/无 root 环境才需要；普通机器可跳过
+
+make build                     # 产物：artifacts/bin/bdl-lsp
+```
+
+Makefile 的 Linux 分支**不设置**任何 `GOOS`/`CC`，完全用系统默认：
+
+| 项 | Linux 下的值 | 说明 |
+|---|---|---|
+| `GOOS` / `GOARCH` | 由系统决定（`linux` / `amd64`） | 不做交叉编译 |
+| `CGO_ENABLED` | 沿用环境（默认 1） | 必须是 1，否则 parser 的 C 代码不参与编译 |
+| `CC` | 沿用环境（默认 `cc`→`gcc`） | 需要 `build-essential` |
+| `BIN` | `artifacts/bin/bdl-lsp` | 无 `.exe` |
+
+等价的手工命令：
+
+```bash
+cd bdl-lsp
+CGO_ENABLED=1 go build -trimpath -o artifacts/bin/bdl-lsp .
+```
+
+验证：
+
+```bash
+./artifacts/bin/bdl-lsp version
+./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
+# 期望：共 2 个文件，0 个有问题
+ldd artifacts/bin/bdl-lsp          # 确认动态依赖（libc/libpthread）
+```
+
+其它常用目标：
+
+```bash
+make test          # 单元测试
+make test-race     # 带竞态检测
+make lint          # gofmt + vet
+make check         # 样例冒烟
+make grammars-check   # TextMate 高亮校验（41 项）
+make manifest-check   # VSCode 清单/语言配置校验（22 项）
+make e2e-vscode       # 真实 VSCode 扩展宿主 e2e（14 个用例）
+```
+
+> **不需要** `GOENV=off`：那个开关是为了绕开 Windows 上被其他 SDK 写脏的
+> 全局 `go env` 文件（`%APPDATA%\go\env`），Linux 的 `~/.config/go/env`
+> 通常干净。如果 Linux 上也遇到 `CGO_CFLAGS` 异常，同样可以加 `GOENV=off`。
+
 ### 2.3 Node / pnpm
 
 要求 Node 24+（`@vscode/vsce` 要求 Node >= 22）。
@@ -206,14 +258,71 @@ Windows 分支做的事：
 
 可覆盖：`make build WIN_ARCH=arm64 WIN_CC=clang`。
 
-手工构建（不经 make）等价于：
+#### 3.1.2 用 `scripts\build.ps1` 构建（没装 make 时）
+
+某些 Windows 机器没有 `make`（Git for Windows 不装它，MSYS2 也未必有）。
+`scripts\build.ps1` 是等价入口，做的事与 Makefile 的 Windows 分支一致：
 
 ```powershell
-$env:GOENV="off"; $env:GOOS="windows"; $env:GOARCH="amd64"
-$env:CGO_ENABLED="1"; $env:CC="gcc"; $env:CXX="g++"
-$env:GOPROXY="https://goproxy.cn,direct"
-go build -trimpath -o artifacts/bin/bdl-lsp.exe .
+cd bdl-lsp
+
+# 最简：构建
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1
+
+# 构建 + 单元测试 + 样例冒烟
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Test -Check
+
+# 带竞态检测（较慢）
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Race
+
+# 指定架构/编译器/代理
+powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Arch arm64 -CC clang
 ```
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `-Arch` | `amd64` | 目标架构，可选 `arm64`（需对应 MinGW 工具链） |
+| `-CC` | `gcc` | C 编译器 |
+| `-Out` | `artifacts\bin\bdl-lsp.exe` | 输出路径，**会自动补 `.exe`** |
+| `-Version` | `0.1.0-dev` | 注入 `main.version` |
+| `-Proxy` | `https://goproxy.cn,direct` | `GOPROXY` |
+| `-Test` | 关 | 构建后跑 `go test ./...` |
+| `-Race` | 关 | 跑 `go test -race ./...`（隐含 `-Test`） |
+| `-Check` | 关 | 构建后在 `testdata` 上冒烟 |
+| `-Clean` | 关 | 构建前清空输出目录 |
+
+脚本的行为要点：
+
+1. 构建前**保存** `GOENV/GOOS/GOARCH/CGO_ENABLED/CC/CXX/GOPROXY` 七个变量，
+   结束（含失败）时**恢复**，不污染同一个控制台里的后续命令。
+2. 构建后立刻执行 `<产物> version`，把“能编过但运行时缺 DLL”的问题当场暴露
+   （典型：缺 `libwinpthread-1.dll`，进程直接 `0xc0000135`）。
+3. `ErrorActionPreference` 用 `Continue` 而不是 `Stop`：
+   PowerShell 5.1 在 `Stop` 下对原生命令做 `2>&1` 重定向会抛
+   `NativeCommandError`，把正常输出当成错误。失败一律靠显式检查退出码兜住。
+
+#### 3.1.3 `.exe` 后缀的坑
+
+`go build -o <路径>` **不会**自动补 `.exe`——只有省略 `-o` 时 Go 才补。
+所以：
+
+```powershell
+go build -o artifacts\bin\bdl-lsp .          # 产物叫 bdl-lsp（无后缀，双击打不开）
+go build -o artifacts\bin\bdl-lsp.exe .      # 正确
+```
+
+Makefile 的 `$(BIN)` 与 `build.ps1` 的 `-Out` 都已处理，手工构建时要注意。
+
+#### 3.1.4 验证构建结果
+
+```powershell
+.\artifacts\bin\bdl-lsp.exe version
+.\artifacts\bin\bdl-lsp.exe check testdata\sample.4gl testdata\sample.per
+# 期望：共 2 个文件，0 个有问题
+```
+
+`check` 能跑通说明 CGO 链接的 tree-sitter 真的加载成功了；
+只跑 `version` 不够（`version` 不碰 parser）。
 
 ### 3.2 Node / pnpm / Git
 
@@ -388,6 +497,61 @@ gh auth status
 | LSP 本地构建 | Linux/Windows 二进制 | 本地/CI；Release 暂不排期 |
 | 语料回归 | 7699 `.4gl` / 7409 `.per` | 本地（慢测试，按需） |
 
+### 7.1 已落地的工作流
+
+| 仓库 | 文件 | 内容 |
+|---|---|---|
+| `bdl-lsp` | `.github/workflows/build.yml` | Linux（CGO 构建 + `go test -race` + vet + gofmt + `make check`）与 Windows（MinGW + CGO 冒烟 + `build.ps1` + PE 头校验 + `check` + `go test -race`），产出物仅上传 artifact，**不发布 Release** |
+| `vscode-bdl` | `.github/workflows/build.yml` | `verify`（22 项清单校验 + 41 项高亮校验）与 `package`（`npm ci` + typecheck + build + vsce + VSIX 内容断言） |
+
+**关键约束**：三个仓库的 CI 都必须把依赖检出到**并列目录**。
+`bdl-lsp/go.mod` 用的是：
+
+```text
+replace github.com/darcyjoven/tree-sitter-bdl => ../tree-sitter-bdl
+replace github.com/darcyjoven/tree-sitter-per => ../tree-sitter-per
+```
+
+所以 workflow 里统一用 `actions/checkout` 的 `path:` 参数摆好目录：
+
+```yaml
+- uses: actions/checkout@v4
+  with:
+    path: bdl-lsp
+- uses: actions/checkout@v4
+  with:
+    repository: darcyjoven/tree-sitter-bdl
+    path: tree-sitter-bdl
+- uses: actions/checkout@v4
+  with:
+    repository: darcyjoven/tree-sitter-per
+    path: tree-sitter-per
+```
+
+> 去掉 `replace`、改成真实 tag 之后这段可以简化，见 TODO「为 grammar 打 tag」。
+
+### 7.2 Windows runner 上必须显式设的东西
+
+GitHub 的 `windows-2025` 镜像自带 MinGW，但**没有** `GOENV=off` 的概念，
+workflow 里显式写过：
+
+```yaml
+- run: |
+    $env:GOENV       = 'off'
+    $env:GOPROXY     = 'https://proxy.golang.org,direct'
+    $env:CGO_ENABLED = '1'
+    $env:CC          = 'gcc'
+```
+
+CI 环境是干净的，理论上不加也能过；加上是为了让 CI 与本地开发
+走**完全相同**的路径，避免“本地能过 CI 挂”或反过来。
+
+CI 里额外做两件本地不做的事：
+
+1. **最小 CGO 探针**：编译并运行一个 `import "C"` 的 hello world，
+   确认 MinGW 工具链真的可用（而不是仅 `gcc --version` 能打印）。
+2. **PE 头校验**：读产物前两个字节，必须是 `MZ`；防止误编成 ELF。
+
 ---
 
 ## 8. 常见问题
@@ -409,6 +573,12 @@ gh auth status
 | Xvfb `Failed to activate virtual core keyboard` | 缺 `/usr/bin/xkbcomp`，且无 root | 用 `code --ozone-platform=headless`；或 root 安装 xvfb/x11-xkb-utils |
 | `rustup` 报 `could not create home directory` | `$HOME` 只读 | `source scripts/dev-env.sh`（设置 RUSTUP_HOME/CARGO_HOME） |
 | wasi clang 报 `cannot open crt1.o` | 未指定 sysroot | `--sysroot=$WASI_SDK_PATH/share/wasi-sysroot` |
+| Windows 构建成功但运行报 `0xc0000135` / “找不到 libwinpthread-1.dll” | MinGW 运行库不在 PATH | 把 `mingw64\bin` 加入 PATH；或静态链接 `-ldflags "-extldflags -static"` |
+| `go build -o out/bdl-lsp` 产物没有 `.exe` | `-o` 显式给出时 Go 不补后缀 | 显式写 `.exe`；`build.ps1` 与 Makefile 已处理 |
+| PowerShell 报 `NativeCommandError` | PS 5.1 在 `ErrorActionPreference=Stop` 下对原生命令 `2>&1` 会误判 | 脚本改用 `Continue`，靠退出码判断 |
+| bash 脚本报 `$'\r': command not found` | 文件被 `core.autocrlf=true` 转成 CRLF | 仓库已加 `.gitattributes`（`eol=lf`）；本地 `git config core.autocrlf false` |
+| `make: command not found`（Windows） | Git for Windows 不带 make | 用 `scripts\build.ps1`；或 `make build` 前装 MSYS2/mingw32-make |
+| Windows e2e 报找不到 `code` | VSCode 未加入 PATH | 设 `BDL_VSCODE_EXECUTABLE` 指向 `Code.exe`；`runTest.js` 也会探测默认安装路径 |
 
 ---
 

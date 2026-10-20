@@ -34,6 +34,29 @@ if (Has "go") {
     $cgo = (go env CGO_ENABLED)
     if ($cgo -eq "1") { Ok "CGO_ENABLED=1" } else { Bad "CGO_ENABLED=$cgo（需要 1）" }
     if ($env:CC) { Ok "CC=$env:CC" } else { Warn "CC 未设置（dev-env.ps1 会设为 gcc）" }
+
+    # 全局 go env 文件（%APPDATA%\go\env）可能被别的 SDK 写脏。
+    # 典型：装过 HarmonyOS SDK 后出现 GOOS=android / GOARCH=arm64 /
+    # CC=clang / CGO_CFLAGS=--target=aarch64-linux-ohos，之后任何 CGO
+    # 构建都会报 "unrecognized command-line option"。
+    # 这里只做提示，不判失败：Makefile 与 build.ps1 都用 GOENV=off 兜住了。
+    $envFile = Join-Path $env:APPDATA 'go\env'
+    if (Test-Path $envFile) {
+        $risky = @()
+        foreach ($line in (Get-Content $envFile -ErrorAction SilentlyContinue)) {
+            if ($line -match '^\s*(GOOS|GOARCH|CC|CXX|CGO_CFLAGS|CGO_LDFLAGS|GOFLAGS)\s*=') {
+                $risky += $line.Trim()
+            }
+        }
+        if ($risky.Count -gt 0) {
+            Warn "全局 go env 含可能污染 CGO 的项（将用 GOENV=off 屏蔽）："
+            foreach ($r in $risky) { Write-Host "         $r" }
+        } else {
+            Ok "全局 go env 无 CGO 污染项"
+        }
+    } else {
+        Ok "无全局 go env 文件"
+    }
 }
 
 Write-Host ""

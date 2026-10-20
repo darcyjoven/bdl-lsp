@@ -1,4 +1,4 @@
-.PHONY: all build test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check e2e-vscode
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check manifest-check e2e-vscode
 
 GO ?= go
 
@@ -82,9 +82,22 @@ grammars-check:
 	@node scripts/generate-tm-grammars.mjs --check
 	@node scripts/verify-tm-grammars.mjs
 
+## manifest-check: 校验 VSCode 清单与语言配置（JSON/正则/扩展名映射）
+manifest-check:
+	@node scripts/verify-vscode-manifest.mjs
+
 ## e2e-vscode: VSCode 扩展端到端测试（构建 + 打包 + 真实扩展宿主）
+# 有 bash 时走 .sh；Windows 无 bash 时自动改用 PowerShell 版
 e2e-vscode:
+ifeq ($(OS),Windows_NT)
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/e2e-vscode.ps1
+else
 	@bash scripts/e2e-vscode.sh
+endif
+
+## build-ps: 用 PowerShell 构建（Windows 无 make 时的等价入口）
+build-ps:
+	@powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
 
 ## bench: LSP 端到端延迟基准（didOpen / didChange）
 bench: build

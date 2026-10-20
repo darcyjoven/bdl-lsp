@@ -13,7 +13,7 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1 Block 6 已完成**（LSP 骨架 + 智能诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI + VSCode 客户端）。
+> 当前状态：**P1 Block 1–7 已完成**（LSP 骨架 + 智能诊断 + 增量同步 + 符号/悬停 + 定义/引用 + check CLI + VSCode 客户端 + CI）。
 > 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -108,7 +108,9 @@ bash scripts/corpus-smoke.sh 60
 | `check` CLI（文本/JSON） | ✅ |
 | 文档符号 / 工作区符号 / 悬停 | ✅ |
 | 定义 / 引用跳转 | ✅（单文件内） |
-| VSCode 扩展 | ⏳ Block 6 |
+| VSCode 扩展 | ✅ Block 6 |
+| GitHub Actions（Linux + Windows） | ✅ Block 7 |
+| Zed 扩展 | ⏳ P2 |
 
 性能（7138 行 / 329 KB）：`didOpen` 51 ms，`didChange` 往返 0.7 ms。
 
