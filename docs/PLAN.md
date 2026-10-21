@@ -558,6 +558,36 @@ Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Co
 - 暂不排期：Genero 5.0、GitHub Release/无感下载、市场发布、Zed 注册表 PR。
 - 文档完善、兼容矩阵、用户反馈迭代。
 
+### P7 缺陷修复与链接资料索引（🔜 已立项 2026-10-21，待执行）
+
+> 完整设计、根因分析、验收标准与待确认决策：[PLAN-P7.md](PLAN-P7.md)。
+
+立项依据：2026-10-21 **Windows 实测**发现 2 个缺陷；实测 24 个真实 `.4gl` 得到
+诊断 1733 条，其中 `variable-source-unresolved` **1717 条（99.1%）**——
+噪声已高到不可用，故 P7 定位为**可用性修复期**。
+
+| 阶段 | 内容 | 说明 |
+|---|---|---|
+| **P7-A** 缺陷（下一轮） | Zed 大纲层级 + VSCode GLOBALS 路径 | 根因均已定位到行 |
+| **P7-B** 诊断框架 | 级别统一可配置 + 调用点误报修正 | 后续所有新诊断依赖此框架 |
+| **P7-C** 内置符号 | 内置函数/变量/类符号表 + grammar 缺口清单 | 消掉约 40% 误报 |
+| **P7-D** 链接资料 | 三种采集 + 索引 + 函数可见性 | 大项；需真实 GAL_FILE 数据 |
+| **P7-E** UI | VSCode TreeView / Zed 降级 | 依赖 P7-D |
+
+关键结论（详见 PLAN-P7）：
+
+- **P7-A-1**：Zed outline 对"单节点多 `name:` 字段"的 `DEFINE`/`CONSTANT`/`TYPE`
+  产出多个区间重合的 `@item` → Zed 误判为层级。改 query 即可，非 LSP 问题。
+- **P7-A-2**：`PathOfURI` 不解析 `%3A`（VSCode 在 Windows 上编码盘符冒号），
+  Zed 不编码所以正常。需新建 `internal/fileuri` 替换两处重复实现。
+- **P7-C**：内置**名字**放插件侧（放 grammar 会破坏高亮/重命名/补全语义）；
+  内置**语法**缺口必须改 grammar。判据：`tree-sitter parse` 是否有 ERROR。
+- **P7-D**：链接**只放大函数可见性，不放大变量可见性**（用户明确要求）；
+  索引主键用 **MAIN 程序代码**而非程序编号（程序编号不一定是可执行文件名）；
+  15000 行明细建议单文件 `links.jsonl`（1–2 MB，无需分片）。
+- **P7-E**：LSP `documentSymbol` 无法跨文件跳转，VSCode 用自定义 TreeView 实现，
+  Zed 降级为"可见不可跳"。
+
 ---
 
 ## 9. 测试与验收

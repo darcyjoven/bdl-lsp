@@ -1,14 +1,49 @@
 # 待办与待确认
 
-> 更新：2026-10-21  
+> 更新：2026-10-21（第二轮：纳入 P7）  
 > 当前阶段：**P1–P6 全部功能已完成**（Block 1–7 / Zed / GLOBALS / 字段校验 / 格式化 /
 > 部署 / 补全 / 重命名 / Code Action / 语义高亮 / record 成员校验）。  
-> 下一步候选见 [HANDOVER.md](HANDOVER.md) §8。  
+> **下一步：P7**（缺陷修复 · 内置符号 · 链接资料索引 · 诊断级别统一），
+> 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
 ---
 
 > **新会话接手先读 [HANDOVER.md](HANDOVER.md)**（状态 / 基线 / 坑 / 下一步）。
+
+---
+
+## ★ 下一轮立即处理（P7-A）
+
+> 2026-10-21 Windows 实测发现。完整根因分析与修法见 [PLAN-P7.md](PLAN-P7.md) §2。
+
+### A-1 Zed 大纲：同一条 `DEFINE` 的多个变量变成层级
+
+- [ ] 复现断言：`zed-extension/tests/verify-queries.mjs` 增加「所有 `@item` 的
+      (start,end) 两两不同」检查，先在旧 query 上确认**失败**。
+- [ ] 修 `zed-extension/languages/bdl/outline.scm`：`define` / `type` / `constant`
+      三处把 `@item` 从整条语句改到名字节点（`(define name: (identifier) @name @item)`）。
+- [ ] 断言转绿；`verify-queries.mjs` 全通过。
+- [ ] 手工验证（需 GUI）：`DEFINE l_name LIKE type_file.chr20, l_sql STRING`
+      在 Zed 大纲中 `l_name`、`l_sql` **同级**。
+
+> 根因：grammar 里一条 `DEFINE` 是**单节点多 `name:` 字段**，现 query 产出多个
+> `@item` 区间完全重合的 match，Zed 按区间建父子关系 → 误判为层级。
+> VSCode 正常是因为 `internal/server/symbols.go` 走 `index.FileIndex`，本来就拆平了。
+
+### A-2 VSCode 下 GLOBALS 文件路径识别不到（Zed 正常）
+
+- [ ] Windows 实机抓两个客户端的 `initialize` 入参，确认 `rootUri` 形态
+      （预期 VSCode `file:///c%3A/...`、Zed `file:///c:/...`）。
+- [ ] 新建 `internal/fileuri`：`ToPath` / `FromPath`，全量百分号解码 + 盘符/UNC 归一。
+- [ ] 单测覆盖 7 条用例（`%3A`、`%23`、`%20`、非 ASCII、UNC、大小写盘符、往返）。
+- [ ] 替换 `internal/globals.PathOfURI` 与 `internal/config.uriToPath` 两处**重复实现**。
+- [ ] `initialize` 的 `rootUri` 增加 `workspaceFolders[0].uri` → `rootPath` 回退。
+- [ ] `go test -race ./...` 全绿；Windows 实机复验 `axmt620.4gl` 无 `globals-file-not-found`。
+
+> 根因：`PathOfURI` 只剥 `file://` 与 `%20`，不解析 `%3A`。
+> 实测 `file:///c%3A/work/proj` → `/c%3A/work/proj`（非法路径）→
+> `s.rootPath`、`.bdl-lsp/config.json`、文档相对路径全线失效。
 
 ## 0. 已确认决策
 
@@ -449,6 +484,106 @@ Block P2 已完成：
 - [ ] 数据库 schema 索引。
 - [ ] 纯 Go SFTP（仅在确有需求时评估）。
 - [ ] 性能缓存与 macOS 兼容（5.0 未排期）。
+
+---
+
+## 6.1 P7 Backlog（2026-10-21 立项）
+
+> 完整设计：[PLAN-P7.md](PLAN-P7.md)。执行顺序 P7-A → B → C → D → E。  
+> 立项依据（实测 24 个 `.4gl`）：诊断 1733 条，其中 `variable-source-unresolved`
+> **1717 条（99.1%）**。噪声已高到不可用，P7 是**可用性修复期**而非增值期。
+
+### P7-B 诊断级别统一 + 调用点误报修正
+
+- [ ] `internal/diag/registry.go`：诊断码集中注册（Code/Default/Description/Category），
+      级别解析统一走 `registry.Severity(code)`，删除散落的 level 判断。
+- [ ] 新增统一配置 `bdl.diagnostics.<code>`，优先级
+      `diagnostics.<code>` > 旧键（`syntaxDiagnostics` 等）> 注册表默认。
+- [ ] 旧配置键保留并标注 deprecated（至少两个版本不删）。
+- [ ] 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn（现在静默失效）。
+- [ ] `make diagnostics-check`：Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode enum 三处一致。
+- [ ] **修调用点误报**：`IF fn() THEN` / `LET x = fn(1)` 的函数名被当成变量检查。
+      query 增加 `(expression name: (variable (identifier) @skip))`；语料对比 skip 前后差异。
+- [ ] 新增 `function-not-found`（无链接资料时不报）。
+- [ ] 复测：24 文件诊断 1717 → 新基线（预期 < 400）。
+- [ ] Q10 待确认：诊断是否真的"全部默认 warning"（建议语法保持 error、
+      `record-member-unknown` 保持 off）。
+
+### P7-C 内置函数与变量（用户提问已答复：分两类）
+
+> 判据：`tree-sitter parse` 有 ERROR → **grammar 缺口，改 grammar**；
+> 无 ERROR 但语义未知 → **插件侧符号表**。实测 `STATUS`/`SQLCA`/`ARG_VAL`/
+> `fgl_getenv`/`SET_COUNT` 都能正常解析（语义类）；`STARTLOG` 报 3 个 ERROR（语法类）。
+
+- [ ] `internal/builtin`：内置变量 / 内置函数 / 内置类与方法 三类符号表（Genero 2.50 基线）。
+- [ ] `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，语料驱动补齐，门槛 <20 条未知。
+- [ ] 接入三处：① `variable-source-unresolved` 白名单 ② 补全 ③ 悬停显示签名。
+- [ ] 复测：24 文件 `variable-source-unresolved` 再降（预期 < 150）。
+- [ ] **grammar 缺口清单**（`tree-sitter-bdl`）：`cmd/grammar-audit` 收集 ERROR 上下文按频次排序；
+      已知 `STARTLOG`（2 个文件）`fgl_report_configure`。低频项只留档不排期。
+- [ ] 注意：`cl_null` / `cl_user` / `cl_gr_numfmt` **不是内置函数**，是 `lib/`/`sub/` 的用户函数
+      （已实测 `lib/4gl/cl_null.4gl:16`），归 P7-D，**不要**加进内置表。
+
+### P7-D 程序链接资料索引（大项）
+
+> 用户核心澄清：**链接只放大"函数"可见性，不放大"变量"可见性**。
+> GLOBALS 变量只认当前文件定义/引入，不跨链接 —— `internal/globals` 逻辑一行不改。
+
+- [ ] 数据模型：**索引主键 = MAIN 程序代码**（不是程序编号，因程序编号不一定是可执行文件名）；
+      程序编号只作元数据。
+- [ ] 文档结构：`.bdl-lsp/link/links.jsonl`（单文件，实测约 300–600 KB）+ `links.meta.json`；
+      `--split-by-module` 额外产出 `shards/` 仅供人读（Q11 建议 A）。
+- [ ] 导入校验：`gal04='Y'` SQL 阶段过滤 + 导入兜底；0 MAIN → orphan；
+      ≥2 MAIN → ambiguous；重复代码去重；问题进报告不静默丢。
+- [ ] 路径解析：`bdl.link.moduleRoots`（默认 `["tiptop","topcust"]`，自动探测）；
+      模组目录**大小写不敏感**匹配（数据 `APM` vs 目录 `apm`）。
+- [ ] 默认链接模组 `bdl.link.implicitModules = ["sub","lib","qry"]`（用户规则 R3）。
+- [ ] 采集 S1 **数据库直连**：`github.com/sijms/go-ora/v2`（纯 Go，无需 Instant Client，
+      已实测模块可获取）；密码走环境变量/`secrets.json`(0600)/交互输入，不明文落盘；
+      进程内定时（`interval`）+ `onStart` + 指数退避；主动运行三条入口（CLI/VSCode 命令/Zed task）。
+- [ ] 采集 S2 **服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
+      `SET MARKUP CSV ON` 直出 CSV）+ `bdl-lsp link import`。
+- [ ] 采集 S3 **命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
+- [ ] 函数可见性新增两级：`局部 → 本文件 → GLOBALS → 链接文件 → 隐含模组`；
+      变量可见性**不变**。
+- [ ] 诊断：`function-not-found` / `link-file-missing` / `link-data-invalid` / `link-data-stale`。
+- [ ] 性能：链接索引**后台异步**，诊断不等待；隐含模组（约 980 文件）只建函数名索引，
+      后台一次性 2–4 s；首版仅内存缓存。
+- [ ] `cmd/link-audit`：真实资料全量评估（组数/孤儿/missing 占比）。
+- [ ] **R2 反例测试**：两个链接在一起的子文件各自 `DEFINE` 同名变量但无共享 GLOBALS
+      → 仍报未定义（防止把变量也放进链接可见性）。
+- [ ] Q14 待确认：隐含模组是否参与 `function-not-found` 判定（建议参与）。
+
+### P7-E 链接资料 UI
+
+> LSP `documentSymbol` **无法跨文件跳转**（`DocumentSymbol` 无 URI/target 字段，
+> 跨文件只能用扁平的 `SymbolInformation`，而它不支持层级）；Zed `outline.scm` 只能引用当前语法树。
+
+- [ ] VSCode 自定义 **TreeView**「链接资料」：三级
+      `程序名 → {直链子文件 | 隐含模组 → 模组下文件}`，显示为 `APM/apmp500`，
+      点击 `vscode.open` 跳到 `apm/4gl/sapmp500.4gl`。
+- [ ] LSP 自定义请求 `bdl/linkTree` 供视图取数。
+- [ ] Zed 降级：`documentSymbol` 末尾追加链接条目（**可见不可跳**），文档明示限制。
+- [ ] 无链接资料时显示引导文案，不报错。
+- [ ] Q13 待确认：打开子文件（无 MAIN）时显示反查「被哪些程序链接」（建议）还是隐藏。
+
+### P7 新增配置项（共约 10 项）
+
+```jsonc
+"bdl.diagnostics": { "*": "warning" }
+"bdl.builtins.enable": true
+"bdl.link.enable" / "dataDir" / "moduleRoots" / "implicitModules" / "maxAgeDays"
+"bdl.link.sync"    // enable/source/interval/onStart/db{...}/command{...}
+```
+
+- [ ] VSCode `package.json` 32 项 → 约 42 项，`make manifest-check` 通过。
+
+### P7 专项风险
+
+- [ ] Windows URI 根因判断可能偏差 → 上机先打印两个客户端 `initialize` 入参再动手。
+- [ ] `expression name:` 跳过规则可能误伤 → 先跑语料差异清单人工抽查。
+- [ ] 链接资料含生产库信息 → 默认 gitignore `.bdl-lsp/`，文档写明不要提交。
+- [ ] Oracle 直连依赖 +2–3 MB 二进制 → 必要时 build tag 分离（Q15 建议默认包含）。
 
 ---
 

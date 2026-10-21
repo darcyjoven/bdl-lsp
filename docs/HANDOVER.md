@@ -1,20 +1,39 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21  
+> 更新时间：2026-10-21（第二轮：纳入 P7）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 
 ---
 
+## 0. 下一步就做这个（P7-A）
+
+> 完整根因与修法：[PLAN-P7.md](PLAN-P7.md) §2。待办勾选项：[TODO.md](TODO.md) §下一轮。
+
+1. **Zed 大纲层级 BUG**：`DEFINE a INT, b STRING` 在 Zed 大纲中 `b` 变成 `a` 的子节点。
+   根因已实测定位：`outline.scm` 的 `(define name: (identifier) @name) @item`
+   在"单节点多 `name:` 字段"结构下产出**多个区间重合的 `@item`**，
+   Zed 按区间建父子关系。修法：`@item` 改到名字节点
+   （`(define name: (identifier) @name @item)`），`type`/`constant` 同样。
+   **先在 `verify-queries.mjs` 加断言复现，再改。**
+2. **VSCode GLOBALS 路径 BUG**：`PathOfURI` 只剥 `file://` 和 `%20`，不解析 `%3A`。
+   VSCode 在 Windows 上把盘符冒号编码成 `%3A`（`file:///c%3A/...`），Zed 不编码。
+   **上机第一步先打印两个客户端的 `initialize` 入参确认形态**，再建
+   `internal/fileuri` 替换 `globals.PathOfURI` 与 `config.uriToPath` 两处重复实现。
+
+两个 BUG 都已确认到行、都有不需要 GUI 的复现手段（query 断言 / 单测）。
+
 ## 1. 一句话状态
 
-**P1–P6 全部功能已完成并推送**；剩下的是需要真实环境才能验的项（Windows / Zed GUI / macOS）
-和两个待排期的增强（数据库 schema 索引、工作区级符号索引）。
+**P1–P6 全部功能已完成并推送**；P7 已立项待执行（缺陷修复 → 诊断框架 →
+内置符号 → 链接资料索引 → 链接 UI）。剩下还有需要真实环境才能验的项
+（Windows / Zed GUI / macOS）。
+
 
 ## 2. 三个仓库（都已推送，工作树干净）
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `173cce5` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `882ef00` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a` | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `8fa1bff` | Zed 插件 |
 
@@ -44,23 +63,24 @@ workspace/didChangeConfiguration
 
 | 功能 | 阶段 | 记录文档 |
 |---|---|---|
-| 高亮（TextMate，grammar 生成）+ 语法诊断 | P1/P2 | [PLAN-DETAILED-P1](docs/PLAN-DETAILED-P1.md) |
+| 高亮（TextMate，grammar 生成）+ 语法诊断 | P1/P2 | [PLAN-DETAILED-P1](PLAN-DETAILED-P1.md) |
 | 大纲 / 悬停 / 定义 / 引用 | P1 | 同上 |
-| GLOBALS 模组全局变量（跨文件跳转/来源/两类警告） | P3a | [PLAN-P3A-GLOBALS](docs/PLAN-P3A-GLOBALS.md) |
-| 4GL 字段 ↔ `.per` 校验 + `.per` 内部一致性 | P3b | [PLAN-P3B-FIELD](docs/PLAN-P3B-FIELD.md) |
-| 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化） | P4 | [PLAN-P4-FORMAT](docs/PLAN-P4-FORMAT.md) |
-| 部署 + 远程编译（rsync 主 / scp 备） | P5 | [PLAN-P5-DEPLOY](docs/PLAN-P5-DEPLOY.md)、[DEPLOY-ZED](docs/DEPLOY-ZED.md) |
-| 补全（关键字/符号/表单字段） | P6 | [PLAN-P6-COMPLETION](docs/PLAN-P6-COMPLETION.md) |
-| 重命名（仅当前文件） | P6 | [PLAN-P6-RENAME](docs/PLAN-P6-RENAME.md) |
-| Code Action（拼错→「改为 X」） | P6 | [PLAN-P6-CODEACTION](docs/PLAN-P6-CODEACTION.md) |
-| 语义高亮（仅自定义符号） | P6 | [PLAN-P6-SEMTOK](docs/PLAN-P6-SEMTOK.md) |
-| record `BY NAME` 成员校验（**默认 off**） | P6 | [PLAN-P6-RECORDMEMBER](docs/PLAN-P6-RECORDMEMBER.md) |
+| GLOBALS 模组全局变量（跨文件跳转/来源/两类警告） | P3a | [PLAN-P3A-GLOBALS](PLAN-P3A-GLOBALS.md) |
+| 4GL 字段 ↔ `.per` 校验 + `.per` 内部一致性 | P3b | [PLAN-P3B-FIELD](PLAN-P3B-FIELD.md) |
+| 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化） | P4 | [PLAN-P4-FORMAT](PLAN-P4-FORMAT.md) |
+| 部署 + 远程编译（rsync 主 / scp 备） | P5 | [PLAN-P5-DEPLOY](PLAN-P5-DEPLOY.md)、[DEPLOY-ZED](DEPLOY-ZED.md) |
+| 补全（关键字/符号/表单字段） | P6 | [PLAN-P6-COMPLETION](PLAN-P6-COMPLETION.md) |
+| 重命名（仅当前文件） | P6 | [PLAN-P6-RENAME](PLAN-P6-RENAME.md) |
+| Code Action（拼错→「改为 X」） | P6 | [PLAN-P6-CODEACTION](PLAN-P6-CODEACTION.md) |
+| 语义高亮（仅自定义符号） | P6 | [PLAN-P6-SEMTOK](PLAN-P6-SEMTOK.md) |
+| record `BY NAME` 成员校验（**默认 off**） | P6 | [PLAN-P6-RECORDMEMBER](PLAN-P6-RECORDMEMBER.md) |
+| Windows 缺陷修复 + 内置符号 + 链接资料索引 + 诊断级别统一 | **P7（待执行）** | [PLAN-P7](PLAN-P7.md) |
 
 ## 4. 验收基线（当前实测值）
 
 | 项目 | 结果 |
 |---|---|
-| `go test -race ./...` | 13 个包全绿，**269 个测试函数** |
+| `go test -race ./...` | 19 个包全绿（13 个含测试），**269 个测试函数** |
 | VSCode e2e | **33/33** |
 | `make lint` | 通过（含 `keywords-check` 防清单漂移） |
 | 语料规模 | `.4gl` 7699 / `.per` 7409（`/code/workspace/tiptop-gp`） |
@@ -70,6 +90,8 @@ workspace/didChangeConfiguration
 | 字段校验（`cmd/field-audit`） | 1725 条发现，模块一致率 97.2% |
 | record 成员（`cmd/record-audit`） | 可校验 271760 处，报出 **20**（0.007%） |
 | 性能（7138 行 / 329 KB） | didOpen 133ms，didChange 6.0ms |
+| **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条，其中 `variable-source-unresolved` **1717（99.1%）**；`field-not-in-form` 15；`file-too-large` 1 |
+| ↑ 噪声归因 | `cl_null` 311（`lib/` 用户函数）、`SQLCA` 252、`ARG_VAL` 248、`INT_FLAG` 183、`cl_gr_numfmt` 150、`STATUS` 98 —— 内置符号与链接缺失各占一半 |
 
 ## 5. 配置项（VSCode `bdl.*` / Zed `settings.*` 同名）
 
@@ -124,8 +146,33 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 7. **Go 的 `const` 必须用 `=`**，不能用 `:=`（本轮踩了两次）。
 8. **e2e 前必须 `npm run build`**：`test:e2e` 已改成先 build，否则用旧 `dist` 会
    出现"命令不存在"的假失败。
+9. **URI ↔ 路径的转换不能手写**（P7-A 踩）：`PathOfURI` 只剥 `file://` 与 `%20`，
+   遇到 VSCode 在 Windows 上编码的 `%3A`（盘符冒号）就解出 `/c%3A/...` 非法路径。
+   Zed 不编码冒号所以正常 → 表现为"VSCode 认不到、Zed 认得到"。
+   修法与用例表见 [PLAN-P7](PLAN-P7.md) §2.2。
+10. **Zed `outline.scm` 的 `@item` 必须唯一**：一条 `DEFINE a INT, b STRING` 是
+    **单节点多 `name:` 字段**，若 `@item` 绑整条语句，多个 match 的区间完全重合，
+    Zed 会按区间把它们判成父子层级（VSCode 不受影响，它走 `documentSymbol`）。
+    绑定到名字节点本身即可；`type`/`constant` 同理。
+11. **`(variable (identifier))` 会把函数调用名当变量**：表达式位置的
+    `fn()` 语法是 `(expression name: (variable ...))`，只跳过 `(call name: ...)`
+    会漏掉它 → 每个函数调用都被报"变量未定义"。P7-B 修。
+12. **内置名字不要塞进 grammar**：会让高亮/重命名/补全把它当关键字，
+    且自定义同名符号被冒充。判据：`tree-sitter parse` 有 ERROR 才改 grammar。
 
 ## 8. 下一步候选（按建议顺序）
+
+### ★ P7（已立项，下一轮直接做）
+
+见本文 §0 与 [PLAN-P7.md](PLAN-P7.md)。顺序：
+
+| 阶段 | 内容 | 前置 |
+|---|---|---|
+| P7-A | Zed 大纲层级 + VSCode GLOBALS 路径（**下一轮**） | 无 |
+| P7-B | 诊断级别统一 + 调用点误报修正 | 无 |
+| P7-C | 内置符号表 + grammar 缺口清单 | P7-B |
+| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | P7-B、P7-C、真实 GAL_FILE 数据 |
+| P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | P7-D |
 
 ### A. Windows 实测（成本低，价值高）
 
@@ -135,17 +182,21 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 - `scripts/e2e-vscode.ps1`
 - 部署：Windows 无 rsync → 自动回退 scp（逐文件 + 路径归一已实现）
 
+> 注：P7-A 的两个 BUG 正是 Windows 实测发现的，上机时一并复验。
+
 ### B. 数据库 schema 索引（能显著提升 record 校验覆盖面）
 
 现状：`DEFINE r LIKE table.*` 占语料 **87%** 的 record 成员引用，静态看不到列名，
 全部跳过。有 schema 索引后可校验比例从 13% → 接近 100%。
 
 需要决策：schema 来源（`.sch`/`.sql` 文件？数据库连接？）。
+可复用 P7-D 的 Oracle 直连基础设施（`go-ora`），两者一并评估。
 
 ### C. 工作区级符号索引（解锁跨文件重命名 + 更全的补全）
 
 现状：重命名和补全都只看当前文件/已打开文档。
 计划要求 15k 文件 < 60s，需要后台任务 + 持久化缓存。
+P7-D 的链接索引是"按程序分组索引"的子集，可视为该方向的起步。
 
 ### D. Zed 侧验证
 
@@ -186,11 +237,12 @@ FMT_DEBUG=<file> go run ./cmd/fmt-audit   # 单文件格式化调试
 
 | 文档 | 内容 |
 |---|---|
-| [README](README.md) | 仓库总览、快速开始、能力表 |
-| [PLAN](docs/PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
-| [FEATURES](docs/FEATURES.md) | 功能基线清单（编号 1–34）+ 阶段映射 |
-| [TODO](docs/TODO.md) | 已完成/待办逐项清单（最详细的进度记录） |
-| [ENVIRONMENT](docs/ENVIRONMENT.md) | 工具链、沙箱约束 |
-| [TECH-STACK](docs/TECH-STACK.md) | 版本与选型理由 |
-| [RESEARCH](docs/RESEARCH.md) | 语料统计、CST 结构 |
+| [README](../README.md) | 仓库总览、快速开始、能力表 |
+| [PLAN](PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
+| [FEATURES](FEATURES.md) | 功能基线清单（编号 1–40）+ 阶段映射 |
+| [TODO](TODO.md) | 已完成/待办逐项清单（最详细的进度记录；§下一轮 = P7-A） |
+| [PLAN-P7](PLAN-P7.md) | **P7 立项**：缺陷根因、内置符号、链接资料设计、待确认决策 |
+| [ENVIRONMENT](ENVIRONMENT.md) | 工具链、沙箱约束 |
+| [TECH-STACK](TECH-STACK.md) | 版本与选型理由 |
+| [RESEARCH](RESEARCH.md) | 语料统计、CST 结构 |
 | `PLAN-P*.md` | 各阶段实现记录：需求映射、决策、踩坑、验收输出 |
