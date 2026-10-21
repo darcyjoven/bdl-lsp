@@ -91,7 +91,12 @@ type Options struct {
 }
 
 // 默认上限：太多会把编辑器卡住，也淹没真正想要的项。
-const defaultMaxItems = 200
+//
+// 但**不能小于"所有类别之和"**：候选按 SortText 排序，关键字排在最后
+// （`8…`），上限一旦低于总条数，关键字就会被整类截掉——用户敲 `DIS`
+// 之前根本看不到任何关键字。BDL 关键字 361 条 + 内置符号 97 条 ≈ 470，
+// 所以取 600（一次响应约 50 KB，IsIncomplete 仍为 true，不影响增量刷新）。
+const defaultMaxItems = 600
 
 // Provide 生成补全候选。
 //

@@ -447,3 +447,70 @@ func TestLinkExternalFunctionsAreSuppressed(t *testing.T) {
 		t.Errorf("cl_err3 是外部函数，不该报：%s", msgs[0])
 	}
 }
+
+// TestLinkTreeRequest 验证 bdl/linkTree（P7-E）返回链内文件、全局模组与反查。
+func TestLinkTreeRequest(t *testing.T) {
+	f := newLinkFixture(t)
+	f.write(t, "apm", "entry", "MAIN\n  CALL helper()\nEND MAIN\n")
+	f.write(t, "apm", "sub1", "FUNCTION helper()\nEND FUNCTION\n")
+	f.write(t, "lib", "cl_util", "FUNCTION u1()\nEND FUNCTION\n")
+	f.writeLinks(t,
+		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"],["APM","sub1"]]}`,
+		`{"schema":1,"program":"entry2","module":"APM","main":"entry2","files":[["APM","entry"],["APM","sub1"]]}`,
+	)
+	dir := filepath.Join(f.root, ".link")
+	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
+		`"chains":2,"rowsTotal":2,"rowsY":2}`
+	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := f.initialize(t)
+	h.srv.EnableResolvers(f.root)
+	h.srv.WaitLinkReady(10 * time.Second)
+
+	// 1) 主程序：链内文件 + 反查
+	h.send(fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":11,"method":"%s","params":{"textDocument":{"uri":%q}}}`,
+		"bdl/linkTree", f.uri("apm", "entry")))
+	msg := h.readMessage(5 * time.Second)
+	res, _ := msg["result"].(map[string]any)
+	if res == nil {
+		t.Fatalf("没有 result：%v", msg)
+	}
+	if found, _ := res["found"].(bool); !found {
+		t.Fatalf("entry 应在链里：%v", res)
+	}
+	if main, _ := res["main"].(string); main != "entry" {
+		t.Errorf("main = %q", main)
+	}
+	files, _ := res["files"].([]any)
+	if len(files) != 2 {
+		t.Fatalf("files = %d，期望 2：%v", len(files), files)
+	}
+	first, _ := files[0].(map[string]any)
+	if first["path"] == "" || first["path"] == nil {
+		t.Errorf("文件节点应带真实路径：%v", first)
+	}
+	mods, _ := res["modules"].(map[string]any)
+	if _, ok := mods["LIB"]; !ok {
+		t.Errorf("应列出全局模组 LIB：%v", mods)
+	}
+	refs, _ := res["refs"].([]any)
+	if len(refs) != 2 {
+		t.Errorf("反查应有 entry 与 entry2：%v", refs)
+	}
+
+	// 2) 子文件：found=false（它不是 MAIN），但能反查到程序
+	h.send(fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":12,"method":"%s","params":{"textDocument":{"uri":%q}}}`,
+		"bdl/linkReferences", f.uri("apm", "sub1")))
+	msg = h.readMessage(5 * time.Second)
+	res, _ = msg["result"].(map[string]any)
+	if res == nil {
+		t.Fatalf("没有 result：%v", msg)
+	}
+	if total, _ := res["refTotal"].(float64); total != 2 {
+		t.Errorf("refTotal = %v，期望 2", res["refTotal"])
+	}
+}

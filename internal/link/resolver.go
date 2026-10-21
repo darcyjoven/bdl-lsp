@@ -2,6 +2,7 @@ package link
 
 import (
 	"strings"
+	"sync"
 )
 
 // Resolver 把「链接资料 + 模组布局 + 函数索引」组合成"某个文件能调用哪些函数"。
@@ -23,6 +24,9 @@ type Resolver struct {
 	sym       *SymbolIndex
 	// maxSync 是同步解析的文件数上限，超过就走后台（见 maxSyncDefault）。
 	maxSync int
+	// modOnce/modFiles 缓存全局模组的文件清单（P7-E 链接资料 UI 用）。
+	modOnce  sync.Once
+	modFiles map[string][]TreeFile
 
 	started bool
 }

@@ -1,6 +1,7 @@
 package completion
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -57,6 +58,31 @@ func TestSplitWord(t *testing.T) {
 		if word != tc.wantWord || dot != tc.wantDot {
 			t.Errorf("SplitWord(%q) = (%q, %v)，期望 (%q, %v)",
 				tc.line, word, dot, tc.wantWord, tc.wantDot)
+		}
+	}
+}
+
+// TestProvideKeywordsWithBuiltins 守住"关键字不会被上限截掉"。
+//
+// 回归背景：BDL 关键字 361 条排在 SortText 最后，内置符号（97 条）加进来
+// 之后总条数超过上限，空前缀补全里一个关键字都没有——e2e「补全给出关键字」
+// 就是这么红的。
+func TestProvideKeywordsWithBuiltins(t *testing.T) {
+	var builtins []builtin.Symbol
+	for i := 0; i < 97; i++ {
+		builtins = append(builtins, builtin.Symbol{
+			Name: fmt.Sprintf("g_builtin_%03d", i), Kind: builtin.KindFunction,
+		})
+	}
+	res := Provide(Context{Lang: "bdl"}, nil, nil, nil,
+		Options{Keywords: true, Builtins: builtins})
+	got := map[string]bool{}
+	for _, it := range res.Items {
+		got[it.Label] = true
+	}
+	for _, want := range []string{"DISPLAY", "END", "CALL"} {
+		if !got[want] {
+			t.Fatalf("补全缺少关键字 %q（共 %d 项）", want, len(res.Items))
 		}
 	}
 }

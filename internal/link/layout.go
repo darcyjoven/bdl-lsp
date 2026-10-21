@@ -29,6 +29,11 @@ type Layout struct {
 
 	// dirs 缓存 lower(模组) → 模组绝对目录（含 `4gl` 子目录之前的那层）。
 	dirs map[string]string
+	// names 缓存 lower(模组) → (小写文件名 → 真实文件名)。
+	//
+	// 资料里的名字常与磁盘大小写不一致，逐个 `os.ReadDir` 找太慢；
+	// 链接资料 UI（P7-E）一次要解析整条链（最大 524 个文件），必须缓存。
+	names map[string]map[string]string
 	// errs 是解析过程中的问题（供导入报告使用）。
 	errs []string
 	// mu 保护 dirs/errs/Roots：导入阶段会用多个 goroutine 并行查路径。
@@ -188,28 +193,48 @@ func (l *Layout) ModuleDir(module string) (string, bool) {
 }
 
 // Path 返回 (模组, 代码) 对应的 .4gl 绝对路径。
+//
+// 走 `nameIndexLocked` 的缓存：资料里的名字常与磁盘大小写不一致
+// （`Sapmp500` vs `sapmp500`），而"链接资料 UI"一次要解析整条链
+// （最大 524 个文件）——早期实现每个文件扫一次目录，串行处理请求时
+// 会把整个服务器拖住十几秒。
 func (l *Layout) Path(module, code string) (string, bool) {
-	dir, ok := l.ModuleDir(module)
-	if !ok {
+	if l == nil {
 		return "", false
 	}
-	// 代码本身也可能大小写不一致（资料 `Sapmp500` vs 文件 `sapmp500`），
-	// 所以先按原样试，失败再扫目录做大小写不敏感匹配。
-	direct := filepath.Join(dir, "4gl", code+".4gl")
-	if st, err := os.Stat(direct); err == nil && !st.IsDir() {
-		return direct, true
-	}
-	want := strings.ToLower(code + ".4gl")
-	entries, err := os.ReadDir(filepath.Join(dir, "4gl"))
-	if err != nil {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buildLocked()
+	name, ok := l.namesLocked(module)[strings.ToLower(code)+".4gl"]
+	if !ok || name == "" {
 		return "", false
 	}
-	for _, e := range entries {
-		if !e.IsDir() && strings.ToLower(e.Name()) == want {
-			return filepath.Join(dir, "4gl", e.Name()), true
+	return filepath.Join(l.dirs[strings.ToLower(module)], "4gl", name), true
+}
+
+// namesLocked 返回模组 4gl 目录的"小写文件名 → 真实文件名"索引（惰性、缓存）。
+func (l *Layout) namesLocked(module string) map[string]string {
+	key := strings.ToLower(module)
+	if l.names == nil {
+		l.names = map[string]map[string]string{}
+	}
+	if idx, ok := l.names[key]; ok {
+		return idx
+	}
+	idx := map[string]string{}
+	dir, ok := l.dirs[key]
+	if ok {
+		entries, err := os.ReadDir(filepath.Join(dir, "4gl"))
+		if err == nil {
+			for _, e := range entries {
+				if !e.IsDir() {
+					idx[strings.ToLower(e.Name())] = e.Name()
+				}
+			}
 		}
 	}
-	return "", false
+	l.names[key] = idx
+	return idx
 }
 
 // ModuleFiles 返回模组 `4gl` 目录下全部 .4gl 文件（绝对路径，已排序）。
@@ -217,18 +242,20 @@ func (l *Layout) Path(module, code string) (string, bool) {
 // 用于全局模组（sub/lib/qry）：这些模组的函数对所有程序可见，且**不依赖
 // 链接资料**——即使 CSV 里没有它们的组也能工作。所以只能扫盘。
 func (l *Layout) ModuleFiles(module string) []string {
-	dir, ok := l.ModuleDir(module)
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.buildLocked()
+	dir, ok := l.dirs[strings.ToLower(module)]
 	if !ok {
 		return nil
 	}
-	entries, err := os.ReadDir(filepath.Join(dir, "4gl"))
-	if err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".4gl") {
-			out = append(out, filepath.Join(dir, "4gl", e.Name()))
+	var out []string
+	for name := range l.namesLocked(module) {
+		if strings.EqualFold(filepath.Ext(name), ".4gl") {
+			out = append(out, filepath.Join(dir, "4gl", name))
 		}
 	}
 	sort.Strings(out)

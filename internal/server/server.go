@@ -209,6 +209,10 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleCodeAction(ctx, reply, req)
 	case protocol.MethodSemanticTokensFull:
 		return s.handleSemanticTokensFull(ctx, reply, req)
+	case MethodLinkTree:
+		return s.handleLinkTree(ctx, reply, req)
+	case MethodLinkReferences:
+		return s.handleLinkReferences(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}

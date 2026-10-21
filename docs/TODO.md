@@ -1,11 +1,11 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7-D 核心 / D-2 / D-3 已完成**，`bdl-lsp 0.1.6`）  
-> 当前阶段：**P1–P6 全部功能已完成**；**P7-A/B/C-1/D/D-2/D-3 已完成**
-> （Zed 大纲层级、诊断降噪、内置符号表、链接资料索引、外部函数过滤、采集通道）。  
-> **下一步**：
-> ① P7-E 链接资料 UI（VSCode TreeView + 反查引用程序，Zed 降级）；
-> ② P7-C-2（grammar ERROR 审计）可随时插入。
+> 更新：2026-10-21（**P7 全部收尾项已完成**，`bdl-lsp 0.1.7`）  
+> 当前阶段：**P1–P6 全部功能已完成**；**P7 全部收尾项已完成**
+> （Zed 大纲层级、诊断降噪、内置符号表、链接资料索引、外部函数过滤、采集通道、链接资料视图）。  
+> **下一步候选**：
+> ① P7-C-2（grammar ERROR 审计 + `#{ }#` 块注释，需 `tree-sitter generate`）；
+> ② `field-not-in-form` 的 1725 条待查。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -15,12 +15,12 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **66 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+未勾选共 **61 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **8** | P7-C-1 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-D 分片 1 · P7-E 4 · P7-C-2 grammar 2 |
+| **P7 路线图** | **3** | P7-C-1 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：`.link` 提示 1 · P7-D 分片 1 · P7-C-2 grammar 2 |
 | P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
 | P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
@@ -801,12 +801,14 @@ Block P2 已完成：
 > LSP `documentSymbol` **无法跨文件跳转**（`DocumentSymbol` 无 URI/target 字段，
 > 跨文件只能用扁平的 `SymbolInformation`，而它不支持层级）；Zed `outline.scm` 只能引用当前语法树。
 
-- [ ] VSCode 自定义 **TreeView**「链接资料」：三级
+- [x] VSCode 自定义 **TreeView**「链接资料」：三级
       `程序名 → {直链子文件 | 隐含模组 → 模组下文件}`，显示为 `APM/apmp500`，
       点击 `vscode.open` 跳到 `apm/4gl/sapmp500.4gl`。
-- [ ] LSP 自定义请求 `bdl/linkTree` 供视图取数。
-- [ ] Zed 降级：`documentSymbol` 末尾追加链接条目（**可见不可跳**），文档明示限制。
-- [ ] 无链接资料时显示引导文案，不报错。
+- [x] LSP 自定义请求 `bdl/linkTree` / `bdl/linkReferences` 供视图取数
+      （实测最大链 368 文件：首次 3.4 ms、再次 0.3 ms）。
+- [x] Zed 降级：**改成不塞 `documentSymbol`**（那会让 VSCode 大纲多出不可跳转的
+      假符号），改为 CLI（`link status`）+ 文档说明。见 PLAN-P7 §10.9。
+- [x] 无链接资料时显示引导文案，不报错。
 - [x] ~~Q13 待确认~~ → **已定稿：默认空白 + 可点击「反查引用程序」**（用户 2026-10-21）。
       反查异步、**先显示数量再分页展开**（实测 `aws_xml` 被 324 组引用，不能一次铺开）。
 
@@ -821,8 +823,9 @@ Block P2 已完成：
                    db{...} / command{...} }
 ```
 
-- [ ] VSCode `package.json` 32 项 → 约 40 项，`make manifest-check` 通过。
+- [x] VSCode `package.json` → **40 项**，`make manifest-check` 通过。
 - [ ] 安装时**提示**把 `.link/` 加入 `.gitignore`（不擅自改用户文件）。
+      —— 现有实现只在 README 写明，未做运行时提示。
 
 ### P7 专项风险
 

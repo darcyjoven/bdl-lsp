@@ -1916,6 +1916,61 @@ bdl-lsp link sync -source file -dry-run                                  # 只�
 
 ---
 
+### 10.9 P7-E 链接资料 UI（✅ 2026-10-21，`0.1.7`）
+
+**服务器侧**：两个自定义请求，都不碰 LSP 标准方法。
+
+| 请求 | 返回 |
+|---|---|
+| `bdl/linkTree` | `{found, program, main, ambiguous, files[], modules{}, refs[], refTotal}` |
+| `bdl/linkReferences` | `{refs[], refTotal}`（只做反查，省一次组装） |
+
+- `files[].path` 由服务器按 `Layout` 的模组根解析（插件不需要知道资料格式）；
+- `modules{}` 是 `sub`/`lib`/`qry` 三个全局模组的文件清单，**缓存在 resolver 上**
+  （lib 一个模组 983 个文件，每次重建纯属浪费）；
+- 反查复用 `Index.ChainsOfFile`，同一遍扫描建好的索引，不额外读盘；
+  上限 50 条（实测最多 324 组，分页交给插件）。
+
+**性能**（实测真实语料，`TestTreeOnRealCorpus` 钉住）：
+
+| 操作 | 首次 | 再次 |
+|---|---:|---:|
+| 最大的链（aws_ttsrv2，368 文件） | **3.4 ms** | 0.3 ms |
+
+第一版逐文件 `os.ReadDir` 找大小写不匹配的名字，同一条链要 10 s 以上；
+现在 `Layout` 按模组缓存"小写文件名 → 真实文件名"，请求路径只剩字符串查表。
+
+**VSCode**：`artifacts` 之外的独立视图「链接资料」（Explorer 侧栏），三级结构
+
+```text
+链接资料
+├── axmt620                ← L1 程序（MAIN）
+│   ├── ALM/s_point        ← L2 链内文件（点击打开）
+│   └── APM/sapmp500
+├── [ 反查引用程序 ]        ← 子文件才有，点开才查询
+├── LIB  (983 个文件)
+└── SUB  (…)
+```
+
+- 文件节点点击 = `vscode.open`，直接跳到 `apm/4gl/sapmp500.4gl`；
+- 反查**默认不执行**，点一下才取；一次 50 条，超出显示"显示更多…"；
+- 没有资料/不在任何链里时显示引导文案，不报错。
+
+**Zed 降级（与原计划的偏差）**：原计划把链路追加到 Zed 的 `documentSymbol`
+末尾。落地时否掉了——`documentSymbol` 是 **VSCode 大纲的数据源**，追加进去
+会让 VSCode 大纲里多出一堆不可跳转的假符号，是为了一个客户端污染另一个。
+Zed 侧改为：用 `bdl-lsp link status` / `cmd/link-audit -externals` 看资料，
+或直接用 VSCode 的视图。Zed README 已写明这一点。
+
+**顺带修掉的两个 e2e 红**（都是本轮之前就红了）：
+
+1. 语法错误断言 `severity === Error`，但 Q10 定稿默认是 **warning** →
+   改成断言 `code === "syntax-error"` + 级别为 warning；
+2. **补全里一个关键字都没有**：BDL 关键字 361 条排在最末，上限 200 条，
+   内置符号（97 条）加进来后整类被截掉 → 上限提到 600 并加单测钉住。
+
+---
+
 ## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |
