@@ -1053,7 +1053,128 @@ Windows 语义由 `fileuri` 的专门用例覆盖。
 **遗留**：Windows 实机复验仍需用户在真机执行（本沙箱无 Windows）。
 复验点：打开 `axmt620.4gl`，确认无 `globals-file-not-found`。
 
-### 10.3 P7 现已无遗留待确认项
+### 10.3 P7-B 第一批：悬停的两个问题（✅ 2026-10-21）
+
+用户 Windows 实测反馈两个悬停问题，都已定位根因并修复。
+
+#### B-1 多行 RECORD 悬停被压成一行
+
+**现象**：`DEFINE g_qryparam RECORD ... END RECORD`（26 行）悬停显示为
+**一行几百字符**，完全无法阅读。
+
+**根因**：`index.typeText` 用 `normalizeSpace` 把换行压成空格。
+但 `TypeText` 同时承担**语义判断**职责（`server/recordname.go` 用
+`strings.HasPrefix(TypeText, "RECORD")` 判断是不是记录），
+直接改它会让那些判断失效。
+
+**修法**：职责分离。
+
+| 字段 | 用途 | 处理 |
+|---|---|---|
+| `TypeText` | 语义判断（前缀匹配、相等比较） | 规范化（换行→空格），**行为不变** |
+| `TypeTextRaw` | 展示（悬停） | 保留换行与缩进 |
+
+`TypeTextRaw` 只做两件事：去行尾空白、tab→4 空格（markdown 里 tab 宽度不可控）。
+不去公共缩进——代码块里有缩进更好读，且能反映真实嵌套。
+
+**验证**（真实文件 `tiptop/config/top.global:206` 的 `g_qryparam`）：
+
+```text
+g_qryparam : RECORD
+            state             LIKE type_file.chr1,  #程式的狀態(i→INPUT，c→CONSTRUCT，預設為i)
+            form              LIKE type_file.chr20, #畫面代號(...)
+            ...
+            plant             LIKE type_file.chr10  #FUN-980030:指定跨Plant查詢資料
+                              END RECORD
+```
+
+26 行逐行原样输出，含注释。
+
+#### B-2 同名局部变量跨函数泄露
+
+**现象**：`fa` 和 `fb` 各有一个局部变量 `i`，在 `fa` 里悬停 `i`
+**同时显示 fa 的 INTEGER 和 fb 的 STRING**。
+
+**根因**：hover 用 `fi.Lookup(小写名)` 扫**全文件**同名符号，没有作用域过滤。
+而**跳转**（`resolveDefinition`）早就按作用域过滤了——**两处规则不一致**，
+所以"能跳转但悬停是乱的"。
+
+**修法**：抽出 `scopedSymbolsAt`，跳转与悬停共用同一套规则。
+
+```text
+优先级：当前函数局部 → 当前函数参数 → 模块级 → GLOBALS 块内 → GLOBALS 引入
+```
+
+顺带补上 **`ScopeGlobals`（GLOBALS 块内）**这一级——原实现里它不在优先级链中，
+导致在 `.global` 文件的 GLOBALS 块内悬停 `gx` 会显示成模块级的同名变量。
+
+**记录字段的特例**：记录字段的 `Container` 是**记录名**而不是函数名
+（见 `index.collectRecordFields`），不能按函数作用域过滤。
+改为"光标是否落在声明该字段的那个记录的区间内"判断
+（`inRecordDeclaration`）。这个改动一度让 `TestHoverRecordField` 变红，
+说明原来的测试是有价值的——它守住了"记录字段要有悬停"。
+
+**验证**：
+
+| 检查 | 结果 |
+|---|---|
+| 局部 `i` 隔离 | `fa` 只显示 INTEGER/fa，`fb` 只显示 STRING/fb |
+| 局部优先于模块级 | 函数内 `i` 显示局部 INTEGER，不显示模块级 STRING |
+| GLOBALS 块内定义 | 显示块内类型 + "模组全局变量"标注 |
+| GLOBALS 引入变量 | 显示类型 + 来源文件与行号 |
+| 记录字段 | `TestHoverRecordField` 恢复通过 |
+| 语料抽样 | 29 个真实 RECORD 变量悬停，**0 个**多条目泄露 |
+
+新增回归测试 `internal/server/hover_test.go`（6 个用例）。
+
+#### B-3 Zed 大纲仍有层级（本轮只记录，不修）
+
+用户反馈修复后 Zed 里**仍有**同层级变量变成树结构。
+按用户要求"先记录，后续再修复"，本轮只做记录与根因定位。
+
+**实测结论**（20 个真实文件）——两种情况要分开看：
+
+| 情况 | `@item` 区间包含关系 | 状态 |
+|---|---|---|
+| 同一条 `DEFINE` 声明多个变量 | **0** | ✅ 上一轮已修好 |
+| **函数内部的 `DEFINE` 变量** | **每个文件都有** | ❌ 剩余的层级来源 |
+
+实例：
+
+```text
+FUNCTION fa()
+    DEFINE i INTEGER
+END FUNCTION
+
+item 数: 4
+包含对数: 2
+   [0,0-2,12] 包含 [1,11-1,12]     ← 函数区间包含其内部变量区间
+   [3,0-5,12] 包含 [4,11-4,12]
+```
+
+根因：`(function name: (identifier) @name) @item` 把 `@item` 绑在**整个函数**上，
+函数内部的 `DEFINE` 变量的 `@item` 落在函数区间内，Zed 按包含关系判成子级。
+
+**上一轮断言的盲区**（重要）：断言只查"`@item` 区间**完全相同**"，
+**不查"包含"**。所以它对"函数包含内部变量"这种情况完全无感。
+下一轮要补"不允许 A 包含 B"的检查——但要先确定**哪些包含是有意的**
+（比如函数与其内部变量，也许就应该有层级）。
+
+**待用户在 Zed GUI 确认**：是"函数下的变量缩进"这种形态吗？
+确认后才能选方案：
+
+| 方案 | 效果 | 代价 |
+|---|---|---|
+| A. 函数的 `@item` 也绑到名字节点 | 区间不包含 → 全平级 | 函数条目范围变小 |
+| B. 函数内 `DEFINE` 不进大纲 | 只留模块级变量 | 丢失函数内变量导航 |
+| C. 只保留模块级 `DEFINE` | 同 B 但范围明确 | 同上 |
+
+#### B-4 P7-B 剩余项（未做）
+
+诊断码集中注册表、`bdl.diagnostics.<code>` 配置、拼错保护、
+修调用点误报、新增 `function-not-found`、语料复测降噪。见 TODO §B-4。
+
+### 10.4 P7 现已无遗留待确认项
 
 2026-10-21 三次答复后，所有冲突已消解：
 

@@ -56,6 +56,92 @@ func (s *Server) handleDefinition(ctx context.Context, reply jsonrpc2.Replier, r
 	return reply(ctx, locs, nil)
 }
 
+// scopedSymbols 按 Genero 的作用域规则把同名符号分成若干组，优先级从高到低：
+//
+//	locals   —— 当前函数内的局部 DEFINE（Scope=func 且 Container 匹配）
+//	params   —— 当前函数的参数
+//	globals  —— 模块级（Scope=global）的变量/常量/类型/函数
+//	globalsB —— GLOBALS...END GLOBALS 块内（Scope=globals-block）
+//
+// container 是光标所在的函数名（enclosingContainer 的结果；空表示不在函数内）。
+//
+// 这个函数被跳转与悬停共用，避免两处各写一套规则导致行为不一致
+// （P7-B 的 bug 就是悬停漏了作用域过滤，把别的函数的局部变量也列了出来）。
+//
+// 裸字段名（Kind==field）不参与：`rec.field` 的字段由 resolveRecordField 处理，
+// 裸字段名推断归属容易误跳。
+func scopedSymbols(fi *index.FileIndex, word, container string) [][]*index.Symbol {
+	return scopedSymbolsAt(fi, word, container, 0)
+}
+
+// scopedSymbolsAt 是 scopedSymbols 的带位置版本。
+//
+// offset 是光标在文件里的字节偏移；用来判断"光标是否落在某个记录
+// 定义的内部"。记录字段的 Container 是**记录名**而不是函数名
+// （见 index.collectRecordFields），所以不能用函数作用域过滤，
+// 只能按"光标在不在这个记录的声明区间内"来判断。
+//
+// offset=0 表示不做位置判断（调用方拿不到位置时用）。
+func scopedSymbolsAt(fi *index.FileIndex, word, container string, offset int) [][]*index.Symbol {
+	var locals, params, globals, globalsB, fields []*index.Symbol
+	if fi == nil {
+		return nil
+	}
+	lower := strings.ToLower(word)
+	for _, sym := range fi.Symbols {
+		if sym.Lower != lower {
+			continue
+		}
+		switch {
+		case sym.Kind == index.KindField:
+			// 记录字段：只有当光标落在**声明该字段的那个记录**内部时才算命中。
+			// 否则同名裸字段名会到处命中（例如 rec1.x 与 rec2.x 都叫 x）。
+			//
+			// 注意：不能简单按函数过滤——字段的 Container 是记录名不是函数名。
+			if offset > 0 && inRecordDeclaration(fi, sym, offset) {
+				fields = append(fields, sym)
+			}
+			continue
+		case sym.Scope == index.ScopeFunc && container != "" && sym.Container == container:
+			locals = append(locals, sym)
+		case sym.Scope == index.ScopeParam && container != "" && sym.Container == container:
+			params = append(params, sym)
+		case sym.Scope == index.ScopeGlobal:
+			globals = append(globals, sym)
+		case sym.Scope == index.ScopeGlobals:
+			// GLOBALS 块内的声明：与模块级变量同名时块内优先
+			// （块内那个才是"最近"的定义，且它可能来自 .global 文件）。
+			globalsB = append(globalsB, sym)
+		}
+	}
+	return [][]*index.Symbol{locals, params, globalsB, globals, fields}
+}
+
+// inRecordDeclaration 判断光标偏移是否落在"声明了 sym 这个字段的记录"
+// 的声明区间内。
+//
+// 实现：找到与 sym.Parent 同名的记录符号，检查其 DeclStart..DeclEnd 是否
+// 覆盖 offset。记录符号既有顶层 TYPE..END RECORD 形式，也有内联
+// DEFINE x RECORD ... END RECORD 形式，两者的 Decl 区间都覆盖整个定义。
+func inRecordDeclaration(fi *index.FileIndex, sym *index.Symbol, offset int) bool {
+	if sym.Parent == "" {
+		return false
+	}
+	u := uint(offset)
+	for _, cand := range fi.TopLevel {
+		if cand.Kind != index.KindRecord {
+			continue
+		}
+		if !strings.EqualFold(cand.Name, sym.Parent) {
+			continue
+		}
+		if cand.DeclStart <= u && u <= cand.DeclEnd {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveDefinition 按作用域优先级解析定义位置。
 //
 // P3a 起为四级（Genero 作用域规则）：
@@ -74,28 +160,8 @@ func (s *Server) resolveDefinition(doc *document.Document, fi *index.FileIndex, 
 		}
 	}
 
-	lower := strings.ToLower(word)
-	container := enclosingContainer(fi, offset)
-
-	var locals, params, globals []*index.Symbol
-	for _, sym := range fi.Symbols {
-		if sym.Lower != lower {
-			continue
-		}
-		switch {
-		case sym.Kind == index.KindField:
-			// 裸字段名（非 rec.field）不推断归属，避免误跳
-			continue
-		case sym.Scope == index.ScopeFunc && container != "" && sym.Container == container:
-			locals = append(locals, sym)
-		case sym.Scope == index.ScopeParam && container != "" && sym.Container == container:
-			params = append(params, sym)
-		case sym.Scope == index.ScopeGlobal:
-			globals = append(globals, sym)
-		}
-	}
-
-	for _, group := range [][]*index.Symbol{locals, params, globals} {
+	groups := scopedSymbols(fi, word, enclosingContainer(fi, offset))
+	for _, group := range groups {
 		if len(group) > 0 {
 			return toLocations(doc.URI, idx, group)
 		}

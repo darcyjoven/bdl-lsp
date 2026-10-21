@@ -205,7 +205,24 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		return reply(ctx, nil, nil)
 	}
 
-	matches := fi.Lookup(strings.ToLower(word))
+	// 按作用域优先级取候选（与跳转共用同一套规则）。
+	//
+	// 旧实现直接 fi.Lookup(小写名)，会把**全文件**同名符号都列出来：
+	// 两个函数各有一个局部变量 i 时，悬停任一 i 都会同时显示两个 i
+	// 及其所属函数（用户实测报出的 bug）。
+	//
+	// 现在的顺序与 Genero 一致：
+	//   当前函数的局部变量 → 当前函数的参数 → 模块级
+	// 全部落空才去 GLOBALS 引入（模组全局变量）。
+	offset := idx.Offset(int(params.Position.Line), int(params.Position.Character))
+	container := enclosingContainer(fi, offset)
+	var matches []*index.Symbol
+	for _, group := range scopedSymbolsAt(fi, word, container, offset) {
+		if len(group) > 0 {
+			matches = group
+			break
+		}
+	}
 	if len(matches) == 0 {
 		// P3a（F2）：本文档没有定义时，查 GLOBALS 引入的模组全局变量。
 		// 悬停来源标注是用户明确要求的能力。
@@ -215,7 +232,8 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		return reply(ctx, nil, nil)
 	}
 
-	// 单命中直接展示；多命中列出全部，避免误导。
+	// 同一作用域内仍可能多命中（GLOBALS 块里重复定义等），
+	// 列出全部让用户自己判断，比猜测可靠。
 	var sb strings.Builder
 	for i, sym := range matches {
 		if i > 0 {
@@ -324,11 +342,18 @@ func hoverText(sym *index.Symbol) string {
 		sb.WriteString(sym.Name)
 		sb.WriteString("\n```")
 	default:
+		// 优先用保留换行的形态：多行 RECORD 挤成一行后完全没法读
+		// （实测 20+ 字段的 RECORD 会变成几百字符的单一长行）。
+		// TypeText 是规范化过的（换行→空格），只用于语义判断。
+		decl := sym.TypeTextRaw
+		if decl == "" {
+			decl = sym.TypeText
+		}
 		sb.WriteString("```bdl\n")
-		if sym.TypeText != "" {
+		if decl != "" {
 			sb.WriteString(sym.Name)
 			sb.WriteString(" : ")
-			sb.WriteString(sym.TypeText)
+			sb.WriteString(decl)
 		} else {
 			sb.WriteString(sym.Name)
 		}

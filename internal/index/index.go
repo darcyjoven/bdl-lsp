@@ -82,7 +82,18 @@ type Symbol struct {
 	DeclEnd   uint
 
 	// TypeText 是声明的类型文本（如 "LIKE type_file.num5"、"INTEGER"），可能为空。
+	//
+	// **已规范化**：连续空白（含换行）压成单个空格。语义判断（前缀匹配、
+	// 相等比较）用它——那些地方换行没有意义，规范化后更容易判断。
+	//
+	// 需要展示给用户时（悬停）请用 TypeTextRaw，否则多行 RECORD 会被挤成一行。
 	TypeText string
+	// TypeTextRaw 与 TypeText 内容相同但**保留源码换行与缩进**。
+	//
+	// 用途：悬停展示。多行 RECORD 定义挤成一行后完全无法阅读
+	// （实测 20+ 字段的 RECORD 会变成几百字符的单一长行）。
+	// 语义判断不要用它——换行/缩进会让前缀匹配和比较变得脆弱。
+	TypeTextRaw string
 	// Signature 是函数/报表的签名文本，仅当 Kind 为 function/report 时填充。
 	Signature string
 	// Children 是嵌套符号（记录字段、函数参数）。
@@ -398,12 +409,11 @@ func (b *builder) collectDefines(node *ts.Node, scope Scope, container string) [
 
 		// 逐项配对类型节点。长度不一致时不做配对（见上方注释）。
 		if len(types) == len(names) && i < len(types) {
+			sym.TypeText = b.typeText(types[i])
+			sym.TypeTextRaw = b.typeTextRaw(types[i])
 			if rec := findChild(types[i], "record"); rec != nil {
 				sym.Kind = KindRecord
 				sym.Children = b.collectRecordFields(rec, name)
-				sym.TypeText = b.typeText(types[i])
-			} else {
-				sym.TypeText = b.typeText(types[i])
 			}
 		}
 
@@ -546,6 +556,29 @@ func (b *builder) typeText(node *ts.Node) string {
 	return ""
 }
 
+// typeTextRaw 与 typeText 取材相同，但只做**缩进归一**，不压换行。
+//
+// 用于悬停展示：多行 RECORD 语句保留原有行结构，用户看到的就是源码的样子。
+// 归一化只做两件事：
+//  1. 去掉每行末尾空白（否则 markdown 代码块里会拖出长尾空格）；
+//  2. 把制表符换成 4 个空格（markdown 里 tab 宽度不可控）。
+//
+// 不去公共缩进——代码块本身有缩进更好读，且能反映真实嵌套。
+func (b *builder) typeTextRaw(node *ts.Node) string {
+	if node == nil {
+		return ""
+	}
+	target := node
+	if node.Kind() != "types" {
+		if child := node.ChildByFieldName("types"); child != nil {
+			target = child
+		} else if child := findChild(node, "types"); child != nil {
+			target = child
+		}
+	}
+	return normalizeIndent(b.text(target))
+}
+
 func (b *builder) fieldText(node *ts.Node, field string) string {
 	return b.text(node.ChildByFieldName(field))
 }
@@ -567,6 +600,28 @@ func findChild(node *ts.Node, kind string) *ts.Node {
 		}
 	}
 	return nil
+}
+
+// normalizeIndent 保留换行，只做行尾去空白与 tab→4 空格。
+//
+// 与 normalizeSpace 的区别：后者会把整个多行 RECORD 压成一行。
+func normalizeIndent(s string) string {
+	if s == "" {
+		return ""
+	}
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		line = strings.ReplaceAll(line, "\t", "    ")
+		lines[i] = strings.TrimRight(line, " \t\u3000")
+	}
+	// 去掉首尾空行（语句首尾常有多余空行）
+	for len(lines) > 0 && lines[0] == "" {
+		lines = lines[1:]
+	}
+	for len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // normalizeSpace 把连续空白压成单个空格，并把换行视为空格。
