@@ -1,41 +1,53 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第八轮：**P7-B 完成——诊断级别统一 + 降噪**）  
+> 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.2** / `vscode-extension` 0.1.0 / `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.3** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
 ---
 
-## 0. 下一步就做这个（P7-C：内置符号表）
+## 0. 下一步就做这个（P7-D：程序链接资料索引）
 
-> **下一轮就做这个**：`internal/builtin` 内置函数/变量符号表 + `cmd/builtin-audit`。
-> 待办见 [TODO.md](TODO.md) §P7-C。
+> **下一轮就做这个**：`cmd/link-audit` 读 `link.csv` → `<project>/.link/links.jsonl`
+> → `internal/link` 查"某程序能调用哪些函数"。待办见 [TODO.md](TODO.md) §P7-D。
 >
-> **为什么一定是它**：P7-B 收工时全量语料还剩 **28.9 万条**诊断，
-> 其中 `variable-source-unresolved` 占 99.4%，而它的前 12 个名字合计
-> **28.4 万条（98%）全是内置全局**：
+> **为什么是它**：P7-C-1 把内置名这一半清干净后，全量诊断从 28.9 万掉到
+> **7886**，剩下 `variable-source-unresolved` 6030 条里**前 20 名全是用户
+> 跨模组全局**（`S_XXX` 241、`G_MSS` 111、`WORKSERVICEIMPL…` 494…），
+> 以及 488 个 `CL_*`/`S_*` 用户函数——**这些正是 P7-D 要提供的链接资料**。
+> `function-not-found` 也已经接好内置白名单（默认仍 off），P7-D 一到就能开。
 >
-> ```
-> SQLCA 148641 · INT_FLAG 61382 · STATUS 42508 · UI 9832 · BASE 6342
-> XML 2977 · COM 2636 · OS 2023 · SUM 2007 · TIME 1542 · DIALOG 557 · PAGENO 514
-> ```
->
-> 也就是说：**噪声只剩"没有内置符号表"这一件事**，做完它诊断总数会掉一个量级。
-> 顺带把 `function-not-found` 从默认 off 打开（内置函数名进表后误报就消了）。
->
-> 步骤：
-> 1. `internal/builtin`：内置变量 / 内置函数 / 内置类与方法（Genero 2.50 基线）。
-> 2. `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，驱动补齐（门槛 <20 条）。
-> 3. 接入：`variable-source-unresolved` 白名单 / 补全 / 悬停签名。
-> 4. `make diag-audit` 复测：目标从 287448 降到 1 万量级。
-> 5. 再打开 `function-not-found` 复测。
->
-> 详细背景见 [PLAN-P7.md](PLAN-P7.md) §4。
+> 步骤（详见 [PLAN-P7.md](PLAN-P7.md) §5）：
+> 1. `cmd/link-audit`：CSV → JSONL（Q12：`<project>/.link/links.jsonl`）。
+> 2. `internal/link`：加载 + 按 MAIN 代码反查 + `sub`/`lib`/`qry` 全局模组规则（Q14）。
+> 3. 接 `function-not-found` 与补全/悬停的跨模块函数。
+> 4. 再量一遍：目标是让 `CL_NULL`/`CL_ERR` 这类不再误报。
 
-### ✅ 刚完成：P7-B 诊断降噪（第八轮，`0.1.2`）
+### ✅ 刚完成：P7-C-1 内置符号表（第九轮，`0.1.3`）
+
+| 项 | 结果 |
+|---|---|
+| `internal/builtin` | `Set`/`Symbol`/`Kind`；`Lookup`（大小写不敏感）/`IsKnown`/`IsFunction`/`Prefix`；字段级合并、`disable` 优先级最高 |
+| 数据 | `data/builtins.json` **96 条**（8 变量 · 73 函数 · 14 类 · 1 常量），`go:embed` 进二进制 |
+| 可更新（用户要求） | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.{enable,paths,disable}`。设计见 PLAN-P7 §4.4 |
+| 四条接入 | `variable-source-unresolved` 白名单 · `function-not-found` 白名单（只认 `KindFunction`）· 补全（同名用户符号优先）· 悬停（签名/类别/`Since`/出处） |
+| `cmd/builtin-audit` | 按频次+文件数列出"不在表里"的名字，带"疑似内置/疑似用户"粗判；`-check` 校验格式并进 `make lint` |
+| 语料基线 | 全量 15108 文件 **289304 → 7886（−97.3%）**；`variable-source-unresolved` **287448 → 6030**；24 文件样本 **889 → 7**；`FGL_*` 缺口 **0** |
+| 测试 | builtin +22、server +10、completion +2；`go test -race ./...` 17 包全绿；`make lint` 通过 |
+
+**本轮最重要的一条判断**：内置表**宁少勿多**。计划写"≥200 条"，实际只做 96 条，
+因为每一条都得有语料证据——`cl_null`（168067 次！）是 `lib/4gl/cl_null.4gl:16`
+里用户自己写的函数，加进内置表会**掩盖真实的链接缺失**，正好把 P7-D 的问题藏起来。
+`FGL_*` 缺口为 0 说明 96 条对当前语料已经够用；不够时加一条只要改 JSON。
+
+**审计立刻抓出的三个漏项**：`ARR_CURR`（11950 次）、`ARR_COUNT`（3657）、
+`NOTFOUND`（117）——手抄手册时全漏了。所以 `cmd/builtin-audit` 不是"锦上添花"，
+它是这个功能唯一的验收手段。
+
+### ✅ 上一轮完成：P7-B 诊断降噪（第八轮，`0.1.2`）
 
 | 项 | 结果 |
 |---|---|
@@ -219,7 +231,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.2`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.3`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -433,6 +445,23 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     推论：**query 里"跳过某处"的 pattern 要捕获整棵子树**（skip 是按 StartByte 比对的，
     内外层同起点，捕获外层一样准）。
 
+24. **"内置名"是最容易被误加的一类数据，加错比不加更糟**（P7-C 踩）：
+      - 语料里 `cl_null` 出现 **168067 次**、`cl_err` 137853 次，看着像内置，
+        其实是 `lib/4gl/cl_null.4gl:16` 里的用户函数。加进内置表 → 链接缺失
+        被永久掩盖，P7-D 做完了也发现不了。
+      - 判据：**能不能在仓库里找到 `FUNCTION <name>` 定义**。找得到就一定是用户函数。
+        单测里专门留了 `cl_null` 的否定断言，防止以后又有人"顺手补一个"。
+      - 同理：`SUM` 在语料里既是聚合函数又是用户变量。内置表对**变量位置**
+        的豁免是名字级的，分不清声明与使用——这只会多放过、不会误报，可接受。
+
+25. **数据文件要能"关得掉"和"改得动"，否则三个月后没人敢动**（P7-C 踩）：
+      - 内置表做成 `go:embed` 的 JSON 而不是 Go 字面量：补一条名字只改 JSON。
+      - 覆盖层合并用**字段级**而不是整条替换：用户想改一句 `doc` 时不该被迫
+        重写 `kind`/`category`。
+      - `disable` 在**所有文件加载完之后**统一应用：否则结果依赖文件顺序，
+        用户永远搞不清覆盖生效了没有。
+      - `MaybeReload` 必须**节流**（2s）：它在每次诊断前跑，不节流就是每次按键 stat 一批文件。
+
 ## 8. 下一步候选（按建议顺序）
 
 ### ★ P7（已立项，下一轮直接做）
@@ -443,8 +472,8 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 |---|---|---|
 | P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
 | P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
-| P7-C | 内置符号表 + grammar 缺口清单 | 🔜 **下一轮**（§0） |
-| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 待 P7-C |
+| P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（未做，可随时插入） | ✅ / 待定 |
+| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 🔜 **下一轮**（§0） |
 | P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）
@@ -497,6 +526,8 @@ make bench                     # 性能基线
 go run ./cmd/fmt-audit                    # 格式化幂等 + ERROR
 go run ./cmd/field-audit                  # 字段校验误报率
 go run ./cmd/record-audit                 # record 成员误报率（约 20 分钟）
+make builtin-audit                        # 内置符号表缺口（LIMIT/SHOW 可调）
+make builtin-check                        # 校验 data/builtins.json（也在 make lint 里）
 FMT_DEBUG=<file> go run ./cmd/fmt-audit   # 单文件格式化调试
 
 # 手工验证 LSP

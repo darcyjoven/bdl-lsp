@@ -3,7 +3,8 @@
 > 更新：2026-10-21（**P7-B 已完成**，`bdl-lsp 0.1.2`）  
 > 当前阶段：**P1–P6 全部功能已完成**；**P7-A / P7-B 已完成**
 > （Zed 大纲层级、Windows GLOBALS 路径、诊断级别统一与降噪）。  
-> **下一步：P7-C**（内置函数/变量符号表 + `cmd/builtin-audit`），随后 D 链接索引 / E 链接 UI。
+> **下一步：P7-D**（程序链接资料索引）。P7-C-1 内置符号表已完成（2026-10-21），
+> P7-C-2（grammar ERROR 审计）可随时插入。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -13,12 +14,12 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **84 项**（[PLAN-P7.md](PLAN-P7.md) 另有 18 项，全是 P7-C/D/E 的验收标准）。
+未勾选共 **79 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **26** | P7-C 6 · P7-D 14 · P7-E 4 · 配套配置 2 —— **真正要写的代码就在这** |
+| **P7 路线图** | **21** | P7-C-1 ✅（6 项完成）· P7-C-2 grammar 审计 1 · P7-D 14 · P7-E 4 · 配套配置 2 |
 | P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
 | P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
@@ -705,15 +706,24 @@ Block P2 已完成：
 > 只要内置表覆盖这十来个名字，全量诊断立刻从 28.9 万掉到 1 万量级。
 > 长尾（`WORKSERVICEIMPL…` 之类）是用户的跨模组全局，归 P7-D 或保持不报。
 
-- [ ] `internal/builtin`：内置变量 / 内置函数 / 内置类与方法 三类符号表（Genero 2.50 基线）。
-- [ ] `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，语料驱动补齐，门槛 <20 条未知。
-- [ ] 接入三处：① `variable-source-unresolved` 白名单 ② 补全 ③ 悬停显示签名。
-- [ ] 复测：`make diag-audit` 全量 `variable-source-unresolved`
-      从 287448 降到 1 万量级；再打开 `function-not-found` 复测内置函数误报。
-- [ ] **grammar 缺口清单**（`tree-sitter-bdl`）：`cmd/grammar-audit` 收集 ERROR 上下文按频次排序；
-      已知 `STARTLOG`（2 个文件）`fgl_report_configure`。低频项只留档不排期。
-- [ ] 注意：`cl_null` / `cl_user` / `cl_gr_numfmt` **不是内置函数**，是 `lib/`/`sub/` 的用户函数
-      （已实测 `lib/4gl/cl_null.4gl:16`），归 P7-D，**不要**加进内置表。
+- [x] `internal/builtin`：内置变量/函数/类/常量符号表（Genero 2.50 基线）**96 条**。
+      数据在 `internal/builtin/data/builtins.json`（`go:embed`），补一条名字只改 JSON。
+- [x] `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，按频次+文件数排序，
+      带"疑似内置/疑似用户"粗判提示。`make builtin-audit` / `make builtin-check`。
+- [x] 接入三处：① `variable-source-unresolved` 白名单 ② `function-not-found` 白名单
+      ③ 补全（`fgl_` 前缀等）④ 悬停显示签名与出处。
+- [x] 复测（2026-10-21）：全量 15108 文件诊断 **289304 → 7886（−97.3%）**；
+      `variable-source-unresolved` **287448 → 6030**；24 文件样本 **889 → 7**。
+      剩余 6030 条里前 20 名全是用户跨模组全局（`S_*`、`WORKSERVICEIMPL…`）→ P7-D。
+- [x] 配置与后续更新（用户追加要求"应该有配置的地方，允许后续更新"）：
+      `bdl.builtins.enable` / `paths` / `disable` + 项目覆盖文件
+      `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）。
+      设计见 [PLAN-P7.md](PLAN-P7.md) §4.4。
+- [x] 确认 `cl_null` / `cl_user` / `cl_gr_numfmt` **不是内置函数**（是 `lib/4gl/cl_null.4gl:16`
+      一类用户函数），归 P7-D；单测里有专门断言防止误加。
+- [ ] **grammar 缺口清单**（`tree-sitter-bdl`，即 P7-C-2）：`cmd/grammar-audit` 收集 ERROR
+      上下文按频次排序；已知 `STARTLOG`（2 个文件）`fgl_report_configure`。低频项只留档不排期。
+      注：`builtin-audit` 复核了"语法能解析但语义未知"这一半，`FGL_*` 缺口已降为 **0**。
 
 ### P7-D 程序链接资料索引（大项）
 

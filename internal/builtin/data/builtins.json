@@ -1,0 +1,679 @@
+{
+  "schemaVersion": 1,
+  "generoVersion": "2.50",
+  "note": "Genero BDL 内置符号表（2.50 基线）。名称大小写不敏感；kind 取值 variable/function/class/method/constant。补登后请保持按 name 排序，并跑 make builtin-check。",
+  "symbols": [
+    {
+      "name": "ARG_VAL",
+      "kind": "function",
+      "signature": "ARG_VAL(index)",
+      "doc": "取当前交互式指令的实参值（由 SET_COUNT 指定个数）",
+      "category": "dialog"
+    },
+    {
+      "name": "ARR_COUNT",
+      "kind": "function",
+      "signature": "ARR_COUNT()",
+      "doc": "当前 DISPLAY ARRAY / INPUT ARRAY 的数组总行数",
+      "category": "array"
+    },
+    {
+      "name": "ARR_CURR",
+      "kind": "function",
+      "signature": "ARR_CURR()",
+      "doc": "当前 DISPLAY ARRAY / INPUT ARRAY 的当前行号",
+      "category": "array"
+    },
+    {
+      "name": "ASCII",
+      "kind": "function",
+      "signature": "ASCII(str)",
+      "doc": "取字符串首字符的 ASCII 码",
+      "category": "string"
+    },
+    {
+      "name": "AVG",
+      "kind": "function",
+      "signature": "AVG(...)",
+      "doc": "GROUP/SQL 聚合：平均值",
+      "category": "aggregate"
+    },
+    {
+      "name": "base",
+      "kind": "class",
+      "signature": "base.*",
+      "doc": "base 类包：包含 base.Channel、base.Application、base.TypeInfo …",
+      "category": "runtime"
+    },
+    {
+      "name": "CAST",
+      "kind": "function",
+      "signature": "CAST(expr AS type)",
+      "doc": "显式类型转换",
+      "category": "type"
+    },
+    {
+      "name": "channel",
+      "kind": "class",
+      "signature": "channel.*",
+      "doc": "channel 类包：包含 channel 传统通道 I/O（打开/读写文件与管道）",
+      "category": "io"
+    },
+    {
+      "name": "com",
+      "kind": "class",
+      "signature": "com.*",
+      "doc": "com 类包：包含 com.WebService、com.HttpRequest、com.TcpSocket …",
+      "category": "network"
+    },
+    {
+      "name": "COUNT",
+      "kind": "function",
+      "signature": "COUNT(...)",
+      "doc": "GROUP/SQL 聚合：计数",
+      "category": "aggregate"
+    },
+    {
+      "name": "DATE",
+      "kind": "function",
+      "signature": "DATE(expr)",
+      "doc": "把字符串/整数表达式转换为 DATE",
+      "category": "date"
+    },
+    {
+      "name": "DAY",
+      "kind": "function",
+      "signature": "DAY(date)",
+      "doc": "取日期表达式的日（1-31）",
+      "category": "date"
+    },
+    {
+      "name": "DIALOG",
+      "kind": "variable",
+      "signature": "DIALOG",
+      "doc": "当前交互式指令所属的 dialog 对象（DIALOG.setName / DIALOG.setFieldActive 等）",
+      "category": "dialog"
+    },
+    {
+      "name": "DOWNSHIFT",
+      "kind": "function",
+      "signature": "DOWNSHIFT(str)",
+      "doc": "转小写",
+      "category": "string"
+    },
+    {
+      "name": "excel",
+      "kind": "class",
+      "signature": "excel.*",
+      "doc": "excel 类包：包含 生成 Excel（.xls/.xlsx）文档",
+      "category": "office"
+    },
+    {
+      "name": "EXTEND",
+      "kind": "function",
+      "signature": "EXTEND(expr, scale)",
+      "doc": "按指定精度扩展 DATETIME/INTERVAL 表达式",
+      "category": "date"
+    },
+    {
+      "name": "FGL_DIALOG_GETBUFFER",
+      "kind": "function",
+      "signature": "FGL_DIALOG_GETBUFFER(...)",
+      "doc": "取 dialog 字段的缓冲区值",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_DIALOG_GETCURSOR",
+      "kind": "function",
+      "signature": "FGL_DIALOG_GETCURSOR(...)",
+      "doc": "取 dialog 字段的编辑光标位置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_DIALOG_GETFIELDNAME",
+      "kind": "function",
+      "signature": "FGL_DIALOG_GETFIELDNAME(...)",
+      "doc": "取 dialog 中当前/第 n 个字段名",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_DIALOG_SETBUFFER",
+      "kind": "function",
+      "signature": "FGL_DIALOG_SETBUFFER(...)",
+      "doc": "设置 dialog 字段的缓冲区值（不触发表单显示）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_DIALOG_SETCURSOR",
+      "kind": "function",
+      "signature": "FGL_DIALOG_SETCURSOR(...)",
+      "doc": "设置 dialog 字段的编辑光标位置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_DIALOG_SETFIELDORDER",
+      "kind": "function",
+      "signature": "FGL_DIALOG_SETFIELDORDER(...)",
+      "doc": "设置 dialog 内字段的 TAB 顺序",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_FGLGUI",
+      "kind": "function",
+      "signature": "FGL_FGLGUI(...)",
+      "doc": "当前前端类型（GUI/TUI 等）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_GETCURSOR",
+      "kind": "function",
+      "signature": "FGL_GETCURSOR(...)",
+      "doc": "取文本输入流的光标位置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_GETENV",
+      "kind": "function",
+      "signature": "FGL_GETENV(...)",
+      "doc": "读环境变量（Genero 推荐方式，跨平台）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_GETFILE",
+      "kind": "function",
+      "signature": "FGL_GETFILE(...)",
+      "doc": "弹出文件选择对话框，返回选中路径",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_GETPID",
+      "kind": "function",
+      "signature": "FGL_GETPID(...)",
+      "doc": "当前进程 ID",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_GETRESOURCE",
+      "kind": "function",
+      "signature": "FGL_GETRESOURCE(...)",
+      "doc": "取编译进资源的字符串（国际化）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_INIT4JS",
+      "kind": "function",
+      "signature": "FGL_INIT4JS(...)",
+      "doc": "初始化 4JS 运行时（早期版本兼容）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_KEYVAL",
+      "kind": "function",
+      "signature": "FGL_KEYVAL(...)",
+      "doc": "把键名（如 F1、Escape）转成键码",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_LASTKEY",
+      "kind": "function",
+      "signature": "FGL_LASTKEY(...)",
+      "doc": "上一次交互式指令按下的键码",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_MESSAGE",
+      "kind": "function",
+      "signature": "FGL_MESSAGE(...)",
+      "doc": "取最近一次错误/消息的文本",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_PUTFILE",
+      "kind": "function",
+      "signature": "FGL_PUTFILE(...)",
+      "doc": "弹出文件保存对话框，返回选中路径",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_COMMITCURRENTSETTINGS",
+      "kind": "function",
+      "signature": "FGL_REPORT_COMMITCURRENTSETTINGS(...)",
+      "doc": "提交当前报表设备设置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGUREDISTRIBUTEDPROCESSING",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGUREDISTRIBUTEDPROCESSING(...)",
+      "doc": "配置报表分布式处理",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGUREPAGESIZE",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGUREPAGESIZE(...)",
+      "doc": "配置报表纸张尺寸",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGUREREMOTELOCATIONS",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGUREREMOTELOCATIONS(...)",
+      "doc": "配置报表远程输出位置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGURESVGPREVIEW",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGURESVGPREVIEW(...)",
+      "doc": "配置 SVG 预览参数",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGUREXLSDEVICE",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGUREXLSDEVICE(...)",
+      "doc": "配置 XLS 输出设备",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_CONFIGUREXLSXDEVICE",
+      "kind": "function",
+      "signature": "FGL_REPORT_CONFIGUREXLSXDEVICE(...)",
+      "doc": "配置 XLSX 输出设备",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_LOADCURRENTSETTINGS",
+      "kind": "function",
+      "signature": "FGL_REPORT_LOADCURRENTSETTINGS(...)",
+      "doc": "加载当前报表设置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SELECTDEVICE",
+      "kind": "function",
+      "signature": "FGL_REPORT_SELECTDEVICE(...)",
+      "doc": "弹出报表输出设备选择",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SELECTPREVIEW",
+      "kind": "function",
+      "signature": "FGL_REPORT_SELECTPREVIEW(...)",
+      "doc": "弹出报表预览设置",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SET_DOCUMENT_HANDLER",
+      "kind": "function",
+      "signature": "FGL_REPORT_SET_DOCUMENT_HANDLER(...)",
+      "doc": "挂接报表输出流处理器（生成自定义文档）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SETPRINTERORIENTATIONREQUESTED",
+      "kind": "function",
+      "signature": "FGL_REPORT_SETPRINTERORIENTATIONREQUESTED(...)",
+      "doc": "设置报表打印方向",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SETSVGPRINTERNAME",
+      "kind": "function",
+      "signature": "FGL_REPORT_SETSVGPRINTERNAME(...)",
+      "doc": "设置 SVG 输出时的打印机名",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_REPORT_SETTITLE",
+      "kind": "function",
+      "signature": "FGL_REPORT_SETTITLE(...)",
+      "doc": "设置报表窗口标题",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_SET_ARR_CURR",
+      "kind": "function",
+      "signature": "FGL_SET_ARR_CURR(...)",
+      "doc": "设置当前数组行（DISPLAY ARRAY/INPUT ARRAY 的当前行游标）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_SETENV",
+      "kind": "function",
+      "signature": "FGL_SETENV(...)",
+      "doc": "设置环境变量（跨平台）",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_SLEEP",
+      "kind": "function",
+      "signature": "FGL_SLEEP(...)",
+      "doc": "休眠指定毫秒",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WIDTH",
+      "kind": "function",
+      "signature": "FGL_WIDTH(...)",
+      "doc": "按当前字符集计算字符串的显示宽度",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WINMESSAGE",
+      "kind": "function",
+      "signature": "FGL_WINMESSAGE(...)",
+      "doc": "弹出信息窗口",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WINQUESTION",
+      "kind": "function",
+      "signature": "FGL_WINQUESTION(...)",
+      "doc": "弹出是否确认窗口",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SERVER_GENERATEWSDL",
+      "kind": "function",
+      "signature": "FGL_WS_SERVER_GENERATEWSDL(...)",
+      "doc": "生成 Web Service 的 WSDL",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SERVER_PROCESS",
+      "kind": "function",
+      "signature": "FGL_WS_SERVER_PROCESS(...)",
+      "doc": "处理 Web Service 请求",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SERVER_PUBLISHFUNCTION",
+      "kind": "function",
+      "signature": "FGL_WS_SERVER_PUBLISHFUNCTION(...)",
+      "doc": "发布 Web Service 函数",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SERVER_SETNAMESPACE",
+      "kind": "function",
+      "signature": "FGL_WS_SERVER_SETNAMESPACE(...)",
+      "doc": "设置 Web Service 命名空间",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SERVER_START",
+      "kind": "function",
+      "signature": "FGL_WS_SERVER_START(...)",
+      "doc": "启动 Web Service 服务",
+      "category": "fgl"
+    },
+    {
+      "name": "FGL_WS_SETOPTION",
+      "kind": "function",
+      "signature": "FGL_WS_SETOPTION(...)",
+      "doc": "设置 Web Service 选项",
+      "category": "fgl"
+    },
+    {
+      "name": "FIELD_TOUCHED",
+      "kind": "function",
+      "signature": "FIELD_TOUCHED(field)",
+      "doc": "判断本次交互中某字段是否被修改过",
+      "category": "dialog"
+    },
+    {
+      "name": "FORMONLY",
+      "kind": "variable",
+      "signature": "FORMONLY.field",
+      "doc": "只存在于表单、不对应程序变量的字段前缀（DISPLAY x TO FORMONLY.y）",
+      "category": "form"
+    },
+    {
+      "name": "GET_FLDBUF",
+      "kind": "function",
+      "signature": "GET_FLDBUF(field)",
+      "doc": "取屏幕字段缓冲区里的当前值",
+      "category": "dialog"
+    },
+    {
+      "name": "INFIELD",
+      "kind": "function",
+      "signature": "INFIELD(field)",
+      "doc": "判断游标当前是否位于某字段（用于 ON KEY 等回调）",
+      "category": "dialog"
+    },
+    {
+      "name": "INT_FLAG",
+      "kind": "variable",
+      "signature": "INT_FLAG",
+      "doc": "交互式指令（INPUT/MENU/CONSTRUCT/DISPLAY ARRAY…）的返回标记：0=正常，1=用户取消/中断",
+      "category": "dialog"
+    },
+    {
+      "name": "json",
+      "kind": "class",
+      "signature": "json.*",
+      "doc": "json 类包：包含 JSON 编解码",
+      "category": "data"
+    },
+    {
+      "name": "LENGTH",
+      "kind": "function",
+      "signature": "LENGTH(str)",
+      "doc": "字符串的字节长度",
+      "category": "string"
+    },
+    {
+      "name": "LINENO",
+      "kind": "variable",
+      "signature": "LINENO",
+      "doc": "REPORT 中当前输出行号（可读写，用于分页控制）",
+      "category": "report"
+    },
+    {
+      "name": "LTRIM",
+      "kind": "function",
+      "signature": "LTRIM(str)",
+      "doc": "去掉左侧空格",
+      "category": "string"
+    },
+    {
+      "name": "mail",
+      "kind": "class",
+      "signature": "mail.*",
+      "doc": "mail 类包：包含 发送邮件",
+      "category": "network"
+    },
+    {
+      "name": "MAX",
+      "kind": "function",
+      "signature": "MAX(...)",
+      "doc": "GROUP/SQL 聚合：最大值",
+      "category": "aggregate"
+    },
+    {
+      "name": "MDY",
+      "kind": "function",
+      "signature": "MDY(month, day, year)",
+      "doc": "由月/日/年构造 DATE",
+      "category": "date"
+    },
+    {
+      "name": "MIN",
+      "kind": "function",
+      "signature": "MIN(...)",
+      "doc": "GROUP/SQL 聚合：最小值",
+      "category": "aggregate"
+    },
+    {
+      "name": "MONTH",
+      "kind": "function",
+      "signature": "MONTH(date)",
+      "doc": "取日期表达式的月（1-12）",
+      "category": "date"
+    },
+    {
+      "name": "NOTFOUND",
+      "kind": "constant",
+      "signature": "NOTFOUND",
+      "doc": "SQL 语句“没找到记录”状态常量（= 100），等价于 SQLCA.SQLCODE = NOTFOUND",
+      "category": "sql"
+    },
+    {
+      "name": "om",
+      "kind": "class",
+      "signature": "om.*",
+      "doc": "om 类包：包含 om.DomDocument、om.SaxDocumentHandler … 遗留 XML 包",
+      "category": "xml"
+    },
+    {
+      "name": "os",
+      "kind": "class",
+      "signature": "os.*",
+      "doc": "os 类包：包含 os.Path、os.Files、os.Directory、os.Process …",
+      "category": "system"
+    },
+    {
+      "name": "PAGENO",
+      "kind": "variable",
+      "signature": "PAGENO",
+      "doc": "REPORT 中当前页号",
+      "category": "report"
+    },
+    {
+      "name": "PERCENT",
+      "kind": "function",
+      "signature": "PERCENT(...)",
+      "doc": "GROUP 聚合：占组内合计的百分比（100*值/组合计）",
+      "category": "aggregate"
+    },
+    {
+      "name": "RTRIM",
+      "kind": "function",
+      "signature": "RTRIM(str)",
+      "doc": "去掉右侧空格",
+      "category": "string"
+    },
+    {
+      "name": "security",
+      "kind": "class",
+      "signature": "security.*",
+      "doc": "security 类包：包含 口令与加密（AES/SHA 等）",
+      "category": "security"
+    },
+    {
+      "name": "SET_COUNT",
+      "kind": "function",
+      "signature": "SET_COUNT(count)",
+      "doc": "指定当前交互式指令接收的实参个数（配合 ARG_VAL）",
+      "category": "dialog"
+    },
+    {
+      "name": "sql",
+      "kind": "class",
+      "signature": "sql.*",
+      "doc": "sql 类包：包含 sql.Connection、sql.Statement 等 SQL 接口",
+      "category": "sql"
+    },
+    {
+      "name": "SQLCA",
+      "kind": "variable",
+      "signature": "SQLCA.SQLCODE / SQLCA.SQLERRM / SQLCA.SQLERRD[n]",
+      "doc": "SQL 通信区：上一条 SQL 语句的状态、错误信息与扩展错误码数组",
+      "category": "sql"
+    },
+    {
+      "name": "SQLSTATE",
+      "kind": "variable",
+      "signature": "SQLSTATE",
+      "doc": "上一条 SQL 语句的 SQLSTATE 五字符状态码",
+      "category": "sql"
+    },
+    {
+      "name": "STATUS",
+      "kind": "variable",
+      "signature": "STATUS",
+      "doc": "等价于 SQLCA.SQLCODE，上一条 SQL 语句的返回码",
+      "category": "sql"
+    },
+    {
+      "name": "SUBSTRING",
+      "kind": "function",
+      "signature": "SUBSTRING(str, start, length)",
+      "doc": "取子串（start 从 1 开始）",
+      "category": "string"
+    },
+    {
+      "name": "SUM",
+      "kind": "function",
+      "signature": "SUM(...)",
+      "doc": "GROUP/SQL 聚合：求和",
+      "category": "aggregate"
+    },
+    {
+      "name": "TIME",
+      "kind": "function",
+      "signature": "TIME([datetime])",
+      "doc": "当前时间；给 datetime 表达式时取其时间部分",
+      "category": "date"
+    },
+    {
+      "name": "TRIM",
+      "kind": "function",
+      "signature": "TRIM(str)",
+      "doc": "去掉两端空格",
+      "category": "string"
+    },
+    {
+      "name": "ui",
+      "kind": "class",
+      "signature": "ui.*",
+      "doc": "ui 类包：包含 ui.Interface、ui.Dialog、ui.Form、ui.Window、ui.ComboBox …",
+      "category": "frontend"
+    },
+    {
+      "name": "UPSHIFT",
+      "kind": "function",
+      "signature": "UPSHIFT(str)",
+      "doc": "转大写",
+      "category": "string"
+    },
+    {
+      "name": "util",
+      "kind": "class",
+      "signature": "util.*",
+      "doc": "util 类包：包含 util.StringBuffer、util.Datetime、util.Math …",
+      "category": "util"
+    },
+    {
+      "name": "web",
+      "kind": "class",
+      "signature": "web.*",
+      "doc": "web 类包：包含 Web 组件（Web 服务客户端/服务端）",
+      "category": "network"
+    },
+    {
+      "name": "WEEKDAY",
+      "kind": "function",
+      "signature": "WEEKDAY(date)",
+      "doc": "取星期几（0=周日 … 6=周六）",
+      "category": "date"
+    },
+    {
+      "name": "xml",
+      "kind": "class",
+      "signature": "xml.*",
+      "doc": "xml 类包：包含 xml.DomDocument、xml.StaxReader、xml.DomNode …",
+      "category": "xml"
+    },
+    {
+      "name": "YEAR",
+      "kind": "function",
+      "signature": "YEAR(date)",
+      "doc": "取日期表达式的年",
+      "category": "date"
+    }
+  ]
+}

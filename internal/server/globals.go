@@ -528,6 +528,12 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 		if known[u.lower] {
 			continue
 		}
+		// P7-C：内置变量/函数/类名在语法树里就是普通 identifier，静态上
+		// 永远找不到定义。实测它们占全量诊断的 98%，必须豁免。
+		// 用户显式 disable 掉的名字不豁免（否则没法把内置名当普通标识符用）。
+		if s.isBuiltinName(u.word) && !s.builtinDisabled(u.word) {
+			continue
+		}
 		msg := fmt.Sprintf("无法确定变量 %q 的来源：局部、模块级与 GLOBALS 引入中均无定义", u.word)
 		if hasNotFound {
 			msg = fmt.Sprintf("无法确定变量 %q 的来源：GLOBALS %q 未找到", u.word, notFoundLiteral)
@@ -553,7 +559,8 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 //   - 跨模块函数若不在本文档符号表中也会被报告，用户可通过
 //     `bdl.diagnostics.function-not-found: off` 关闭，或待链接资料（P7-D）
 //     实现后扩展到跨文件索引；
-//   - 内置函数（LENGTH/TRIM 等）目前不特殊处理，优先宁可误报不可漏报。
+//   - 内置函数（LENGTH/TRIM/ARG_VAL/fgl_* …）在 P7-C 之后由内置符号表
+//     豁免；表里没有的名字仍然会报，这正是 `cmd/builtin-audit` 要发现的。
 func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
 	if fi == nil {
 		return nil
@@ -622,6 +629,12 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 		}
 		seen[key] = true
 		if knownFn[c.lower] {
+			continue
+		}
+		// P7-C：内置函数（ARG_VAL/LENGTH/fgl_* …）豁免。
+		// 只认 KindFunction：类名（ui）与方法名（open）在调用点上的形态
+		// 与函数不同，交给 P7-D 的链接索引处理，这里不越权。
+		if s.isBuiltinFunction(c.word) && !s.builtinDisabled(c.word) {
 			continue
 		}
 		diags = append(diags, protocol.Diagnostic{

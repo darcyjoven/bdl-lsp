@@ -244,6 +244,12 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		if h := s.hoverGlobalsImported(doc, idx, word); h != nil {
 			return reply(ctx, *h, nil)
 		}
+		// P7-C：内置符号兜底（STATUS/SQLCA/ARG_VAL/fgl_*/ui.* 等）。
+		// 放在最后：用户自己定义的符号永远优先，否则项目里的同名变量
+		// 会被内置表冒充。
+		if h := s.hoverBuiltin(doc, idx, offset, word); h != nil {
+			return reply(ctx, *h, nil)
+		}
 		return reply(ctx, nil, nil)
 	}
 

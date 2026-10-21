@@ -93,6 +93,13 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	text, oldTree, version := doc.Snapshot()
 	settings := s.settings()
 
+	// P7-C：内置符号覆盖文件可能被用户手改了。这里顺带按 mtime 检查
+	// （2s 节流，代价是 1~2 次 stat），改完切回编辑器即可生效，不必重启。
+	// 重载后本次诊断就用新表，不需要额外触发一轮。
+	if s.maybeReloadBuiltins() {
+		s.logger.Debug("内置符号表已随覆盖文件更新", "uri", doc.URI)
+	}
+
 	if reason := tooLargeReason(text, settings.Limits); reason != "" {
 		s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
 		s.publishNotice(ctx, doc.URI, version, reason)

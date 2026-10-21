@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
@@ -37,6 +38,9 @@ type Server struct {
 	globalsRes *globals.Resolver
 	// formRes 解析表单引用（P3b）；initialize 之后非 nil。
 	formRes *form.Resolver
+	// builtins 是内置函数/变量符号表（P7-C）；initialize 之后非 nil。
+	// 支持覆盖文件热更新（Loader.MaybeReload）。
+	builtins *builtin.Loader
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
@@ -275,6 +279,9 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	// P3b：表单解析器（perRoots 来自配置）
 	s.lastPerRoots = append([]string(nil), s.settings().PerRoots...)
 	s.newFormResolver(s.rootPath)
+
+	// P7-C：内置符号表（内置数据 + 项目覆盖文件）
+	s.newBuiltinLoader()
 	if n := len(s.settings().Globals.SearchPaths); n > 0 {
 		s.logger.Info("globals searchPaths 生效", "count", n)
 	}

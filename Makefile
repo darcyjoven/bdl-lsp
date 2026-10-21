@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -55,7 +55,7 @@ fmt:
 	$(GO) fmt ./...
 
 ## lint: fmt 检查 + vet
-lint: vet keywords-check
+lint: vet keywords-check builtin-check
 	@GOFMT="$$(GOBIN="$$($(GO) env GOROOT)/bin" command -v gofmt || echo "$$($(GO) env GOROOT)/bin/gofmt")"; \
 	out=$$("$$GOFMT" -l . | grep -v '^artifacts/' || true); \
 	if [ -n "$$out" ]; then echo "以下文件未格式化："; echo "$$out"; exit 1; fi; \
@@ -76,6 +76,14 @@ regress: build
 ## diag-audit: 统计语义诊断逐码分布（降噪基线；可用 CODES=code=level 覆盖）
 diag-audit: build
 	@$(GO) run ./cmd/diag-audit $(if $(CODES),-diagnostics $(CODES),) $(if $(LIMIT),-limit $(LIMIT),) -names 20
+
+## builtin-audit: 内置符号表（P7-C）的缺口审计——列出语料里"不在表里"的名字
+builtin-audit: build
+	@$(GO) run ./cmd/builtin-audit $(if $(LIMIT),-limit $(LIMIT),) -show $(or $(SHOW),40)
+
+## builtin-check: 校验内置符号数据文件（格式/排序/重名/kind）
+builtin-check:
+	@$(GO) run ./cmd/builtin-audit -check
 
 ## grammars: 从 grammar 源码重新生成 VSCode 的 TextMate 语法
 grammars:

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 )
 
@@ -250,6 +251,60 @@ func TestSymbolKindMapping(t *testing.T) {
 		}
 		if it.Kind != tc.want {
 			t.Errorf("%s 应映射到 %d，实际 %d", tc.kind, tc.want, it.Kind)
+		}
+	}
+}
+
+// P7-C：内置符号补全。
+func TestBuiltinCandidates(t *testing.T) {
+	builtins := []builtin.Symbol{
+		{Name: "FGL_GETENV", Kind: builtin.KindFunction, Signature: "FGL_GETENV(name)"},
+		{Name: "STATUS", Kind: builtin.KindVariable, Doc: "SQL 返回码"},
+		{Name: "ui", Kind: builtin.KindClass},
+	}
+
+	res := Provide(Context{Lang: "bdl", Line: "DISPLAY fgl_get", Word: "fgl_get"},
+		nil, nil, nil, Options{Builtins: builtins})
+	if len(res.Items) != 1 || res.Items[0].Label != "FGL_GETENV" {
+		t.Fatalf("前缀 fgl_get 应命中 FGL_GETENV，实际 %+v", res.Items)
+	}
+	if res.Items[0].Kind != KindFunction {
+		t.Errorf("Kind 应为函数，实际 %v", res.Items[0].Kind)
+	}
+	if !strings.Contains(res.Items[0].Documentation, "FGL_GETENV") {
+		t.Errorf("Documentation 应含签名，实际 %q", res.Items[0].Documentation)
+	}
+
+	// 类名映射到 KindClass（`. ` 后能给成员时才有意义，这里只验映射）。
+	res = Provide(Context{Lang: "bdl", Line: "x = ui", Word: "ui"}, nil, nil, nil,
+		Options{Builtins: builtins})
+	if len(res.Items) != 1 || res.Items[0].Kind != KindClass {
+		t.Fatalf("ui 应映射为类，实际 %+v", res.Items)
+	}
+}
+
+// P7-C：用户自己的同名符号优先，内置项不重复出现。
+func TestBuiltinSkipsNameAlreadyPresent(t *testing.T) {
+	fi := &index.FileIndex{Symbols: []*index.Symbol{
+		{Name: "STATUS", Lower: "status", Kind: index.KindDefine},
+	}}
+	res := Provide(Context{Lang: "bdl", Line: "DISPLAY status", Word: "status"},
+		fi, nil, nil, Options{Builtins: []builtin.Symbol{
+			{Name: "STATUS", Kind: builtin.KindVariable, Doc: "内置"},
+		}})
+	var n int
+	for _, it := range res.Items {
+		if strings.EqualFold(it.Label, "STATUS") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("同名内置项应被跳过，实际出现 %d 次", n)
+	}
+	if res.Items[0].Detail != "DEFINE" && !strings.Contains(res.Items[0].Detail, "INTEGER") {
+		// 只要第一项不是内置说明即可
+		if strings.Contains(res.Items[0].Detail, "内置") {
+			t.Errorf("第一项应是用户符号，实际 %+v", res.Items[0])
 		}
 	}
 }

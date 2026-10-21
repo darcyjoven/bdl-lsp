@@ -68,6 +68,11 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 		}
 	}
 
+	// P7-C：内置符号表的 enable / paths / disable 变化都要重载。
+	// 无法便宜地比较"路径集合有没有变"，但重载只读几个 JSON（几十 µs），
+	// 每次配置变更都重载即可。
+	s.newBuiltinLoader()
+
 	// 重新诊断所有打开的文档
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)

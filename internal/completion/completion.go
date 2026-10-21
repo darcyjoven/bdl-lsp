@@ -1,4 +1,5 @@
-// Package completion 生成补全候选：关键字、同文件符号、GLOBALS 变量、表单字段。
+// Package completion 生成补全候选：关键字、同文件符号、GLOBALS 变量、
+// 表单字段、内置符号（P7-C）。
 //
 // 设计取舍：
 //   - 补全走"上下文判断 + 候选集合"，不做完整类型推导。Genero 是弱类型
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 )
 
@@ -81,6 +83,11 @@ type Options struct {
 	Keywords bool
 	// Fields 关闭时不给表单字段候选。
 	Fields bool
+	// Builtins 是内置符号候选（P7-C；可为空）。
+	//
+	// 由调用方从 builtin.Set 取出后传入，completion 包不持有全局状态：
+	// 这样补全逻辑保持纯函数，热更新符号表时不需要动这里。
+	Builtins []builtin.Symbol
 }
 
 // 默认上限：太多会把编辑器卡住，也淹没真正想要的项。
@@ -172,6 +179,27 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 		add(it)
 	}
 
+	// 4.5) 内置符号（P7-C）。排序排在跨文件符号之后、关键字之前：
+	//      同名的用户符号更可能是用户想输的，内置名作为兜底。
+	//      同名的内置项直接跳过——用户自己定义了 `status` 时，
+	//      列表里出现两个 STATUS 只会让人困惑。
+	already := make(map[string]bool, len(items))
+	for _, it := range items {
+		already[strings.ToLower(it.Label)] = true
+	}
+	for _, b := range opts.Builtins {
+		if already[strings.ToLower(b.Name)] {
+			continue
+		}
+		add(Item{
+			Label:         b.Name,
+			Kind:          kindForBuiltin(b.Kind),
+			Detail:        b.Kind.Label(),
+			Documentation: builtinDoc(b),
+			SortText:      "6" + b.Name,
+		})
+	}
+
 	// 5) 关键字（最后加：排序上让符号优先）
 	if opts.Keywords {
 		kws := BDLKeywords
@@ -191,6 +219,43 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 	// 继续输入重新请求，避免一次返回 400 项。
 	incomplete := prefix == ""
 	return Result{Items: truncate(items, max), IsIncomplete: incomplete}
+}
+
+// kindForBuiltin 把内置符号种类映射到补全图标。
+func kindForBuiltin(k builtin.Kind) Kind {
+	switch k {
+	case builtin.KindFunction:
+		return KindFunction
+	case builtin.KindClass:
+		return KindClass
+	case builtin.KindMethod:
+		return KindMethod
+	case builtin.KindConstant:
+		return KindConstant
+	default:
+		return KindVariable
+	}
+}
+
+// builtinDoc 拼出内置符号的补全说明（签名 + 一句话 + 出处）。
+func builtinDoc(sym builtin.Symbol) string {
+	var sb strings.Builder
+	if sym.Signature != "" {
+		sb.WriteString(sym.Signature)
+	}
+	if sym.Doc != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(sym.Doc)
+	}
+	if sym.Since != "" {
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString("Genero " + sym.Since)
+	}
+	return sb.String()
 }
 
 // itemForSymbol 把索引符号转成补全项。

@@ -4,7 +4,8 @@
 //  1. 光标处的表单字段（复用 P3b 的作用域跟踪，FormFieldsAt）；
 //  2. 当前文件符号（函数/变量/记录/类型）；
 //  3. 跨文件符号（已打开文档里的函数/报表）；
-//  4. 关键字（来自 grammar 源码生成的清单）。
+//  4. 内置符号（P7-C：STATUS/SQLCA/ARG_VAL/fgl_*/ui.* 等）；
+//  5. 关键字（来自 grammar 源码生成的清单）。
 //
 // `.` 之后只给字段与"可能是成员"的符号，不给关键字——那时用户要的是成员名。
 //
@@ -73,6 +74,7 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 	res := completion.Provide(cctx, fi, symbols, fields, completion.Options{
 		Keywords: true,
 		Fields:   true,
+		Builtins: s.builtinCandidates(cctx.Word),
 	})
 
 	items := make([]protocol.CompletionItem, 0, len(res.Items))

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
@@ -23,8 +24,25 @@ import (
 // variable-source-unresolved / function-not-found 时可以省掉这一步；
 // 但要统计 globals-file-not-found 与表单类诊断就必须调用。
 func (s *Server) EnableResolvers(rootPath string) {
+	s.rootPath = rootPath
 	s.newGlobalsResolver(rootPath)
 	s.newFormResolver(rootPath)
+	s.newBuiltinLoader()
+}
+
+// BuiltinSet 暴露当前生效的内置符号表，供 `cmd/builtin-audit` 打印统计。
+//
+// 返回 nil 表示内置表被关闭。
+func (s *Server) BuiltinSet() *builtin.Set {
+	return s.builtinSet()
+}
+
+// ConfigureBuiltins 覆盖内置符号表的覆盖层配置（审计工具用）。
+func (s *Server) ConfigureBuiltins(root string, paths, disable []string) error {
+	if s.builtins == nil {
+		s.builtins = builtin.NewLoader(s.logger)
+	}
+	return s.builtins.Configure(root, paths, disable)
 }
 
 // AuditFile 对一份源码跑完整语义诊断流水线并返回结果（不含语法问题）。

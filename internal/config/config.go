@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
@@ -73,6 +74,8 @@ type Settings struct {
 	// "variable-source-unresolved"）、值为级别（off/warning/error/...）。
 	// 优先级：bdl.diagnostics.<code> > 旧专用配置键 > 注册表默认。
 	Diagnostics map[string]DiagnosticLevel `json:"diagnostics"`
+	// Builtins 是内置函数/变量符号表（P7-C）的配置。
+	Builtins BuiltinsSettings `json:"builtins"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -113,6 +116,37 @@ type GlobalsSettings struct {
 	// 真实文件在 tiptop/config）。配置 ["tiptop/config"] 后这类引用可命中。
 	// 默认空（不启用）。
 	SearchPaths []string `json:"searchPaths"`
+}
+
+// BuiltinsSettings 控制内置符号表（P7-C）。
+//
+// 内置表是"Genero 自带的名字"白名单：STATUS/SQLCA/INT_FLAG/ARG_VAL/
+// fgl_* / ui.* 等。没有它，这些名字在静态分析里全都"查不到定义"，
+// 实测占全量诊断的 98%。
+//
+// 为什么要有配置：内置名单会随 Genero 版本增长，也会因为"语料里发现
+// 漏项"而补。内置数据（internal/builtin/data/builtins.json）随二进制
+// 发布，用户不该为了补一个名字去改扩展；所以提供三条口子：
+// 覆盖文件、路径列表、禁用列表。
+type BuiltinsSettings struct {
+	// Enable 关闭后所有内置名都不再参与诊断白名单（等价于 P7-C 之前的行为）。
+	// 默认 true。用 *bool 区分"未下发"与"显式 false"。
+	Enable *bool `json:"enable,omitempty"`
+	// Paths 是额外的覆盖文件或目录（相对工作区根，按序加载，后者覆盖前者）。
+	// 目录里的 *.json 全部加载。项目约定路径 `.bdl-lsp/builtins.json`
+	// 会自动加载，不需要写在这里。
+	Paths []string `json:"paths"`
+	// Disable 直接关闭某些内置名（大小写不敏感），优先级高于任何 add。
+	// 典型用途：项目里自己定义了同名函数，不想被内置表"吞掉"。
+	Disable []string `json:"disable"`
+}
+
+// BuiltinsEnabled 报告内置符号表是否启用（默认启用）。
+func (s Settings) BuiltinsEnabled() bool {
+	if s.Builtins.Enable == nil {
+		return true
+	}
+	return *s.Builtins.Enable
 }
 
 // Default 返回默认配置。
@@ -280,6 +314,18 @@ func (m *Manager) merge(s *Settings) {
 		}
 	}
 
+	// P7-C：内置符号表
+	if s.Builtins.Enable != nil {
+		v := *s.Builtins.Enable
+		m.cur.Builtins.Enable = &v
+	}
+	if s.Builtins.Paths != nil {
+		m.cur.Builtins.Paths = s.Builtins.Paths
+	}
+	if s.Builtins.Disable != nil {
+		m.cur.Builtins.Disable = s.Builtins.Disable
+	}
+
 	// P4：格式化
 	if s.Format.Keywords != "" {
 		m.cur.Format.Keywords = s.Format.Keywords
@@ -326,6 +372,17 @@ func (s Settings) Validate() []string {
 		}
 	}
 
+	for i, p := range s.Builtins.Paths {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("builtins.paths[%d] 为空", i))
+		}
+	}
+	for i, n := range s.Builtins.Disable {
+		if strings.TrimSpace(n) == "" {
+			problems = append(problems, fmt.Sprintf("builtins.disable[%d] 为空", i))
+		}
+	}
+
 	for name, lvl := range map[string]DiagnosticLevel{
 		"syntaxDiagnostics":  s.SyntaxDiagnostics,
 		"missingDiagnostics": s.MissingDiagnostics,
@@ -362,6 +419,17 @@ func (s Settings) Validate() []string {
 	}
 	if s.Limits.ParseTimeoutMS <= 0 {
 		problems = append(problems, "limits.parseTimeoutMs 必须为正数")
+	}
+
+	for i, p := range s.Builtins.Paths {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("builtins.paths[%d] 为空", i))
+		}
+	}
+	for i, n := range s.Builtins.Disable {
+		if strings.TrimSpace(n) == "" {
+			problems = append(problems, fmt.Sprintf("builtins.disable[%d] 为空", i))
+		}
 	}
 
 	for name, lvl := range map[string]DiagnosticLevel{
