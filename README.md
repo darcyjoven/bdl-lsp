@@ -99,6 +99,12 @@ make regress                   # 全量语料回归（约 2.5 分钟）
 ./artifacts/bin/bdl-lsp link import -csv artifacts/link/link.csv -root /path/to/project
 ./artifacts/bin/bdl-lsp link status -root /path/to/project
 
+# 直接采集（P7-D-3）：纯 Go 直连 Oracle / 执行命令 / 读已导出的 CSV
+export BDL_ORA_PASSWORD=...            # 密码只从环境变量或 .link/secrets.json 取
+./artifacts/bin/bdl-lsp link sync -source golang -host db -service PROD -user readonly -root .
+./artifacts/bin/bdl-lsp link sync -source file -file .link/gal_file.csv -root .
+bash scripts/fetch-gal-file.sh          # 没有 go 环境时的兜底：服务器 sqlplus 导出
+
 # 语料抽样
 bash scripts/corpus-smoke.sh 60
 

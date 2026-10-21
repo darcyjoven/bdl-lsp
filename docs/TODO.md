@@ -1,11 +1,11 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7-D 核心 + P7-D-2 已完成**，`bdl-lsp 0.1.5`）  
-> 当前阶段：**P1–P6 全部功能已完成**；**P7-A / P7-B / P7-C-1 / P7-D / P7-D-2 已完成**
-> （Zed 大纲层级、诊断级别统一与降噪、内置符号表、链接资料索引、外部函数过滤）。  
-> **下一步**（按建议顺序）：
-> ① P7-D-3 采集通道（S3 命令执行 / S1 go-ora / S2 服务器脚本）；
-> ② P7-E 链接资料 UI；P7-C-2（grammar ERROR 审计）可随时插入。
+> 更新：2026-10-21（**P7-D 核心 / D-2 / D-3 已完成**，`bdl-lsp 0.1.6`）  
+> 当前阶段：**P1–P6 全部功能已完成**；**P7-A/B/C-1/D/D-2/D-3 已完成**
+> （Zed 大纲层级、诊断降噪、内置符号表、链接资料索引、外部函数过滤、采集通道）。  
+> **下一步**：
+> ① P7-E 链接资料 UI（VSCode TreeView + 反查引用程序，Zed 降级）；
+> ② P7-C-2（grammar ERROR 审计）可随时插入。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -15,12 +15,12 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **69 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+未勾选共 **66 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **11** | P7-C-1 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D 采集 3 · P7-D 分片 1 · P7-E 4 · P7-C-2 grammar 2 |
+| **P7 路线图** | **8** | P7-C-1 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-D 分片 1 · P7-E 4 · P7-C-2 grammar 2 |
 | P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
 | P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
@@ -750,14 +750,14 @@ Block P2 已完成：
 - [x] ~~可见性矩阵~~ → **Q14 二次定稿：扁平规则**。`sub`/`lib`/`qry` **对所有程序默认可用，
       包括它们自己**，无方向限制。配置项 `bdl.link.globalModules = ["sub","lib","qry"]`。
       原 `lib→sub` 11 处反例**自动消解**（是合法代码），`allowModuleDeps` 白名单**删除**。
-- [ ] 采集 **S1 纯 Go 直连**（**唯一内置方案**）：`github.com/sijms/go-ora/v2`（已实测模块可获取）；
+- [x] 采集 **S1 纯 Go 直连**（**唯一内置方案**）：`github.com/sijms/go-ora/v2`（已实测模块可获取）；
       密码走环境变量/`.link/secrets.json`(0600)/交互输入，不明文落盘；
       进程内定时（`interval`）+ `onStart` + 指数退避；主动运行三入口（CLI/VSCode 命令/Zed task）。
 - [x] ~~采集 S1a 本地 Oracle 驱动~~ → **Q15 三度定稿：取消**。纯 Go 无法直调 Instant Client，
       走 CGO 会让构建/分发/跨平台复杂化；只保留 `go-ora`。不留 build tag、不留 `driver` 配置。
-- [ ] 采集 **S2 服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
+- [x] 采集 **S2 服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
       `SET MARKUP CSV ON` 直出 CSV，已按真实表结构写好 `gal04='Y'` 过滤）+ `bdl-lsp link import`。
-- [ ] 采集 **S3 命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
+- [x] 采集 **S3 命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
 - [x] 函数可见性：`局部 → 本文件 → GLOBALS → 链接文件 → 全局模组(sub/lib/qry)`；变量可见性**不变**。
 - [x] 诊断：`function-not-found` / `link-data-invalid` / `link-data-stale`。
 - [x] ~~`link-file-missing`~~ → **不做**（Q2 答复）。链接有、代码无 → 忽略，零诊断；

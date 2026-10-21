@@ -6,6 +6,7 @@
 package linkcli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/link"
+	"github.com/darcyjoven/bdl-lsp/internal/linksync"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 )
 
@@ -29,6 +31,8 @@ func Run(args []string, version string) int {
 	switch sub {
 	case "import":
 		return runImport(args, version)
+	case "sync":
+		return runSync(args, version)
 	case "status":
 		return runStatus(args)
 	case "help", "--help", "-h":
@@ -44,10 +48,13 @@ func Run(args []string, version string) int {
 func usage() {
 	fmt.Print(`用法：
   bdl-lsp link import -csv <导出.csv> [-root <项目根>] [-out <资料目录>]
+  bdl-lsp link sync [-source golang|command|file] [-root <项目根>] [-out <资料目录>]
   bdl-lsp link status [-root <项目根>] [-out <资料目录>]
 
 import 把 DS.GAL_FILE 的导出转成 <项目根>/.link/links.jsonl。
        需要读源码判断哪一条是 MAIN，语料量级下大约 10–20 秒。
+sync   直接从数据库/命令/文件采集并导入（P7-D-3）。golang 来源用纯 Go 驱动
+       直连 Oracle，密码取环境变量 BDL_ORA_PASSWORD 或 .link/secrets.json。
 status 查看已有资料的统计（不解析源码，秒回）。
 
 选项：
@@ -57,7 +64,88 @@ status 查看已有资料的统计（不解析源码，秒回）。
   -roots      模组根，逗号分隔（默认自动探测）
   -global     全局可见模组，逗号分隔（默认 sub,lib,qry，仅 status 显示用）
   -replace    覆盖已有资料（默认就是这样；保留此开关是为了将来做"合并"）
+  -source     采集来源：golang（默认）/ command / file
+  -command    采集命令（source=command）
+  -file       已导出的 CSV 路径（source=file，默认 <out>/gal_file.csv）
+  -host -port -service -user -query   Oracle 连接（source=golang）
+  -dry-run    只采集与校验，不写盘
 `)
+}
+
+// runSync 采集 + 导入（P7-D-3）。
+func runSync(args []string, version string) int {
+	fs := flag.NewFlagSet("link sync", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	root := fs.String("root", "", "项目根目录（默认当前目录）")
+	out := fs.String("out", "", "资料目录（默认 <root>/.link）")
+	roots := fs.String("roots", "", "模组根，逗号分隔")
+	source := fs.String("source", "golang", "采集来源：golang/command/file")
+	command := fs.String("command", "", "采集命令（source=command）")
+	file := fs.String("file", "", "已导出的 CSV（source=file）")
+	host := fs.String("host", "", "Oracle 主机（source=golang）")
+	port := fs.Int("port", 1521, "Oracle 端口")
+	service := fs.String("service", "", "Oracle 服务名")
+	user := fs.String("user", "", "Oracle 用户")
+	query := fs.String("query", "", "自定义 SQL（默认 DS.GAL_FILE 四列）")
+	dryRun := fs.Bool("dry-run", false, "只采集与校验，不写盘")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	projectRoot := *root
+	if projectRoot == "" {
+		projectRoot, _ = os.Getwd()
+	}
+	projectRoot, _ = filepath.Abs(projectRoot)
+	dataDir := *out
+	if dataDir == "" {
+		dataDir = filepath.Join(projectRoot, link.DefaultDataDir)
+	} else if !filepath.IsAbs(dataDir) {
+		dataDir = filepath.Join(projectRoot, dataDir)
+	}
+
+	syncCfg := linksync.Config{
+		Enable:  true,
+		Source:  *source,
+		Command: *command,
+		File:    *file,
+		DB: linksync.DBConfig{
+			Host: *host, Port: *port, Service: *service, User: *user, Query: *query,
+		},
+	}
+	pool, err := parser.New()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bdl-lsp link sync: 初始化解析器: %v\n", err)
+		return 2
+	}
+	defer pool.Close()
+
+	start := time.Now()
+	res, err := linksync.Run(context.Background(), linksync.Request{
+		Config:      syncCfg,
+		ProjectRoot: projectRoot,
+		DataDir:     dataDir,
+		ModuleRoots: splitList(*roots),
+		Pool:        pool,
+		ToolVersion: version,
+		Write:       !*dryRun,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bdl-lsp link sync: %v\n", err)
+		return 1
+	}
+	fmt.Printf("== 采集完成（%s）==\n", res.Stat.Source)
+	fmt.Printf("来源        %s\n", res.Stat.Detail)
+	var sb strings.Builder
+	res.Outcome.Report(&sb)
+	fmt.Print(sb.String())
+	fmt.Printf("总耗时      %s\n", time.Since(start).Round(time.Millisecond))
+	if *dryRun {
+		fmt.Println("\n（dry-run：未写盘）")
+	} else {
+		fmt.Printf("已写入 %s\n", res.Outcome.DataDir)
+	}
+	return 0
 }
 
 func runImport(args []string, version string) int {

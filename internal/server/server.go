@@ -59,6 +59,8 @@ type Server struct {
 	// varQueries 是变量使用检查的复用 query（T5；惰性编译）。
 	varQueries     *variableQueries
 	varQueriesOnce sync.Once
+	// linkSyncStop 停掉后台采集（P7-D-3；未启用时为 nil）。
+	linkSyncStop func()
 	// fnCallCollector 是函数调用收集的复用 collector（function-not-found；惰性创建）。
 	fnCallOnce      sync.Once
 	fnCallCollector *index.CallCollector
@@ -291,6 +293,8 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	// initialize 响应抢同一帧，客户端（和测试）都得处理乱序。
 	// 改成第一次 didOpen 时发，那时用户已经真的在看文件了。
 	s.newLinkResolver()
+	// P7-D-3：采集（默认全关）。成功后会自己重载资料并补发诊断。
+	s.startLinkSync(ctx)
 	if n := len(s.settings().Globals.SearchPaths); n > 0 {
 		s.logger.Info("globals searchPaths 生效", "count", n)
 	}
@@ -349,6 +353,7 @@ func (s *Server) handleShutdown(ctx context.Context, reply jsonrpc2.Replier) err
 	s.mu.Lock()
 	s.shutdown = true
 	s.mu.Unlock()
+	s.stopLinkSync()
 	s.logger.Info("收到 shutdown")
 	return reply(ctx, nil, nil)
 }

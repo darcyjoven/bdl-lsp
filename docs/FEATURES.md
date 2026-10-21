@@ -110,6 +110,8 @@
 | 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（11 个码）；优先级 新键 > 旧键 > 注册表默认；拼错记 warn；`syntaxDiagnostics` 默认已改 warning | P7-B（✅ 0.1.2） |
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
 | 39 | 程序链接资料索引 | `bdl-lsp link import/status`；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
+| 39b | 采集通道（P7-D-3） | `bdl-lsp link sync -source golang|command|file`：纯 Go 直连 Oracle（`go-ora`，无需客户端）/ 命令 stdout / 已导出的 CSV。密码只从环境变量或 `.link/secrets.json`(0600) 取 | P7-D-3（✅ 0.1.6） |
+| 39c | 后台自动同步 | `bdl.link.sync.*`（默认**全关**）：`onStart` 启动时跑一次、`interval` 定时；失败指数退避上限 1 h；成功后自动重载资料并补发诊断 | P7-D-3（✅ 0.1.6） |
 | 39a | 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义的名字 → 视为存在并记进 `links.meta.json`；候选 >2000 个则**不启用** | P7-D-2（✅ 0.1.5） |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
 | 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |

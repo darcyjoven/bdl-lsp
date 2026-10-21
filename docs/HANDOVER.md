@@ -3,7 +3,7 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.5** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.6** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -16,11 +16,7 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 
 下一个是采集与 UI：
 
-- **P7-D-3 采集**：`bdl-lsp link fetch -cmd "…"` 先做（最快、最通用），
-  DB 直连（S1，`go-ora`）与服务器脚本（S2）随后；见
-  [PLAN-P7.md](PLAN-P7.md) §10.8。
-- **P7-E UI**：VSCode TreeView（`bdl/linkTree` + 反查引用程序）+ Zed 降级；
-  见 §10.9。
+- **P7-E UI**：VSCode TreeView（`bdl/linkTree` + 反查引用程序）+ Zed 降级。
 
 ### 已完成（本轮）
 
@@ -32,6 +28,8 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 | 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义 → 视为存在，记进 meta |
 | 诊断 | `function-not-found`（**默认 warning**）· `link-data-invalid` · `link-data-stale` |
 | 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
+| 采集 | `bdl-lsp link sync -source golang|command|file`；`scripts/fetch-gal-file.sh`（sqlplus 兜底） |
+| 后台同步 | `bdl.link.sync.*`（默认关，失败指数退避，成功后自动重载） |
 | 审计 | `cmd/link-audit`（`-externals`/`-missing`）、`diag-audit -no-link` |
 
 ## 1. 一句话状态
@@ -46,7 +44,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.5`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.6`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -137,6 +135,14 @@ link.dataDir                        .link
 link.moduleRoots                    []          （空 = 自动探测 tiptop/topcust）
 link.globalModules                  [sub lib qry]
 link.maxAgeDays                     7           （0 = 不提示过期）
+link.sync.enable                    false       ← P7-D-3，默认关闭
+link.sync.source                    golang      （golang/command/file）
+link.sync.interval                  0           （秒，0 = 只启动时同步）
+link.sync.onStart                   false
+link.sync.command                   ""          （source=command）
+link.sync.file                      ""          （source=file；空 = .link/gal_file.csv）
+link.sync.db.host/port/service/user 1521…       （source=golang；密码见下）
+  密码：环境变量 BDL_ORA_PASSWORD > <项目>/.link/secrets.json（必须 0600）
 format.keywords                     unchanged  （unchanged/upper/lower）
 format.indentStyle                  auto       （auto/tab/space）
 format.indentSize                   0          （0 = 跟随编辑器）
@@ -341,7 +347,7 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 | P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（未做，可随时插入） | ✅ / 待定 |
 | P7-D | 链接资料：核心（索引 + 可见性 + 诊断） | ✅ 0.1.4 |
 | P7-D-2 | 外部函数过滤（`function-not-found` 默认打开） | ✅ 0.1.5 |
-| P7-D-3 | 采集链路（S3 命令 / S1 go-ora / S2 服务器脚本） | 🔜 下一轮（§0） |
+| P7-D-3 | 采集链路（golang / command / file + 后台同步） | ✅ 0.1.6 |
 | P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）

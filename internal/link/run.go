@@ -34,7 +34,12 @@ func builtinNames() map[string]bool {
 // 去核对 CLI 的输出。
 type ImportRequest struct {
 	// CSVPath 是 DS.GAL_FILE 导出的 CSV。
+	//
+	// 与 CSVData 二选一：采集通道（P7-D-3）从数据库/命令直接拿到字节，
+	// 不必先落盘到临时文件。
 	CSVPath string
+	// CSVData 是内存里的 CSV（优先于 CSVPath）。
+	CSVData []byte
 	// ProjectRoot 是项目根（用于解析模组路径与 `.link`）。
 	ProjectRoot string
 	// DataDir 是资料目录；空则 `<ProjectRoot>/.link`。
@@ -69,12 +74,16 @@ func RunImport(req ImportRequest) (*ImportOutcome, error) {
 	if req.Pool == nil {
 		return nil, fmt.Errorf("缺少解析器池")
 	}
-	if req.CSVPath == "" {
-		return nil, fmt.Errorf("缺少 CSV 路径")
+	if len(req.CSVData) == 0 && req.CSVPath == "" {
+		return nil, fmt.Errorf("缺少 CSV 路径或内容")
 	}
-	data, err := os.ReadFile(req.CSVPath)
-	if err != nil {
-		return nil, fmt.Errorf("读取 %s: %w", req.CSVPath, err)
+	data := req.CSVData
+	if len(data) == 0 {
+		var err error
+		data, err = os.ReadFile(req.CSVPath)
+		if err != nil {
+			return nil, fmt.Errorf("读取 %s: %w", req.CSVPath, err)
+		}
 	}
 
 	root := req.ProjectRoot

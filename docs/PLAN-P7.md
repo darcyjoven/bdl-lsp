@@ -1880,6 +1880,42 @@ cmd/link-audit/     真实 CSV 复跑与核对
 
 ---
 
+### 10.8 P7-D-3 采集通道（✅ 2026-10-21，`0.1.6`）
+
+`internal/linksync`：三套来源共用一个接口，产物是同一份 `links.jsonl`。
+
+| 来源 | 实现 | 适用 |
+|---|---|---|
+| `golang` | `sijms/go-ora/v2` 纯 Go 直连，`database/sql` + `BuildUrl` | 本机能连到库（**无需 Oracle 客户端**） |
+| `command` | `sh -c` / `cmd /C`，CSV 从 stdout 读回 | 已有现成导出脚本 |
+| `file` | 读 `<dataDir>/gal_file.csv` | 服务器上 `sqlplus` 导出后拷回来 |
+
+关键决策：
+
+- **密码绝不进 settings.json**。优先级：`${env:VAR}`（配置里写引用）→
+  环境变量 `BDL_ORA_PASSWORD` → `<dataDir>/secrets.json`（**权限不是 0600 就报错**，
+  不"默默能用"）。`config.Validate()` 会主动指出"这看起来是明文密码"。
+- 幂等与安全：采集失败**不动**已有资料（先解析成功再原子写盘）；
+  采集给 60 s 超时上限，不会把编辑器卡死。
+- LSP 侧后台同步：`bdl.link.sync.{enable,source,interval,onStart,command,file,db.*}`，
+  默认**全关**；失败指数退避（上限 1 h），成功后自动重载资料并补发一轮诊断。
+- S2 的脚本是 `scripts/fetch-gal-file.sh`：`read -s` 输密码（不进 history、
+  不进 `ps`），`SET MARKUP CSV ON` 直出，`gal04='Y'` 在 SQL 里过滤。
+
+命令：
+
+```bash
+bdl-lsp link sync -source golang -host db -service PROD -user readonly   # 直连
+bdl-lsp link sync -source command -command ./export.sh                   # 命令
+bdl-lsp link sync -source file -file .link/gal_file.csv                  # 文件
+bdl-lsp link sync -source file -dry-run                                  # 只校验不写盘
+```
+
+实测：`-source file` 全流程（采集 → 导入 → 校验）24.5 s，结果与
+`link import` 逐字节一致（走同一段 `RunImport`）。
+
+---
+
 ## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |

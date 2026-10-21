@@ -11,6 +11,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/internal/link"
+	"github.com/darcyjoven/bdl-lsp/internal/linksync"
 	"go.lsp.dev/protocol"
 )
 
@@ -301,4 +302,60 @@ func filePathOf(uri string) string {
 // fileURI 把绝对路径转成 file:// URI。
 func fileURI(path string) string {
 	return "file://" + filepath.ToSlash(path)
+}
+
+// startLinkSync 按 `bdl.link.sync` 配置在后台采集资料（P7-D-3）。
+//
+// 默认全关：采集要连用户的数据库或执行命令，必须显式打开。
+// 采集成功后重载资料并补发一轮诊断——用户不需要重启编辑器。
+func (s *Server) startLinkSync(ctx context.Context) {
+	cfg := s.cfg.Get().LinkSync()
+	if !cfg.Enable {
+		return
+	}
+	root := s.rootPath
+	if root == "" {
+		return
+	}
+	sched := &linksync.Scheduler{
+		Config: linksync.Config{
+			Enable:   cfg.Enable,
+			Source:   cfg.Source,
+			Interval: cfg.Interval,
+			OnStart:  cfg.OnStart,
+			Command:  cfg.Command,
+			File:     cfg.File,
+			DB: linksync.DBConfig{
+				Host:     cfg.DB.Host,
+				Port:     cfg.DB.Port,
+				Service:  cfg.DB.Service,
+				User:     cfg.DB.User,
+				Password: cfg.DB.Password,
+				Query:    cfg.DB.Query,
+			},
+		},
+		Request: linksync.Request{
+			ProjectRoot: root,
+			DataDir:     filepath.Join(root, s.cfg.Get().LinkDataDir()),
+			Pool:        s.pool,
+			ToolVersion: s.version,
+			Write:       true,
+		},
+		Log: s.logger,
+		OnSynced: func(*linksync.Result) {
+			// 采集换了新资料：重载 + 重新诊断。
+			s.newLinkResolver()
+			s.rediagnoseAll()
+		},
+	}
+	sched.Request.Config = sched.Config
+	s.linkSyncStop = sched.Start(ctx)
+}
+
+// stopLinkSync 停掉后台采集（shutdown 时调用）。
+func (s *Server) stopLinkSync() {
+	if s.linkSyncStop != nil {
+		s.linkSyncStop()
+		s.linkSyncStop = nil
+	}
 }
