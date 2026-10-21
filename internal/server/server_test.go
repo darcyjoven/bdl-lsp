@@ -39,6 +39,15 @@ type harness struct {
 	stream *pipeStream
 	client *io.PipeWriter
 	server *io.PipeReader
+	// br 是**唯一**的读取缓冲。必须跨调用复用：每次 new 一个 bufio.Reader
+	// 都会预读 4KB，把后面的帧吞进自己的缓冲里丢掉。
+	br *bufio.Reader
+	// frames 由**一个**常驻 goroutine 灌入。
+	//
+	// 早期实现是"每次读取起一个 goroutine"，超时后那个 goroutine 还挂在
+	// Read 上，下一帧就会被它偷走再也没人收——测试里表现为莫名其妙的
+	// "等待响应超时"。改成单一泵 + 通道后，超时只是没人取，帧还在队列里。
+	frames chan map[string]any
 }
 
 func newHarness(t *testing.T) *harness {
@@ -54,7 +63,10 @@ func newHarness(t *testing.T) *harness {
 		stream: &pipeStream{Reader: c2sR, Writer: s2cW, closed: make(chan struct{})},
 		client: c2sW,
 		server: s2cR,
+		br:     bufio.NewReader(s2cR),
+		frames: make(chan map[string]any, 256),
 	}
+	go h.pump()
 	return h
 }
 
@@ -66,65 +78,107 @@ func (h *harness) send(payload string) {
 	}
 }
 
-// readMessage 读取一帧并解析为通用 map。
+// pump 是唯一读取 server→client 流的 goroutine。
+func (h *harness) pump() {
+	defer close(h.frames)
+	for {
+		msg, err := readFrame(h.br)
+		if err != nil {
+			return
+		}
+		h.frames <- msg
+	}
+}
+
+// readFrame 从缓冲里读出一帧 JSON-RPC 消息。
+func readFrame(br *bufio.Reader) (map[string]any, error) {
+	var length int
+	for {
+		line, err := br.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if name, value, ok := strings.Cut(line, ":"); ok && strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
+			n, convErr := strconv.Atoi(strings.TrimSpace(value))
+			if convErr != nil {
+				return nil, convErr
+			}
+			length = n
+		}
+	}
+	if length == 0 {
+		return nil, fmt.Errorf("缺少 Content-Length")
+	}
+	buf := make([]byte, length)
+	if _, err := io.ReadFull(br, buf); err != nil {
+		return nil, err
+	}
+	var msg map[string]any
+	if err := json.Unmarshal(buf, &msg); err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+// readMessage 读取一帧并解析为通用 map（超时直接 Fatal）。
 func (h *harness) readMessage(timeout time.Duration) map[string]any {
 	h.t.Helper()
-
-	type result struct {
-		msg map[string]any
-		err error
-	}
-	ch := make(chan result, 1)
-
-	go func() {
-		br := bufio.NewReader(h.server)
-		var length int
-		for {
-			line, err := br.ReadString('\n')
-			if err != nil {
-				ch <- result{err: err}
-				return
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				break
-			}
-			if name, value, ok := strings.Cut(line, ":"); ok && strings.EqualFold(strings.TrimSpace(name), "Content-Length") {
-				n, convErr := strconv.Atoi(strings.TrimSpace(value))
-				if convErr != nil {
-					ch <- result{err: convErr}
-					return
-				}
-				length = n
-			}
-		}
-		if length == 0 {
-			ch <- result{err: fmt.Errorf("缺少 Content-Length")}
-			return
-		}
-		buf := make([]byte, length)
-		if _, err := io.ReadFull(br, buf); err != nil {
-			ch <- result{err: err}
-			return
-		}
-		var msg map[string]any
-		if err := json.Unmarshal(buf, &msg); err != nil {
-			ch <- result{err: err}
-			return
-		}
-		ch <- result{msg: msg}
-	}()
-
-	select {
-	case res := <-ch:
-		if res.err != nil {
-			h.t.Fatalf("读取响应失败: %v", res.err)
-		}
-		return res.msg
-	case <-time.After(timeout):
+	msg, ok := h.nextFrame(timeout)
+	if !ok {
 		h.t.Fatal("等待响应超时")
+	}
+	return msg
+}
+
+// nextFrame 从通道取一帧；关闭或超时返回 ok=false。
+func (h *harness) nextFrame(timeout time.Duration) (map[string]any, bool) {
+	select {
+	case msg, ok := <-h.frames:
+		return msg, ok
+	case <-time.After(timeout):
+		return nil, false
+	}
+}
+
+// readMessageSoft 与 readMessage 相同，但超时返回 nil 而不 Fatal。
+//
+// 用于"断言某个诊断**不该**出现"的用例：那里必须能等满一段时间再
+// 平静地得出结论，而不是把超时当成测试失败。
+func (h *harness) readMessageSoft(timeout time.Duration) map[string]any {
+	if timeout <= 0 {
 		return nil
 	}
+	msg, _ := h.nextFrame(timeout)
+	return msg
+}
+
+// collectDiagnostics 在给定时间窗内收集某 URI 的全部诊断（超时不算失败）。
+//
+// 只用于"断言不该出现"的场景；需要"断言必须出现"时用 drainUntilCode。
+func (h *harness) collectDiagnostics(uri string, window time.Duration) []any {
+	h.t.Helper()
+	deadline := time.Now().Add(window)
+	var all []any
+	for time.Now().Before(deadline) {
+		msg := h.readMessageSoft(time.Until(deadline))
+		if msg == nil {
+			return all
+		}
+		if msg["method"] != "textDocument/publishDiagnostics" {
+			continue
+		}
+		p, _ := msg["params"].(map[string]any)
+		if p["uri"] != uri {
+			continue
+		}
+		diags, _ := p["diagnostics"].([]any)
+		all = append(all, diags...)
+	}
+	return all
 }
 
 func startServer(t *testing.T) (*harness, func()) {

@@ -114,9 +114,15 @@
 | 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
 | 42 | 诊断降噪 | 变量使用 query 补 4 类跳过（表达式函数名 / `WHENEVER` 目标 / 表单字段含点号）；`.per` 布局单元格多 tag 与 SCREEN RECORD 字段名修正；全量诊断 33.4 万 → 28.9 万 | P7-B-4/6（✅ 0.1.2） |
 | 43 | 诊断度量工具 | `cmd/diag-audit` + `make diag-audit`：逐码计数、高频标识符、噪声最高文件（降噪基线，可 CI 化） | P7-B（✅ 0.1.2） |
-| 44 | `function-not-found` | 函数调用点找不到定义。**默认 off**：实测 24 个真实文件报 3660 条（内置/跨模块函数尚无符号表），P7-C 已补内置侧，待 P7-D 打开 | P7-B（✅ 已实现，默认关） |
+| 44 | `function-not-found` | 函数调用点找不到定义。P7-C 补内置侧、P7-D 补链接侧后**误报已可控**，但仍**默认 off**：语料是部分快照，`cl_err3`/`cl_qbe_*` 这类"语料里根本没有"的库函数会成片报；需要时用 `bdl.diagnostics.function-not-found: warning` 打开 | P7-B（✅ 已实现，默认关） |
 | 45 | 内置符号可配置/可更新 | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.enable/paths/disable` | P7-C-1（✅ 0.1.3） |
 | 46 | 内置符号缺口审计 | `cmd/builtin-audit` + `make builtin-audit` / `make builtin-check`：按频次+文件数列出"不在表里"的名字，带内置/用户粗判；`-check` 进 `make lint` | P7-C-1（✅ 0.1.3） |
+| 47 | 程序链接资料导入 | `bdl-lsp link import -csv <导出.csv>`：CSV（UTF-8 BOM、`gal04='Y'` 过滤、组内去重）→ `<root>/.link/links.jsonl` + `links.meta.json`，原子写入；判定 MAIN 用语法树 + 文本兜底（兼容 `{ MAIN }` 写法） | P7-D（✅ 0.1.4） |
+| 48 | 链接资料状态 | `bdl-lsp link status`：链/orphan/ambiguous/文件数、生成时间与天数、缺失文件数、模组根、全局模组；过期时提示重新导入 | P7-D（✅ 0.1.4） |
+| 49 | 函数跨文件可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则，含它们自己）。**只放大函数，变量可见性不变（R2）** | P7-D（✅ 0.1.4） |
+| 50 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成才判定；资料缺失/链里有磁盘上不存在的文件/索引未就绪 → **一律不报**（宁可漏报不可误报） | P7-D（✅ 0.1.4） |
+| 51 | 链接资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）· `link-data-stale`（超 `maxAgeDays` 未更新 → hint）；都落在 `.link/` 里的文件上，不污染源码 | P7-D（✅ 0.1.4） |
+| 52 | 链接配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays`；资料目录与内置表一样按 mtime 热重载（2s 节流），导入后无需重启编辑器 | P7-D（✅ 0.1.4） |
 
 ---
 

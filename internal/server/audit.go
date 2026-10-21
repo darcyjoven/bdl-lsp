@@ -10,10 +10,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
+	"github.com/darcyjoven/bdl-lsp/internal/link"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"go.lsp.dev/protocol"
 )
@@ -28,6 +30,46 @@ func (s *Server) EnableResolvers(rootPath string) {
 	s.newGlobalsResolver(rootPath)
 	s.newFormResolver(rootPath)
 	s.newBuiltinLoader()
+	// P7-D：链接资料（没有 .link/links.jsonl 时静默跳过）。
+	s.newLinkResolver()
+}
+
+// EnableLinks 显式重新加载链接资料（审计工具在改过配置后调用）。
+func (s *Server) EnableLinks() {
+	s.newLinkResolver()
+}
+
+// ConfigureLinks 覆盖链接资料配置（审计工具用），随后调用 EnableLinks 重载。
+func (s *Server) ConfigureLinks(globalModules []string) error {
+	raw, err := json.Marshal(map[string]any{"link": map[string]any{"globalModules": globalModules}})
+	if err != nil {
+		return err
+	}
+	return s.cfg.Apply(raw)
+}
+
+// LinkResolver 返回当前的链接解析器（nil 表示未启用/没有资料）。
+func (s *Server) LinkResolver() *link.Resolver {
+	return s.linkResolver()
+}
+
+// WaitLinkReady 等待链接索引预热完成（或超时）。
+//
+// 审计必须等：可见集没就绪时 function-not-found 一律不报，
+// 不等就会得到"0 条"这种毫无意义的假象。
+func (s *Server) WaitLinkReady(timeout time.Duration) bool {
+	res := s.linkResolver()
+	if res == nil {
+		return false
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if res.Ready() {
+			return true
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return res.Ready()
 }
 
 // BuiltinSet 暴露当前生效的内置符号表，供 `cmd/builtin-audit` 打印统计。

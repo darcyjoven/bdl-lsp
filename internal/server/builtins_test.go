@@ -149,6 +149,10 @@ func TestBuiltinOverlayFileAddsName(t *testing.T) {
 }
 
 // TestFunctionNotFoundSkipsBuiltinFunction 验证 function-not-found 也吃内置表。
+//
+// 注意：P7-D 之后 function-not-found 还要求**有链接资料**，所以这里
+// 真正的断言是"一条都不报"；内置名豁免与用户函数的对比在
+// links_test.go 的 TestLinkFunctionNotFoundWithData 里验证。
 func TestFunctionNotFoundSkipsBuiltinFunction(t *testing.T) {
 	h, cleanup := startServer(t)
 	defer cleanup()
@@ -159,7 +163,6 @@ func TestFunctionNotFoundSkipsBuiltinFunction(t *testing.T) {
 	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY ARG_VAL(1)\n    CALL cl_null(\"x\")\nEND MAIN\n", 1)
 	diags := h.drainDiagnostics(uri, 5*time.Second)
 
-	var sawUserFn bool
 	for _, raw := range diags {
 		d, _ := raw.(map[string]any)
 		code, _ := d["code"].(string)
@@ -171,11 +174,8 @@ func TestFunctionNotFoundSkipsBuiltinFunction(t *testing.T) {
 			t.Error("内置函数 ARG_VAL 不应报 function-not-found")
 		}
 		if strings.Contains(msg, "cl_null") {
-			sawUserFn = true
+			t.Error("没有链接资料时不应报任何 function-not-found")
 		}
-	}
-	if !sawUserFn {
-		t.Error("内置表覆盖不到的用户函数 cl_null 应仍被报告")
 	}
 }
 

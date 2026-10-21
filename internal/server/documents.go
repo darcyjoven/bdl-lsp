@@ -25,6 +25,10 @@ func (s *Server) handleDidOpen(ctx context.Context, req jsonrpc2.Request) error 
 		return nil // 只处理 bdl / per，其他文件静默忽略
 	}
 
+	// P7-D：首个 didOpen 时补发链接资料自身的问题（坏数据/过期）。
+	// 放在这里而不是 initialize，避免和 initialize 响应抢帧。
+	s.maybePublishLinkStatus(ctx)
+
 	doc := s.docs.Open(uri, lang, params.TextDocument.Version, params.TextDocument.Text)
 	s.logger.Debug("didOpen", "uri", uri, "lang", lang, "version", doc.Version)
 	s.clearSourceDiags(uri) // 打开新文档：T5 缓存按当前内容重算

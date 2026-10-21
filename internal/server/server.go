@@ -41,6 +41,8 @@ type Server struct {
 	// builtins 是内置函数/变量符号表（P7-C）；initialize 之后非 nil。
 	// 支持覆盖文件热更新（Loader.MaybeReload）。
 	builtins *builtin.Loader
+	// links 是程序链接资料（P7-D）的运行时状态，始终非 nil（内部可能没有解析器）。
+	links *linkState
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
@@ -282,6 +284,12 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 
 	// P7-C：内置符号表（内置数据 + 项目覆盖文件）
 	s.newBuiltinLoader()
+
+	// P7-D：链接资料（.link/links.jsonl）；没有资料时静默跳过。
+	// 注意：不在这里 publishLinkStatus —— initialize 期间发通知会和
+	// initialize 响应抢同一帧，客户端（和测试）都得处理乱序。
+	// 改成第一次 didOpen 时发，那时用户已经真的在看文件了。
+	s.newLinkResolver()
 	if n := len(s.settings().Globals.SearchPaths); n > 0 {
 		s.logger.Info("globals searchPaths 生效", "count", n)
 	}

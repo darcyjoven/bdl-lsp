@@ -5,6 +5,7 @@
 //	bdl-lsp serve              以 stdio 提供 LSP（默认）
 //	bdl-lsp check <file>...    解析文件并输出问题（用于冒烟测试/CI）
 //	bdl-lsp deploy             上传到远程服务器并远程编译（见 internal/deploy）
+//	bdl-lsp link import|status 导入/查看程序链接资料（见 internal/link）
 //	bdl-lsp version            打印版本
 package main
 
@@ -19,6 +20,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/check"
 	"github.com/darcyjoven/bdl-lsp/internal/cmdline"
 	"github.com/darcyjoven/bdl-lsp/internal/deploycli"
+	"github.com/darcyjoven/bdl-lsp/internal/linkcli"
 	"github.com/darcyjoven/bdl-lsp/internal/logging"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
@@ -29,7 +31,7 @@ import (
 // 版本策略（用户 2026-10-21 定）：从 0.1.1 起算；每完成一轮完整改动
 // 并提交，就 +1。三个仓库（bdl-lsp / vscode-extension / zed-extension）
 // 各自独立记版本，不要求一致。
-var version = "0.1.3"
+var version = "0.1.4"
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -50,6 +52,8 @@ func run(args []string) int {
 		return runCheck(args)
 	case "deploy":
 		return deploycli.Run(args, version)
+	case "link":
+		return linkcli.Run(args, version)
 	case "serve", "--stdio":
 		return runServe(args)
 	default:

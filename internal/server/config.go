@@ -73,6 +73,16 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	// 每次配置变更都重载即可。
 	s.newBuiltinLoader()
 
+	// P7-D：链接资料的 enable/dataDir/moduleRoots/globalModules 变化都要重载。
+	s.newLinkResolver()
+	if s.links != nil {
+		// 配置变了就允许重新发一次（可能从"没有资料"变成"资料过期"）。
+		s.links.mu.Lock()
+		s.links.statusPublished = false
+		s.links.mu.Unlock()
+	}
+	s.publishLinkStatus(ctx)
+
 	// 重新诊断所有打开的文档
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)

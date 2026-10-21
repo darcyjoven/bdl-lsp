@@ -76,6 +76,8 @@ type Settings struct {
 	Diagnostics map[string]DiagnosticLevel `json:"diagnostics"`
 	// Builtins 是内置函数/变量符号表（P7-C）的配置。
 	Builtins BuiltinsSettings `json:"builtins"`
+	// Link 是程序链接资料（P7-D）的配置。
+	Link LinkSettings `json:"link"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -147,6 +149,45 @@ func (s Settings) BuiltinsEnabled() bool {
 		return true
 	}
 	return *s.Builtins.Enable
+}
+
+// LinkSettings 控制程序链接资料（P7-D）。
+//
+// 链接资料回答"这个可执行文件链接了哪些 4gl 文件"，从而决定哪些**函数**
+// 可被调用。没有它，`CALL 不存在的函数()` 无法判定——实测 24 个真实文件
+// 一开检查就报 3660 条误报。
+//
+// 三条铁律（用户 2026-10-21 明确）：
+//  1. 只放大**函数**可见性，绝不放大变量（R2）；
+//  2. sub/lib/qry 对所有程序可见，含它们自己（扁平规则，无矩阵）；
+//  3. 链接里有、磁盘上没有的文件完全忽略，不报诊断。
+type LinkSettings struct {
+	// Enable 关闭后不做任何链接相关诊断（默认启用）。
+	Enable *bool `json:"enable,omitempty"`
+	// DataDir 是资料目录（相对项目根），默认 `.link`。
+	DataDir string `json:"dataDir"`
+	// ModuleRoots 是模组根（相对项目根）。空 = 自动探测。
+	ModuleRoots []string `json:"moduleRoots"`
+	// GlobalModules 是对所有程序可见的模组，默认 ["sub","lib","qry"]。
+	GlobalModules []string `json:"globalModules"`
+	// MaxAgeDays 是资料过期提示阈值（天），0 = 不提示。
+	MaxAgeDays int `json:"maxAgeDays"`
+}
+
+// LinkEnabled 报告链接资料功能是否启用（默认启用）。
+func (s Settings) LinkEnabled() bool {
+	if s.Link.Enable == nil {
+		return true
+	}
+	return *s.Link.Enable
+}
+
+// LinkDataDir 返回资料目录（默认 `.link`）。
+func (s Settings) LinkDataDir() string {
+	if s.Link.DataDir == "" {
+		return ".link"
+	}
+	return s.Link.DataDir
 }
 
 // Default 返回默认配置。
@@ -314,6 +355,24 @@ func (m *Manager) merge(s *Settings) {
 		}
 	}
 
+	// P7-D：链接资料
+	if s.Link.Enable != nil {
+		v := *s.Link.Enable
+		m.cur.Link.Enable = &v
+	}
+	if s.Link.DataDir != "" {
+		m.cur.Link.DataDir = s.Link.DataDir
+	}
+	if s.Link.ModuleRoots != nil {
+		m.cur.Link.ModuleRoots = s.Link.ModuleRoots
+	}
+	if s.Link.GlobalModules != nil {
+		m.cur.Link.GlobalModules = s.Link.GlobalModules
+	}
+	if s.Link.MaxAgeDays > 0 {
+		m.cur.Link.MaxAgeDays = s.Link.MaxAgeDays
+	}
+
 	// P7-C：内置符号表
 	if s.Builtins.Enable != nil {
 		v := *s.Builtins.Enable
@@ -372,6 +431,20 @@ func (s Settings) Validate() []string {
 		}
 	}
 
+	for i, p := range s.Link.ModuleRoots {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("link.moduleRoots[%d] 为空", i))
+		}
+	}
+	for i, p := range s.Link.GlobalModules {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("link.globalModules[%d] 为空", i))
+		}
+	}
+	if s.Link.MaxAgeDays < 0 {
+		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
+	}
+
 	for i, p := range s.Builtins.Paths {
 		if strings.TrimSpace(p) == "" {
 			problems = append(problems, fmt.Sprintf("builtins.paths[%d] 为空", i))
@@ -419,6 +492,20 @@ func (s Settings) Validate() []string {
 	}
 	if s.Limits.ParseTimeoutMS <= 0 {
 		problems = append(problems, "limits.parseTimeoutMs 必须为正数")
+	}
+
+	for i, p := range s.Link.ModuleRoots {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("link.moduleRoots[%d] 为空", i))
+		}
+	}
+	for i, p := range s.Link.GlobalModules {
+		if strings.TrimSpace(p) == "" {
+			problems = append(problems, fmt.Sprintf("link.globalModules[%d] 为空", i))
+		}
+	}
+	if s.Link.MaxAgeDays < 0 {
+		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
 	}
 
 	for i, p := range s.Builtins.Paths {

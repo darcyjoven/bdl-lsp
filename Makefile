@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -80,6 +80,14 @@ diag-audit: build
 ## builtin-audit: 内置符号表（P7-C）的缺口审计——列出语料里"不在表里"的名字
 builtin-audit: build
 	@$(GO) run ./cmd/builtin-audit $(if $(LIMIT),-limit $(LIMIT),) -show $(or $(SHOW),40)
+
+## link-audit: 程序链接资料（P7-D）——用真实 CSV 复跑导入并核对统计
+link-audit: build
+	@$(GO) run ./cmd/link-audit -csv $(or $(CSV),artifacts/link/link.csv) -root $(or $(ROOT),/code/workspace/tiptop-gp) $(if $(WRITE),-write,)
+
+## link-status: 查看已有链接资料的统计（不解析源码）
+link-status: build
+	@./$(BIN) link status -root $(or $(ROOT),/code/workspace/tiptop-gp)
 
 ## builtin-check: 校验内置符号数据文件（格式/排序/重名/kind）
 builtin-check:

@@ -1754,6 +1754,90 @@ cmd/builtin-audit/main.go   缺口审计 + -check 校验
 
 ---
 
+### 10.7 P7-D 程序链接资料（核心已落地，2026-10-21，`0.1.4`）
+
+#### 落地结构
+
+```
+internal/link/
+  link.go      FileRef/Chain/Meta/Index + Load/Save（原子写）+ ErrNoData
+  layout.go    Layout：模组根探测、大小写不敏感 Path、FileID 反推
+  import.go    CSV → 链（BOM、gal04 过滤、组内去重、orphan/ambiguous、缺失计数）
+  maintext.go  文本层 MAIN 检测（与语法注释规则一致）
+  symbols.go   SymbolIndex：文件级函数名缓存 + 全局模组后台预热 + 同步预算
+  resolver.go  Resolver：可见函数 = 本文件 ∪ GLOBALS ∪ 链接 ∪ 全局模组
+  parsebdl.go  真实 ParseFunc / MainFinder（tree-sitter）
+  run.go       RunImport + Status（CLI 与审计共用同一段逻辑）
+internal/linkcli/   `bdl-lsp link import|status`
+cmd/link-audit/     真实 CSV 复跑与核对
+```
+
+#### 与计划不同的三处（都是实测逼出来的）
+
+1. **ambiguous 从 5 变成 0**：计划里的 5 个多 MAIN 组全部来自
+   `aws_ttsrv2_transxml.4gl` 的 `{ MAIN … }`。`{ }` 在语法里是**块注释**
+   （`rule/fgl.js`：`seq("{", /[^}]*/, "}")`），所以那个 MAIN 是被注释掉的。
+   早先的 Python 脚本按文本正则统计 → 多算了 4 组。现在 `ScanMainText`
+   与语法注释规则一致（`#`/`--`/`{ }`），结果与语法树一致：**ambiguous = 0**。
+   `Chain.Mains` 与 ambiguous 代码路径保留（防御性，合成数据单测覆盖）。
+
+2. **单文件 753 KB，不是 415 KB**：计划打算把 `sub`/`lib`/`qry` 这类隐式组
+   从文件里剔除。实际保留全部 5398 条链——P7-E 的"反查引用程序"需要这些
+   索引，而加载实测只要 **~10 ms**（753KB / 5398 行），没有剔的理由。
+
+3. **缺失文件不是"忽略后照常判定"，而是"不可判定"**：见 HANDOVER 坑 #27。
+   影响面实测很小（5849 条链里 234 条，4.0%）。
+
+#### 真实语料的最终数字（复跑 `cmd/link-audit`）
+
+| 指标 | 计划估值 | 实测 |
+|---|---:|---:|
+| CSV 行数 | 15587 | 15587 |
+| `gal04='N'` 过滤 | 51 | 51 |
+| 有效行 | 15536 | 15536 |
+| 链（有 MAIN） | 5846 | **5398** |
+| orphan（无 MAIN） | 81 | **451**（其中 389 组是文件全缺失） |
+| ambiguous | 5 | **0** |
+| 缺失文件 | 800 | 800 |
+| 去重文件数 | 7931 | 7931 |
+| 最大链 | `cbmp100` 364 | `sub` 524 / `aws_ttsrv2` 368 / `cbmp100` 364 |
+| 导入耗时 | — | **15 s**（8 核并行，含 7765 次 MAIN 判定） |
+
+#### `function-not-found` 的复测结论：仍然默认 off
+
+全量语料（15108 文件）打开后 **86612 条**，占 91.7%。逐名统计（全量）：
+
+| 名字 | 次数 | 语料里存在吗 |
+|---|---:|---|
+| `cl_err3` | 27315 | **不存在**（`lib/4gl` 只有 `cl_err.4gl`，无 `cl_err3`） |
+| `WSHelper_FillSOAP11WSError` | 12516 | **不存在**（Genero Web Service 生成库，快照里没有） |
+| `cl_qbe_init/save/select/display_condition` | 18421 | **不存在**（没有 `cl_qbe.4gl`） |
+| `WSHelper_CheckStax*` 等 12 个 | ~14800 | **不存在** |
+| `cl_cmdrun` / `cl_cmdrun_wait` | 3755 | **不存在** |
+| `SCR_LINE` | 27 | 存在，是**内置函数**，已补进内置表（0.1.4，86612 里已扣掉） |
+
+前 20 个名字占 **99.9%**，全是"语料快照里根本没有的库函数"——不是用户写错，
+也不是可见性算错。分布极度集中（2000 文件抽样：8014 条只来自 **30 个名字**，
+其中 16 个名字就占 99.8%；只有 13 个名字出现 1 次）。语料是**部分快照**
+（另有 800 条链接文件缺失、`W*` 模组整批不在），在这个前提下
+`function-not-found` 无法给出干净结果。
+
+因此：**默认 off 不变**，`bdl.diagnostics.function-not-found: warning` 按需打开；
+打开后 `variable-source-unresolved` **仍是 6030 条**（R2 成立：链接不放大变量可见性）。
+
+#### 下一步（P7-D-2，建议）：语料推导的"外部函数"过滤
+
+`link import` 已经逐个解析链接里的 7765 个文件，顺手就能统计"被调用但从无定义"
+的名字和**调用文件数**。名字被 ≥3 个文件调用、却在整份语料里找不到定义
+→ 几乎一定是"快照缺了这个库"，而不是笔误（笔误只出现在 1–2 处）。
+把这个名单写进 `links.meta.json`，解析器据此把它们并入可见集：
+
+- 预计能消掉本语料 **99%** 的 fnf 噪声，`function-not-found` 才有机会默认开；
+- 与"宁可漏报不可误报"一致；笔误仍然报（频次低）；
+- 需要用户拍板：因为它是**启发式**，会把"高频误调用"也一起放过。
+
+---
+
 ## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |

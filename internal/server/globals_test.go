@@ -669,7 +669,13 @@ func TestFunctionNotFoundOffByDefault(t *testing.T) {
 	}
 }
 
-func TestFunctionNotFoundReportsWhenEnabled(t *testing.T) {
+// TestFunctionNotFoundNeedsLinkData 验证 P7-D 的前置条件：
+// 即使显式打开，**没有链接资料时也不报**。
+//
+// 理由：没有链接资料就不知道"这个程序链接了哪些文件"，可见集不完整，
+// 报告就是误报（实测 24 个文件 3660 条）。宁可漏报不可误报。
+// 真正报出 function-not-found 的用例在 links_test.go（那里有 .link 数据）。
+func TestFunctionNotFoundNeedsLinkData(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
 	mainURI := "file://" + filepath.Join(dir, "main.4gl")
@@ -678,12 +684,8 @@ func TestFunctionNotFoundReportsWhenEnabled(t *testing.T) {
 	h.sendDidOpen(mainURI, "bdl", "MAIN\n    CALL no_such_fn()\nEND MAIN\n", 1)
 	diags := h.drainDiagnostics(mainURI, 5*time.Second)
 
-	f := findFunctionNotFoundDiags(diags)
-	if len(f) != 1 {
-		t.Fatalf("期望 1 条 function-not-found，实际 %d 条", len(f))
-	}
-	if msg, _ := f[0]["message"].(string); !stringsContains(msg, "no_such_fn") {
-		t.Errorf("消息应含函数名：%q", msg)
+	if f := findFunctionNotFoundDiags(diags); len(f) != 0 {
+		t.Fatalf("没有链接资料时不应报 function-not-found，实际 %d 条", len(f))
 	}
 }
 

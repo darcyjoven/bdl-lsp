@@ -3,221 +3,43 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.3** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*`）/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.4** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
 ---
 
-## 0. 下一步就做这个（P7-D：程序链接资料索引）
+## 0. 下一步就做这个（P7-D-2：语料推导的外部函数过滤）
 
-> **下一轮就做这个**：`cmd/link-audit` 读 `link.csv` → `<project>/.link/links.jsonl`
-> → `internal/link` 查"某程序能调用哪些函数"。待办见 [TODO.md](TODO.md) §P7-D。
->
-> **为什么是它**：P7-C-1 把内置名这一半清干净后，全量诊断从 28.9 万掉到
-> **7886**，剩下 `variable-source-unresolved` 6030 条里**前 20 名全是用户
-> 跨模组全局**（`S_XXX` 241、`G_MSS` 111、`WORKSERVICEIMPL…` 494…），
-> 以及 488 个 `CL_*`/`S_*` 用户函数——**这些正是 P7-D 要提供的链接资料**。
-> `function-not-found` 也已经接好内置白名单（默认仍 off），P7-D 一到就能开。
->
-> 步骤（详见 [PLAN-P7.md](PLAN-P7.md) §5）：
-> 1. `cmd/link-audit`：CSV → JSONL（Q12：`<project>/.link/links.jsonl`）。
-> 2. `internal/link`：加载 + 按 MAIN 代码反查 + `sub`/`lib`/`qry` 全局模组规则（Q14）。
-> 3. 接 `function-not-found` 与补全/悬停的跨模块函数。
-> 4. 再量一遍：目标是让 `CL_NULL`/`CL_ERR` 这类不再误报。
+P7-D 核心已落地（`0.1.4`）：链接资料导入/状态/可见性/诊断全部就位，
+`function-not-found` 也能正确判定——但**仍然默认 off**，原因是实测：
 
-### ✅ 刚完成：P7-C-1 内置符号表（第九轮，`0.1.3`）
+- 全量语料打开后 **86612 条**（`variable-source-unresolved` 保持 6030 不变，R2 成立）；
+- 前 20 个名字占 **99.9%**，全是 `cl_err3` / `cl_qbe_*` / `cl_cmdrun*` /
+  `WSHelper_*`——**语料快照里根本没有这些库文件**，不是用户写错；
+- 2000 文件抽样里 8014 条只来自 **30 个名字**，只有 13 个名字出现 1 次。
 
-| 项 | 结果 |
+**P7-D-2 的方案**（见 [PLAN-P7.md](PLAN-P7.md) §10.7 末节）：`link import` 已经
+逐个解析链接里的 7765 个文件，顺手统计"被 ≥3 个文件调用、却在整份语料里
+找不到定义"的名字，写进 `links.meta.json` 的 `externals`，解析器把它们并入
+可见集。预计消掉 99% 噪声，`function-not-found` 才有机会默认开。
+
+**这一步需要用户拍板**：它是启发式（会把高频误调用也一起放过），
+与"宁可漏报不可误报"一致，但确实会掩盖"某个库里函数被删掉"这种真实问题。
+
+不放心的替代路线：先只做 P7-D 采集（S1 go-ora / S2 服务器脚本），
+让资料能自动更新；`function-not-found` 继续按需手开。
+
+### 本轮（P7-D 核心）已交付
+
+| 交付 | 入口 |
 |---|---|
-| `internal/builtin` | `Set`/`Symbol`/`Kind`；`Lookup`（大小写不敏感）/`IsKnown`/`IsFunction`/`Prefix`；字段级合并、`disable` 优先级最高 |
-| 数据 | `data/builtins.json` **96 条**（8 变量 · 73 函数 · 14 类 · 1 常量），`go:embed` 进二进制 |
-| 可更新（用户要求） | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.{enable,paths,disable}`。设计见 PLAN-P7 §4.4 |
-| 四条接入 | `variable-source-unresolved` 白名单 · `function-not-found` 白名单（只认 `KindFunction`）· 补全（同名用户符号优先）· 悬停（签名/类别/`Since`/出处） |
-| `cmd/builtin-audit` | 按频次+文件数列出"不在表里"的名字，带"疑似内置/疑似用户"粗判；`-check` 校验格式并进 `make lint` |
-| 语料基线 | 全量 15108 文件 **289304 → 7886（−97.3%）**；`variable-source-unresolved` **287448 → 6030**；24 文件样本 **889 → 7**；`FGL_*` 缺口 **0** |
-| 测试 | builtin +22、server +10、completion +2；`go test -race ./...` 17 包全绿；`make lint` 通过 |
-
-**本轮最重要的一条判断**：内置表**宁少勿多**。计划写"≥200 条"，实际只做 96 条，
-因为每一条都得有语料证据——`cl_null`（168067 次！）是 `lib/4gl/cl_null.4gl:16`
-里用户自己写的函数，加进内置表会**掩盖真实的链接缺失**，正好把 P7-D 的问题藏起来。
-`FGL_*` 缺口为 0 说明 96 条对当前语料已经够用；不够时加一条只要改 JSON。
-
-**审计立刻抓出的三个漏项**：`ARR_CURR`（11950 次）、`ARR_COUNT`（3657）、
-`NOTFOUND`（117）——手抄手册时全漏了。所以 `cmd/builtin-audit` 不是"锦上添花"，
-它是这个功能唯一的验收手段。
-
-### ✅ 上一轮完成：P7-B 诊断降噪（第八轮，`0.1.2`）
-
-| 项 | 结果 |
-|---|---|
-| `internal/diag/registry.go` | 11 个诊断码集中注册；`SeverityFor` 优先级 = `bdl.diagnostics.<code>` > 旧专用键 > 注册表默认；`ToSeverity` 成为全仓库唯一转换点 |
-| 新配置 `bdl.diagnostics` | `config.Settings.Diagnostics`（增量合并）；`didChangeConfiguration` 对未注册的码记 warn（拼错保护） |
-| Q10 落地 | `syntaxDiagnostics` 默认 `error` → **`warning`**（旧键与新键一致）；`syntax-error` / `missing-node` 也进注册表 |
-| MISSING 两级覆盖 | `missing-<kind>` 精确 → `missing-node` 整簇 → 旧键（动态码按前缀放行） |
-| query 误报修正 | 新增 `(expression name:)`（`IF fn() THEN`）、`(whenever (variable))`；表单 4 条改为捕获整个 variable 节点（`DISPLAY … TO FORMONLY.cn2`） |
-| `function-not-found` | 已实现但**默认 off**——实测 24 个真实文件报 3660 条（内置 + 跨模块函数都还没符号表） |
-| 顺带修 `.per` 两处 | 布局单元格含多 tag（`[label1 \|alh01]`）→ 40167 → **17**；SCREEN RECORD 引用字段名而非 tag → 4850 → **5** |
-| `cmd/diag-audit` | 不起 LSP 连接直跑语义诊断流水线；逐码计数 + 高频标识符 + 噪声最高文件；`make diag-audit` |
-| 语料基线 | 全量 15108 文件 **334299 → 289304（−13.5%）**；`.per` 侧 45019 → **24** |
-| 测试 | diag +8、config +4、index +2、server +9；`go test -race ./...` 21 包全绿；`make lint` 通过 |
-
-**本轮最重要的一条判断**：新加的 `function-not-found` **不能默认开**。
-写它的时候我以为"没有链接资料就先别报跨模块"，实测一开就是 3660 条/24 文件
-——内置函数（`ARG_VAL`/`LENGTH`）和跨模块函数都在里面。
-**新诊断上线前必须先在真实语料上量一遍**，`cmd/diag-audit` 就是为此而生。
-
-### ✅ 上一轮完成：P7-B-5 游标 / prepare statement（第七轮）
-
-| 项 | 结果 |
-|---|---|
-| `PREPARE p FROM sql` | 新增 `index.KindPrepare` 符号，SQL 来源进 `TypeText`/`TypeTextRaw` |
-| `DECLARE c CURSOR FOR p` | 新增 `index.KindCursor` 符号；`Symbol.RefName` 记来源 prepare |
-| `EXECUTE`/`OPEN`/`FETCH`/`CLOSE`/`FOREACH` | 悬停与跳转都已生效 |
-| 跳转为何不用写代码 | 名字是普通标识符，B-2 抽出的 `scopedSymbolsAt` **按名字+作用域**解析，进表即可用 |
-| 大纲/补全/语义高亮 | 补了 `symbolDetail` / `toSymbolKind` / `itemForSymbol` / `classifySymbol` |
-| 收集方案 | **源码找关键字 → `DescendantForByteRange` 定位节点**（前两个方案太慢被否，见下） |
-| 正确性 | 独立真相源（全树递归扫描）在**全部 7699 个真实 .4gl** 上比对，符号集合完全一致 |
-| 性能 | 自适应子节点遍历：大文件 **−26%/−31%**，中小文件 +9%/+18%（绝对量几十µs） |
-| 测试 | index +11、server +6；`go test -race ./internal/...` 20 包全绿 |
-
-**本轮最值钱的一条经验（性能）**：`Build` 的成本**几乎全由 cgo 调用次数决定**
-（约 230ns/次），tree-sitter 的 C 侧步进很便宜。所以 `NamedChild(i)` 的 O(i)
-不足为虑，而"看起来更优"的 `NamedChildren(cursor)`（每孩子 3 次 cgo）**实测慢
-2~2.7 倍**——我一度改错了方向。最优解是**按孩子数量选**（交叉点约 55，
-阈值取 64）。完整数据见 [PLAN-P7.md](PLAN-P7.md) §10.3 的 B-5。
-
-### 已完成：P7-A + P7-B 第一批（2026-10-21）
-
-> 执行记录：[PLAN-P7.md](PLAN-P7.md) §10。待办：[TODO.md](TODO.md) §P7-A、§P7-B。
-
-### 已完成：P7-A（2026-10-21）
-
-| 项 | 结果 |
-|---|---|
-| **A-1 Zed 大纲层级** | `outline.scm` 的 `@item` 改绑名字节点。**额外发现 `.per` 的 `PHANTOM` 有同类缺陷**（`field_ref` 的表名/列名双 name），一并修好。（⚠️ 容器部分后来又改了，见 §0 的 B-3 补修） |
-| 回归防护 | `verify-queries.mjs` 新增「`@item` 区间两两不同」断言，**先在旧 query 上复现失败**再修 |
-| **A-2 VSCode GLOBALS 路径** | 新建 `internal/fileuri`（完整百分号解码 + 盘符/UNC 归一） |
-| 替换范围 | **三处**重复实现（原估两处）：`globals` / `form` / `config` |
-| 额外修复 | `initialize` 补 `rootUri → workspaceFolders[0] → rootPath` 三级回退 |
-| 测试 | `go test -race ./...` 20 包全绿 / **285 个测试函数**；`make lint` 通过 |
-| 语料回归 | 25 个真实 `.4gl`，`globals-file-not-found` = **0**（无退化） |
-
-**两个关键经验**（已写入 `docs/PLAN-P7.md` §10 与下面的踩坑清单）：
-
-1. Windows 语义可以**在 Linux 上单测**——把平台分支抽成不依赖 `runtime.GOOS` 的纯函数
-   （`toPathWindows`）。但**不能用 `filepath.FromSlash`**，它在非 Windows 平台是恒等函数，
-   会让单测悄悄失效（初版踩过，测试立刻抓到）。
-2. 「`@item` 区间唯一」这条约束**对 `.per` 同样适用**，只是触发机理不同：
-   `.4gl` 是"一条语句多个 name 字段"，`.per` 是"一个节点里两个同类型子节点"。
-
-**唯一遗留**：Windows 实机复验（本沙箱无 Windows）。打开 `axmt620.4gl`
-确认无 `globals-file-not-found` 即可。
-
-> 用户 2026-10-21 确认：**Windows 的 global 引用已修复** ✅
-
-### 本轮新增：悬停的两个问题（P7-B 第一批）✅
-
-| # | 问题 | 根因 | 修法 |
-|---|---|---|---|
-| B-1 | 多行 RECORD 悬停被压成一行（26 行 → 一行几百字符） | `index.typeText` 用 `normalizeSpace` 压换行；但 `TypeText` 还要做语义判断，不能直接改 | **职责分离**：新增 `TypeTextRaw` 保留换行供展示，`TypeText` 语义不变 |
-| B-2 | 同名局部变量跨函数泄露（`fa` 的 `i` 显示成 `fa`+`fb` 两个） | hover 用 `fi.Lookup` 扫全文件，**没有作用域过滤**；而跳转早就有——两处规则不一致 | 抽出 `scopedSymbolsAt` 共用；顺带补上 `ScopeGlobals`（GLOBALS 块内）这一级 |
-
-**记录字段的特例**：字段的 `Container` 是记录名不是函数名，不能按函数过滤，
-改为"光标是否落在声明该字段的记录区间内"。这个改动一度让 `TestHoverRecordField`
-变红——说明那个旧测试守住了东西。
-
-### ✅ 已修复：Zed 大纲层级（P7-B-3，两轮）
-
-用户先后报了三个现象，最终定位到**两个互相独立的 bug**，修法方向相反：
-
-| 现象 | 根因 | 修法 |
-|---|---|---|
-| 同一条 DEFINE 的多个变量出现树结构 | 叶子 `@item` 绑了整条语句，多个名字区间相同 | 叶子 `@item` 绑 `name:` 标识符 |
-| 函数内变量与函数平级、无法折叠 | 容器 `@item` 绑了名字节点，函数体未被覆盖 | 容器 `@item` 绑整个节点 |
-
-**第 1 轮（`1ee95bf`）只修了一半**：把 `function`/`report`/`main` 的 `@item`
-从"整个节点"改成"名字节点"，假层级确实消失了，语料实测 0 处层级。
-**但这是错的方向**——把"变量归属函数"这个正确行为一起消灭了。
-
-**第 2 轮（`7f80d21`）改为容器/叶子模型**：
-
-```scheme
-(function name: (identifier) @name) @item   ; 容器：@item 绑整个节点
-(main . "MAIN" @name) @item                 ; 锚点只匹配开头 MAIN
-(define  name: (identifier) @name @item)    ; 叶子：@item 绑名字标识符
-```
-
-这与 Zed 内置语言一致：Rust/Python 的 `outline.scm` 里函数 `@item` 同样
-覆盖整块（`crates/grammars/src/<lang>/outline.scm`）。
-**"父 item 覆盖子 item 区间"是合法的层级表达，不是 bug**——
-假层级应在**叶子侧**解决，不该动容器。
-
-全语料实测（7699 个 `.4gl` + 7409 个 `.per`）：
-
-```text
-@item 区间重复的文件：0
-叶子当父级的事件：0
-```
-
-**回归防护**：三条断言，其中断言 3 是关键。
-
-1. `@item` 区间两两不同
-2. 叶子的父级不能是叶子
-3. **容器内部的每个变量，其 Zed 父级链上必须能找到该容器**
-
-断言 3 的真相源是 `tree-sitter parse` 的语法树（独立于 `outline.scm`）。
-**断言 1/2 抓不住 `1ee95bf` 的回归**——"函数容器"和"变量叶子"都是
-单行短标识符，用"单行且 ≤64 列"这类启发式无法区分，两者都被误判为叶子。
-这正是上一轮断言全部绿、用户却仍报问题的原因。
-
-断言 3 对两个回归都变红，且对 `1ee95bf` 回归时断言 1/2 仍绿——
-证明它是独立信号，不是巧合。
-
-
-
-### 0.1 P7 的六项决策已全部定稿（2026-10-21）
-
-| # | 决定 |
-|---|---|
-| Q10 | **诊断全部默认 `warning`**（含 `syntax-error`）；`record-member-unknown` 仍默认 off |
-| Q11 | **先单文件** `links.jsonl`；慢再分模组（触发阈值已量化，见 PLAN-P7 §5.3.1） |
-| Q12 | 链接资料放**用户项目根 `.link/`**（不是 `.bdl-lsp/`）；分模组时放 `<module>/.link` |
-| Q13 | 子文件（无 MAIN）链接栏**默认空白** + 可点击「反查引用程序」，点击才查、分页展开 |
-| Q14 | **扁平规则**：`sub`/`lib`/`qry` 对所有程序默认可用，**包括它们自己**，无方向限制 |
-| Q15 | Oracle **只保留纯 Go `sijms/go-ora/v2`**；本地驱动方案取消 |
-
-**2026-10-21 第二次答复修正了两项**：
-
-- **Q14 改为扁平规则**（原文"`lib` 不能用 `sub`"）。原 `lib→sub` 的 11 处反例
-  （`s_errmsg`×47 等）**自动消解**——它们是合法代码，不该告警。
-  `allowModuleDeps` 白名单配置删除。
-- **Q15 取消本地驱动**。纯 Go 无法直调 Instant Client，CGO 方案让构建/分发/跨平台
-  全部复杂化，收益不划算。只留 `go-ora`，不留 build tag、不留 `driver` 配置。
-
-**另有第 3 项改动（缺失文件）**：链接里有、磁盘上没有的 4gl（实测 800 条，
-主要是语料中不存在的 `W*` 模组）→ **忽略，零诊断**，但**必须原样保存在
-`links.jsonl`**。原计划的 `link-file-missing` 诊断**删除**。
-
-> ✅ **P7 已无遗留待确认项，可以直接开工。**
-
-### 0.2 真实链接数据已验证（15587 行）
-
-`link.csv`（529042 B，sha256 `3ca6ff10…`）已分析，全部设计按实测值定稿：
-
-| 指标 | 实测 |
-|---|---|
-| 有效行（`gal04='Y'`） | 15536（过滤掉 51 行 N） |
-| 链接组（程序编号） | 5849 |
-| 组内恰好 1 个 MAIN | **5374（91.9%）** → 主键策略成立 |
-| 组内 0 个 MAIN | 81（另有 389 组全缺失无法判定） |
-| 组内 ≥2 个 MAIN | 5 |
-| `GAL01` 不在自己组内 | **160** → 证实编号≠文件名 |
-| 磁盘找不到的文件 | 800 条 / 700 代码（`W*` 模组不在语料） |
-| 单文件 JSONL 体积 | **415 KB**（原估 1–2 MB，实测小 4 倍） |
-| 链大小 | p50=1、p90=2、max=364 → 99% 无需异步 |
-| 模组大小写 | 数据 92 个全大写 vs 磁盘全小写 → 必须大小写不敏感 |
-| CSV 编码 | 带 UTF-8 BOM → 必须 `utf-8-sig` 读 |
+| CSV → 链接资料 | `bdl-lsp link import -csv <导出.csv>` → `<root>/.link/links.jsonl`（753 KB / 5398 链 / 7931 文件） |
+| 状态查看 | `bdl-lsp link status` |
+| 可见函数集 | 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平） |
+| 诊断 | `function-not-found`（需资料）· `link-data-invalid` · `link-data-stale` |
+| 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
+| 审计 | `cmd/link-audit`、`go run ./cmd/diag-audit -link-global clib` / `-no-link` |
 
 ## 1. 一句话状态
 
@@ -231,7 +53,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.3`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.4`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -275,7 +97,10 @@ workspace/didChangeConfiguration
 | Code Action（拼错→「改为 X」） | P6 | [PLAN-P6-CODEACTION](PLAN-P6-CODEACTION.md) |
 | 语义高亮（仅自定义符号） | P6 | [PLAN-P6-SEMTOK](PLAN-P6-SEMTOK.md) |
 | record `BY NAME` 成员校验（**默认 off**） | P6 | [PLAN-P6-RECORDMEMBER](PLAN-P6-RECORDMEMBER.md) |
-| Windows 缺陷修复 + 内置符号 + 链接资料索引 + 诊断级别统一 | **P7（待执行）** | [PLAN-P7](PLAN-P7.md) |
+| Zed 大纲层级 + Windows GLOBALS 路径 | P7-A | [PLAN-P7](PLAN-P7.md) |
+| 诊断级别注册表 + 降噪（289304 → 7886） | P7-B | [PLAN-P7](PLAN-P7.md) |
+| 内置符号表（96→97 条，三层可配置、可热更新） | P7-C-1 | [PLAN-P7](PLAN-P7.md) §10.6 |
+| 链接资料索引（导入/状态/可见性/`link-data-*`） | **P7-D 核心** | [PLAN-P7](PLAN-P7.md) §10.7 |
 
 ## 4. 验收基线（当前实测值）
 
@@ -293,7 +118,9 @@ workspace/didChangeConfiguration
 | 性能（7138 行 / 329 KB） | didOpen 133ms，didChange 6.0ms |
 | 索引构建 `index.Build`（P7-B-5 后实测，600 行级真实文件） | `ammr100.4gl` 471µs、`aapi204.4gl` 398µs（比 P7-B-5 之前**快 26~31%**）；`apmi006.4gl` 490µs、`apmt721_icd.4gl` 31µs（比之前 +9~18%，为游标支持付的增量） |
 | 游标/prepare 符号规模（7699 个真实 .4gl） | prepare **37603** / cursor **36103**（其中 22787 带来源 prepare） |
-| **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条，其中 `variable-source-unresolved` **1717（99.1%）**；`field-not-in-form` 15；`file-too-large` 1 |
+| **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条 → P7-C-1 后 **7 条**（`variable-source-unresolved`） |
+| **全量诊断（15108 文件，P7-D 后）** | `variable-source-unresolved` **6030**、`field-not-in-form` 1725、`globals-file-not-found` 107、表单类 24；`function-not-found` 打开后 +86612（见 §0，全部是快照里没有的库函数） |
+| 链接资料（真实 CSV 导入） | 5398 链 / 451 orphan / 0 ambiguous / 7931 文件 / 缺失 800；`.link/links.jsonl` **753 KB**，加载 ~10 ms，导入 **15 s** |
 | ↑ 噪声归因 | `cl_null` 311（`lib/` 用户函数）、`SQLCA` 252、`ARG_VAL` 248、`INT_FLAG` 183、`cl_gr_numfmt` 150、`STATUS` 98 —— 内置符号与链接缺失各占一半 |
 
 ## 5. 配置项（VSCode `bdl.*` / Zed `settings.*` 同名）
@@ -309,6 +136,13 @@ globals.searchPaths                 []
 fieldDiagnostics                    warning
 perRoots                            []
 recordMemberDiagnostics             off        ← P6，默认关闭
+diagnostics.<码>                    （见 FEATURES） ← P7-B 注册表，优先级最高
+builtins.enable / .paths / .disable true / [] / []  ← P7-C
+link.enable                         true       ← P7-D
+link.dataDir                        .link
+link.moduleRoots                    []          （空 = 自动探测 tiptop/topcust）
+link.globalModules                  [sub lib qry]
+link.maxAgeDays                     7           （0 = 不提示过期）
 format.keywords                     unchanged  （unchanged/upper/lower）
 format.indentStyle                  auto       （auto/tab/space）
 format.indentSize                   0          （0 = 跟随编辑器）
@@ -462,9 +296,47 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
         用户永远搞不清覆盖生效了没有。
       - `MaybeReload` 必须**节流**（2s）：它在每次诊断前跑，不节流就是每次按键 stat 一批文件。
 
+26. **LSP 测试 harness 只能有"一个读泵 + 一个 bufio.Reader"**（P7-D 踩，浪费半天）：
+      - 每帧 `bufio.NewReader(server)` 都会**预读 4KB**，把后面几帧吞进自己的
+        缓冲里，函数一返回就丢了 → 表现为"随机丢诊断"。
+      - 每次读取起一个 goroutine（原 `readMessage` 的写法）超时后那个
+        goroutine 还挂在 `Read` 上，下一帧被它偷走 → 表现为"等待响应超时"。
+      - 正解：`newHarness` 里起**一个**常驻泵把帧灌进 `chan map[string]any`，
+        读取方只 `select` 通道 + 定时器。超时只是没人取，帧还在队列里。
+      - 附带效果：server 包测试从 29 s 降到 9 s（不再靠超时推进）。
+
+27. **"文件缺失"意味着"不可判定"，不是"忽略后照常判定"**（P7-D 踩）：
+      - 链接里有、磁盘上没有的文件（实测 800 条，集中在语料里不存在的
+        `W*` 模组）里到底有什么函数**不可知**。忽略它再判定，就会把这条链里
+        所有"找不到"的函数都报成未定义。
+      - 正解：可见集返回 `complete=false`，整项放弃判定。代价实测很小：
+        5849 条链里只有 234 条（4.0%）引用缺失文件。
+      - 同一条规则适用于"索引还在后台预热"与"这个程序不在链接资料里"。
+
+28. **MAIN 检测必须有文本兜底**（P7-D 踩）：
+      - `aws_ttsrv2_transxml.4gl` 的 `MAIN` 被 `{ … }` 包着，tree-sitter 不认；
+        只信语法树会把它算成"非入口"，导致 4 个组（`aws_ttsrv2`/`aws_process`/
+        `cbmp100`/`cimi997`）错判成"只有一个 MAIN"。
+      - 兜底扫描要保守：行内除 `MAIN` 只允许 `#` 注释；跳过 `#{ … }#` 块注释。
+      - 误判代价不对称：多认一个 MAIN 只让链标 `ambiguous`（行为仍正确），
+        少认一个则那个入口**永远查不到自己的链接**。
+
+29. **"文件存在但 0 行有效数据"必须当失败**（P7-D 踩）：
+      - `links.jsonl` 被截断成空文件时，若 `Load` 返回"空的但有效"，服务器会认为
+        资料可用、可见集为空 → `function-not-found` 把所有跨文件调用都当未定义。
+      - 正解：0 条链 = 错误（客户端发 `link-data-invalid` 并停用）。
+        坏行同理**整份失败**，不静默跳过——跳过会让用户拿到"少了若干链"的资料
+        却毫不知情，比直接报错难查十倍。
+
+30. **`initialize` 期间不要发 `publishDiagnostics`**（P7-D 踩）：
+      - 通知会和 `initialize` 响应抢同一帧，客户端与测试都得处理乱序；
+        测试里表现为"读到的第一帧不是响应"。
+      - 正解：首个 `didOpen` 时再发（`maybePublishLinkStatus`），
+        那时用户已经真的在看文件了。
+
 ## 8. 下一步候选（按建议顺序）
 
-### ★ P7（已立项，下一轮直接做）
+### ★ P7（进行中，P7-D-2 是下一轮）
 
 见本文 §0 与 [PLAN-P7.md](PLAN-P7.md)。顺序：
 
@@ -473,7 +345,9 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 | P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
 | P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
 | P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（未做，可随时插入） | ✅ / 待定 |
-| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 🔜 **下一轮**（§0） |
+| P7-D | 链接资料：核心（索引 + 可见性 + 诊断） | ✅ 0.1.4 |
+| P7-D-2 | 外部函数过滤（让 `function-not-found` 能默认开） | 🔜 **下一轮**（§0） |
+| P7-D-3 | 采集链路（S1 go-ora / S2 服务器脚本 / S3 命令） | 待定 |
 | P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）

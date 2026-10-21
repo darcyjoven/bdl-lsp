@@ -99,6 +99,13 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	if s.maybeReloadBuiltins() {
 		s.logger.Debug("内置符号表已随覆盖文件更新", "uri", doc.URI)
 	}
+	// P7-D：用户可能刚 `bdl-lsp link import` 过；同样按 mtime 检查（2s 节流）。
+	// 重载后 links 换了实例，本次诊断用的还是旧的可变状态，所以重载完要
+	// 直接返回——由 rediagnoseAll 再走一轮，避免用半旧半新的数据判定。
+	if s.maybeReloadLinks() {
+		s.rediagnoseAll()
+		return
+	}
 
 	if reason := tooLargeReason(text, settings.Limits); reason != "" {
 		s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)

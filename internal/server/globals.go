@@ -553,14 +553,16 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 // functionNotFoundChecks 检查函数调用处的函数名是否在当前模块及可用模组
 // 中有定义，找不到时报告 function-not-found。
 //
-// 设计取舍：
-//   - 只检查本文档符号表里的 Function/Report/Main 定义（粗化处理，避免
-//     作用域精确判定带来的复杂性）；
-//   - 跨模块函数若不在本文档符号表中也会被报告，用户可通过
-//     `bdl.diagnostics.function-not-found: off` 关闭，或待链接资料（P7-D）
-//     实现后扩展到跨文件索引；
-//   - 内置函数（LENGTH/TRIM/ARG_VAL/fgl_* …）在 P7-C 之后由内置符号表
-//     豁免；表里没有的名字仍然会报，这正是 `cmd/builtin-audit` 要发现的。
+// 可见集（PLAN-P7 §5.7）：
+//
+//	本文件 ∪ GLOBALS 引入 ∪ 链接文件 ∪ 全局模组(sub/lib/qry)
+//
+// 变量不走这条路（R2：链接只放大函数可见性）。
+//
+// **没有链接资料时整项不启用**：可见集不完整时报告就是误报——P7-B 实测
+// 24 个文件开着一开就 3660 条（内置函数 + 跨模块函数全都"找不到"）。
+// 同理，索引还在后台预热（complete=false）时也放弃本轮判定，
+// 就绪后由 rediagnoseAll 补发一次。
 func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
 	if fi == nil {
 		return nil
@@ -568,6 +570,10 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 	// 级别先判：默认 off，关掉时连 query 都不该编译（全树扫描很贵）。
 	severity, enabled := diag.SeverityFor(diag.CodeFunctionNotFound, s.settings(), "")
 	if !enabled {
+		return nil
+	}
+	// P7-D 前置条件：没有链接资料就没有"可见函数集"，无从判定。
+	if s.linkResolver() == nil {
 		return nil
 	}
 
@@ -613,6 +619,23 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 				}
 			}
 		}
+	}
+
+	// P7-D：并进链接可见集（本文件 ∪ GLOBALS 之外的部分）。
+	// complete=false → 放弃本轮，不冒险误报。
+	hasMain := false
+	for _, sym := range fi.Symbols {
+		if sym.Kind == index.KindMain {
+			hasMain = true
+			break
+		}
+	}
+	if visible, complete := s.visibleLinkFunctions(filePathOf(doc.URI), hasMain); complete {
+		for name := range visible {
+			knownFn[name] = true
+		}
+	} else {
+		return nil
 	}
 
 	idx := doc.Index()

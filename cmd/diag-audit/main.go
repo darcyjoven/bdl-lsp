@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
@@ -47,6 +48,8 @@ func main() {
 	printCodes := flag.Bool("codes", false, "打印已注册诊断码与默认级别后退出")
 	names := flag.Int("names", 0, "额外列出 variable-source-unresolved 的前 N 个标识符（0=不列）")
 	perFlag := flag.String("diagnostics", "", "覆盖诊断级别，形如 code=off,code2=hint")
+	linkGlobal := flag.String("link-global", "", "覆盖全局可见模组（逗号分隔，默认 sub,lib,qry）")
+	linkOff := flag.Bool("no-link", false, "不加载链接资料（对照 P7-D 之前的基线）")
 	flag.Parse()
 
 	if *printCodes {
@@ -63,7 +66,8 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := server.New(pool, logger, "diag-audit")
-	// 语料审计要看到 globals / 表单类诊断，必须初始化解析器。
+	// 语料审计要看到 globals / 表单类诊断，必须初始化解析器
+	// （P7-D 起同时尝试加载 .link 链接资料）。
 	srv.EnableResolvers(*root)
 
 	if overrides := parseOverrides(*perFlag); len(overrides) > 0 {
@@ -72,6 +76,32 @@ func main() {
 			os.Exit(2)
 		}
 	}
+	if *linkOff {
+		if err := srv.ConfigureLinks([]string{"__none__"}); err != nil {
+			fmt.Fprintf(os.Stderr, "diag-audit: 关闭链接: %v\n", err)
+			os.Exit(2)
+		}
+		srv.EnableLinks()
+	} else if *linkGlobal != "" {
+		mods := splitList(*linkGlobal)
+		if err := srv.ConfigureLinks(mods); err != nil {
+			fmt.Fprintf(os.Stderr, "diag-audit: 覆盖全局模组: %v\n", err)
+			os.Exit(2)
+		}
+		srv.EnableLinks()
+	}
+
+	// 链接资料的状态会改变 function-not-found 的可用性，必须显式告知：
+	// 否则"0 条"到底是"没错"还是"没启用"就分不清了。
+	if res := srv.LinkResolver(); res != nil {
+		if !srv.WaitLinkReady(120 * time.Second) {
+			fmt.Fprintln(os.Stderr, "diag-audit: 链接索引预热超时，function-not-found 不会报告")
+		}
+		fmt.Fprintf(os.Stderr, "diag-audit: %s\n", res.Describe())
+	} else {
+		fmt.Fprintln(os.Stderr, "diag-audit: 没有链接资料（.link/links.jsonl），function-not-found 不启用")
+	}
+
 	if !srv.AuditEnabled() {
 		fmt.Fprintln(os.Stderr, "diag-audit: 所有诊断码都已关闭，没有可统计的内容")
 		return
@@ -88,6 +118,10 @@ func main() {
 	byLang := map[string]map[string]int{}
 	samples := map[string][]hit{}
 	nameCounts := map[string]int{}
+	// fnfNames 统计"报未定义的函数名"。P7-D 之后这个分布决定
+	// function-not-found 能不能默认开：如果绝大多数是"语料里根本没有的
+	// 库函数"，那是快照不全，不是用户写错。
+	fnfNames := map[string]int{}
 
 	ctx := context.Background()
 	var total int
@@ -117,6 +151,11 @@ func main() {
 			}
 			counts[code]++
 			byLang[langKey][code]++
+			if code == string(diag.CodeFunctionNotFound) {
+				if name := quotedInMessage(d.Message); name != "" {
+					fnfNames[name]++
+				}
+			}
 			if code == string(diag.CodeVariableSourceUnresolved) {
 				if n := quotedName(d.Message); n != "" {
 					nameCounts[strings.ToUpper(n)]++
@@ -165,6 +204,18 @@ func main() {
 		}
 	}
 	fmt.Fprintln(out)
+
+	if *names > 0 && len(fnfNames) > 0 {
+		nrows := rankNames(fnfNames)
+		if len(nrows) > *names {
+			nrows = nrows[:*names]
+		}
+		fmt.Fprintf(out, "function-not-found 的高频函数名（前 %d）：\n", len(nrows))
+		for _, r := range nrows {
+			fmt.Fprintf(out, "  %-28s %5d\n", r.code, r.count)
+		}
+		fmt.Fprintln(out)
+	}
 
 	if *names > 0 && len(nameCounts) > 0 {
 		nrows := rankNames(nameCounts)
@@ -352,4 +403,35 @@ func rank(counts map[string]int) []row {
 		return rows[i].code < rows[j].code
 	})
 	return rows
+}
+
+// quotedInMessage 取出诊断消息里第一个双引号包裹的名字。
+//
+// function-not-found 的消息形如 `函数 "xxx" 在当前模块…`；直接从消息里取，
+// 比再走一遍语法树便宜，也不用给 AuditFile 加返回值。
+func quotedInMessage(msg string) string {
+	i := strings.IndexByte(msg, '"')
+	if i < 0 {
+		return ""
+	}
+	j := strings.IndexByte(msg[i+1:], '"')
+	if j < 0 {
+		return ""
+	}
+	return msg[i+1 : i+1+j]
+}
+
+// splitList 把逗号分隔的参数切成非空项。
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }

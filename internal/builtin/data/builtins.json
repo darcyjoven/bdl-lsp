@@ -557,6 +557,13 @@
       "category": "string"
     },
     {
+      "name": "SCR_LINE",
+      "kind": "function",
+      "signature": "SCR_LINE()",
+      "doc": "返回当前屏幕数组行号（INPUT ARRAY/屏幕数组里定位用）",
+      "category": "dialog"
+    },
+    {
       "name": "security",
       "kind": "class",
       "signature": "security.*",
