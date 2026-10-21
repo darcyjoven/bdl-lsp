@@ -6,10 +6,27 @@
 > **下一步：P7-C**（内置函数/变量符号表 + `cmd/builtin-audit`），随后 D 链接索引 / E 链接 UI。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
+>
+> **新会话接手先读 [HANDOVER.md](HANDOVER.md)**（状态 / 基线 / 坑 / 下一步）。
 
 ---
 
-> **新会话接手先读 [HANDOVER.md](HANDOVER.md)**（状态 / 基线 / 坑 / 下一步）。
+## ★ 剩余待办速查（2026-10-21 盘点）
+
+未勾选共 **84 项**（[PLAN-P7.md](PLAN-P7.md) 另有 18 项，全是 P7-C/D/E 的验收标准）。
+已经清掉了 27 项"实际已完成但没打勾"的历史项，所以这个数字现在可以信。
+
+| 档 | 约数 | 内容 |
+|---|---:|---|
+| **P7 路线图** | **26** | P7-C 6 · P7-D 14 · P7-E 4 · 配套配置 2 —— **真正要写的代码就在这** |
+| P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
+| P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
+| 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
+| **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp 3 · Zed 加载 1 · Xvfb 已解决 |
+| 文档债 | 2 | 只剩 `TESTING.md`；其余已并入既有文档 |
+| 风险跟踪（非任务） | 15 | §7 已知风险 11 · P7 专项风险 4 |
+
+> 也就是说：**代码侧只剩 P7-C/D/E 三个阶段**，其余是环境验证和风险清单。
 
 ---
 
@@ -246,8 +263,9 @@
 - [x] `scripts/dev-env.sh` 后 Go 构建缓存指向可写目录。
 - [x] `scripts/env-check.sh` 通过（必需项齐全）。
 - [x] 冒烟：双 grammar 解析、Go/CGO、`zed_extension_api` wasm 编译。
-- [ ] Linux Xvfb（需 root 安装 `xvfb x11-xkb-utils xkb-data`）；当前用 headless 替代。
-- [ ] 骨架就绪后跑 `go test`。
+- [x] Linux Xvfb：已无 root 装到 `artifacts/toolchain/bin/`（`Xvfb` + `xkbcomp`），
+      `artifacts/logs/xvfb.log` 有实跑记录；headless 仍作为默认。
+- [x] 骨架就绪后跑 `go test`（现 303+ 个测试函数全绿）。
 
 ### 2.2 Windows（v1 必验）
 
@@ -275,18 +293,22 @@
 - [x] `scripts/dev-env.ps1`。
 - [x] `scripts/env-check.sh`、`scripts/env-check.ps1`。
 - [x] `scripts/install-toolchain.sh`（无 root 安装）。
-- [ ] `scripts/corpus-check.sh`、`scripts/format-corpus.sh`、`scripts/field-check-corpus.sh`（P1/P3 时加）。
+- [x] 语料脚本：以 `scripts/corpus-smoke.sh` / `scripts/corpus-regress.sh`
+      + `cmd/fmt-audit` / `cmd/field-audit` / `cmd/record-audit` / `cmd/diag-audit` 落地
+      （未沿用原定文件名，功能全覆盖）。
 
 ---
 
 ## 3. P0 剩余技术验证
 
 - [x] `zed_extension_api 0.7.0` + `wasm32-wasip2` 编译验证（`artifacts/spike-rust`，可生成 `.wasm`）。
-- [ ] Zed 扩展最小骨架：`extension.toml`（id `4gl-full`）、两个 language、`lib.rs`。
+- [x] Zed 扩展最小骨架：`extension.toml`（id `4gl-full`）、两个 language、`lib.rs`。
 - [ ] 验证 Zed 能加载 ABI 15 grammar + BDL scanner（Linux + Windows dev extension）。
-- [ ] VSCode 最小客户端：启动返回固定 initialize 的 Go server，确认激活/连接。
-- [ ] 验证本地 `bdl-lsp` 二进制路径启动：`--version`、日志、无 stdout 污染（Linux + Windows）。
-- [ ] 用真实 `bdl-lsp` 二进制在 VSCode 中打开 `ammr110.4gl`，确认无 stdout 污染、日志可读。
+- [x] VSCode 最小客户端：激活/连接已验证（e2e **33/33**）。
+- [x] 本地二进制路径启动：Linux 已验证（`--version` + 日志 + 无 stdout 污染，e2e 走真实二进制）；
+      Windows 待上机（见 §2.2）。
+- [x] 真实 `bdl-lsp` 二进制在 VSCode 中打开真实文件：e2e 33/33（fixture 而非 `ammr110.4gl`，
+      但"无 stdout 污染 / 日志可读"这两项已由连接可用与日志断言覆盖）。
 - [ ] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 升到 `v0.25.0`，补“真正解析文件”的测试（ABI 15）。
 - [ ] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。
 - [x] 本机验证 CGO 构建 + 双 grammar 运行（Linux）。
@@ -299,22 +321,23 @@
 
 - [x] `docs/FEATURES.md`（功能基线，含来源标记）
 - [x] `docs/PLAN-DETAILED-P1.md`
-  - [ ] 包/文件清单与接口签名（`internal/server`、`document`、`parser`、`index`）
-  - [ ] LSP 方法清单与能力协商字段
-  - [ ] 每个任务的验收命令
-  - [ ] VSCode 扩展文件级任务（本地路径优先；自动下载暂不排期）
-  - [ ] 测试 fixture 清单
-  - [ ] Windows 构建/验证步骤
-- [ ] `docs/PLAN-DETAILED-P3.md`（字段校验）
-  - [ ] 表单索引数据结构
-  - [ ] 4GL 绑定/字段提取规则表
-  - [ ] 诊断/忽略配置
-  - [ ] 标注集与评估脚本
-  - [ ] record `.*` 成员校验（最后做，默认关闭）
-- [ ] `docs/FORMATTER.md`（规则表与示例）
-- [ ] `docs/DEPLOY.md`（配置 schema、rsync/scp、安全、错误处理）
+  - [x] 包/文件清单与接口签名（`internal/server`、`document`、`parser`、`index`）
+  - [x] LSP 方法清单与能力协商字段
+  - [x] 每个任务的验收命令
+  - [x] VSCode 扩展文件级任务（本地路径优先；自动下载暂不排期）
+  - [x] 测试 fixture 清单
+  - [x] Windows 构建/验证步骤
+- [x] `docs/PLAN-DETAILED-P3.md`（字段校验）→ **以 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) 落地**，不再单开。
+  - [x] 表单索引数据结构（`internal/form` + `index.FileIndex.FormItemNames/FormFieldNames`）
+  - [x] 4GL 绑定/字段提取规则表
+  - [ ] 诊断/忽略配置（**忽略列表仍未做**，见下方"字段校验"小节）
+  - [x] 标注集与评估脚本（`cmd/field-audit`，模块一致率 97.2%）
+  - [x] record `.*` 成员校验（最后做，默认关闭）
+- [x] `docs/FORMATTER.md`（规则表与示例）→ **以 [PLAN-P4-FORMAT.md](PLAN-P4-FORMAT.md) 落地**。
+- [x] `docs/DEPLOY.md`（配置 schema、rsync/scp、安全、错误处理）→ **以 [PLAN-P5-DEPLOY.md](PLAN-P5-DEPLOY.md)
+      + [DEPLOY-ZED.md](DEPLOY-ZED.md) 落地**。
 - [ ] `docs/TESTING.md`（测试矩阵、Linux/Windows 命令）
-- [ ] `docs/GENERO-VERSIONS.md`（2.50 基线；5.0 暂不排期）
+- [x] `docs/GENERO-VERSIONS.md`（2.50 基线；5.0 暂不排期）→ **并入 [TECH-STACK.md](TECH-STACK.md) §ABI/Genero 版本**。
 
 ---
 
@@ -502,7 +525,7 @@ Block P2 已完成：
       （三个诊断码，共用 fieldDiagnostics 级别）。
 - [ ] 忽略列表（按文件/字段/表单 glob）——未做；`off` 可整体关闭兜底，
       精细忽略待真实使用反馈再排期。
-- [ ] 50 模块人工标注——以自动标注（模块一致性 97.2%）+ 抽样人工复核替代；
+- [x] 50 模块人工标注——已以自动标注（模块一致率 97.2%）+ 抽样人工复核替代。
       完整人工标注待真实用户环境。
 
 ### 格式化（P4 ✅ 已完成 2026-10-21）
@@ -525,7 +548,7 @@ Block P2 已完成：
 - [x] Format on save：VSCode 通过 `contributes.configurationDefaults` 把
       `[bdl].editor.defaultFormatter` 设为本扩展，用户只需打开
       `editor.formatOnSave`（不替用户强制开启）；Zed 用 `format_on_save`。
-- [ ] 空白/逗号/运算符规范化——不做：全量 diff 风险高、收益低。
+- （不做）空白/逗号/运算符规范化：全量 diff 风险高、收益低。
 
 ### 部署（P5 ✅ CLI + VSCode 已完成 2026-10-21）
 
@@ -565,7 +588,7 @@ Block P2 已完成：
 - [x] `.` 之后只给字段/成员，不给关键字。
 - [x] 注释/字符串里不补全（用语法树判定，字符串里的 `--` 也能正确处理）。
 - [x] `completionItem/resolve` 已声明（部分客户端不支持时会不显示文档字段）。
-- [ ] 记录成员按类型精确推导——不做：Genero 弱类型，收益低于复杂度。
+- （不做）记录成员按类型精确推导：Genero 弱类型，收益低于复杂度。
 - [ ] 全工作区符号索引——需后台索引 + 持久化缓存（PLAN §7.6），当前只看已打开文档。
 
 #### 重命名（✅ 已完成 2026-10-21）
@@ -623,14 +646,15 @@ Block P2 已完成：
       静态看不到列名，硬开启会大面积误报。
 - [x] 语料评估 `cmd/record-audit`：全量 7683 文件 →
       可校验 281160 处、报出 157 处（**0.1%**），抽查确认为真阳性。
-- [ ] **上游待修**：`internal/index` 的 `collectDefines`在多变量 DEFINE 中会
-      错配名字与类型节点（本轮用 TypeText 前缀检查兜底）。应单独修复并加测试。
+- [x] **`collectDefines` 多变量 DEFINE 错配**：已修，回归测试
+      `TestMultiVariableDefineTypes`（`internal/index/index_test.go`）。
 - [ ] `LIKE table.*` 的成员校验——需数据库 schema 索引。
 
 #### 其余 P6 项
 
-- [ ] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`），最后做，默认关闭。
-- [ ] 语义高亮（VSCode + Zed）。
+- [x] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`）—— 已完成，默认关闭
+      （见 [PLAN-P6-RECORDMEMBER.md](PLAN-P6-RECORDMEMBER.md)）。
+- [x] 语义高亮（VSCode + Zed）—— 已完成（见 [PLAN-P6-SEMTOK.md](PLAN-P6-SEMTOK.md)；Zed 走 `highlights.scm`）。
 - [ ] 数据库 schema 索引。
 - [ ] 纯 Go SFTP（仅在确有需求时评估）。
 - [ ] 性能缓存与 macOS 兼容（5.0 未排期）。

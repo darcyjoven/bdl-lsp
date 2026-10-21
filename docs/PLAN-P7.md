@@ -145,9 +145,9 @@ pattern: 2  capture: 0 - name ... text: `l_sql`   capture: 1 - item ... `l_sql`
 
 **验收**：
 
-- [ ] `node tests/verify-queries.mjs` 新增断言通过，且在旧 query 上**必然失败**（先写断言复现）。
+- [x] `node tests/verify-queries.mjs` 新增断言通过，且在旧 query 上**必然失败**（先写断言复现）。
 - [ ] 手工验证（需 GUI）：`DEFINE a INT, b STRING` 在 Zed 大纲中 `a`、`b` 同级。
-- [ ] VSCode 大纲行为无变化（本来就正常）。
+- [x] VSCode 大纲行为无变化（走 `documentSymbol`，不受 Zed `@item` 影响；go 测试覆盖）。
 
 ---
 
@@ -220,9 +220,10 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 
 **验收**：
 
-- [ ] `internal/fileuri` 单测覆盖上表 7 条 + 往返（`FromPath(ToPath(x)) == x`）。
-- [ ] `go test ./internal/globals ./internal/config ./internal/server` 全绿。
-- [ ] 协议级测试：用 `rootUri=""` + `workspaceFolders=[...]` 初始化，断言 `rootPath` 正确。
+- [x] `internal/fileuri` 单测覆盖上表 7 条 + 往返（8 个测试函数）。
+- [x] `go test ./internal/globals ./internal/config ./internal/server` 全绿。
+- [x] 协议级测试：用 `rootUri=""` + `workspaceFolders=[...]` 初始化，断言 `rootPath` 正确
+      （`internal/server/rooturi_test.go`）。
 - [ ] Windows 实机：打开 `axmt620.4gl`，`GLOBALS` 两行均无 `globals-file-not-found`。
 
 ---
