@@ -1,26 +1,46 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第三轮：P7 决策全部定稿 + 真实链接数据已验证）  
+> 更新时间：2026-10-21（第四轮：**P7-A 已完成**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 
 ---
 
-## 0. 下一步就做这个（P7-A）
+## 0. 下一步就做这个（P7-B）
 
-> 完整根因与修法：[PLAN-P7.md](PLAN-P7.md) §2。待办勾选项：[TODO.md](TODO.md) §下一轮。
+> P7-A 已完成。执行记录：[PLAN-P7.md](PLAN-P7.md) §10。待办：[TODO.md](TODO.md) §P7-A 已完成。
 
-1. **Zed 大纲层级 BUG**：`DEFINE a INT, b STRING` 在 Zed 大纲中 `b` 变成 `a` 的子节点。
-   根因已实测定位：`outline.scm` 的 `(define name: (identifier) @name) @item`
-   在"单节点多 `name:` 字段"结构下产出**多个区间重合的 `@item`**，
-   Zed 按区间建父子关系。修法：`@item` 改到名字节点
-   （`(define name: (identifier) @name @item)`），`type`/`constant` 同样。
-   **先在 `verify-queries.mjs` 加断言复现，再改。**
-2. **VSCode GLOBALS 路径 BUG**：`PathOfURI` 只剥 `file://` 和 `%20`，不解析 `%3A`。
-   VSCode 在 Windows 上把盘符冒号编码成 `%3A`（`file:///c%3A/...`），Zed 不编码。
-   **上机第一步先打印两个客户端的 `initialize` 入参确认形态**，再建
-   `internal/fileuri` 替换 `globals.PathOfURI` 与 `config.uriToPath` 两处重复实现。
+### 已完成：P7-A（2026-10-21）
 
-两个 BUG 都已确认到行、都有不需要 GUI 的复现手段（query 断言 / 单测）。
+| 项 | 结果 |
+|---|---|
+| **A-1 Zed 大纲层级** | `outline.scm` 的 `@item` 改绑名字节点。**额外发现 `.per` 的 `PHANTOM` 有同类缺陷**（`field_ref` 的表名/列名双 name），一并修好 |
+| 回归防护 | `verify-queries.mjs` 新增「`@item` 区间两两不同」断言，**先在旧 query 上复现失败**再修；现 40 项全通过 |
+| **A-2 VSCode GLOBALS 路径** | 新建 `internal/fileuri`（完整百分号解码 + 盘符/UNC 归一） |
+| 替换范围 | **三处**重复实现（原估两处）：`globals` / `form` / `config` |
+| 额外修复 | `initialize` 补 `rootUri → workspaceFolders[0] → rootPath` 三级回退 |
+| 测试 | `go test -race ./...` 20 包全绿 / **281 个测试函数**；`make lint` 通过 |
+| 语料回归 | 25 个真实 `.4gl`，`globals-file-not-found` = **0**（无退化） |
+
+**两个关键经验**（已写入 `docs/PLAN-P7.md` §10 与下面的踩坑清单）：
+
+1. Windows 语义可以**在 Linux 上单测**——把平台分支抽成不依赖 `runtime.GOOS` 的纯函数
+   （`toPathWindows`）。但**不能用 `filepath.FromSlash`**，它在非 Windows 平台是恒等函数，
+   会让单测悄悄失效（初版踩过，测试立刻抓到）。
+2. 「`@item` 区间唯一」这条约束**对 `.per` 同样适用**，只是触发机理不同：
+   `.4gl` 是"一条语句多个 name 字段"，`.per` 是"一个节点里两个同类型子节点"。
+
+**唯一遗留**：Windows 实机复验（本沙箱无 Windows）。打开 `axmt620.4gl`
+确认无 `globals-file-not-found` 即可。
+
+### 下一步：P7-B（诊断级别统一 + 调用点误报修正）
+
+1. `internal/diag/registry.go`：诊断码集中注册，级别统一解析。
+2. 新增 `bdl.diagnostics.<code>` 配置，优先级 `新键 > 旧键 > 注册表默认`。
+3. **修调用点误报**：`IF fn() THEN` 的函数名被当变量检查
+   （query 只跳过了 `(call name:)`，漏了 `(expression name:)`）。
+4. 语料复测：24 文件 `variable-source-unresolved` 从 1717 降到新基线。
+
+详细见 [PLAN-P7.md](PLAN-P7.md) §3。
 
 ### 0.1 P7 的六项决策已全部定稿（2026-10-21）
 
@@ -124,7 +144,7 @@ workspace/didChangeConfiguration
 
 | 项目 | 结果 |
 |---|---|
-| `go test -race ./...` | 19 个包全绿（13 个含测试），**269 个测试函数** |
+| `go test -race ./...` | 20 个包全绿（14 个含测试），**281 个测试函数** |
 | VSCode e2e | **33/33** |
 | `make lint` | 通过（含 `keywords-check` 防清单漂移） |
 | 语料规模 | `.4gl` 7699 / `.per` 7409（`/code/workspace/tiptop-gp`） |
@@ -203,6 +223,13 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     会漏掉它 → 每个函数调用都被报"变量未定义"。P7-B 修。
 12. **内置名字不要塞进 grammar**：会让高亮/重命名/补全把它当关键字，
     且自定义同名符号被冒充。判据：`tree-sitter parse` 有 ERROR 才改 grammar。
+13. **`filepath.FromSlash` 在非 Windows 平台是恒等函数**（P7-A-2 踩）：
+    想写"跨平台可测的 Windows 归一化"时不能用它，否则单测在 Linux 上
+    静默拿到正斜杠、断言假通过。自己写 `strings.ReplaceAll(p, "/", "\")`。
+14. **Zed `@item` 区间唯一**这条约束对 `.per` 同样有效（P7-A-1 意外发现）：
+    `PHANTOM table.column` 的 `field_ref` 有两个 `name` 子节点（表名 + 列名），
+    写 `(field_ref (name) @name)` 会让两者区间重合 → 大纲假层级。
+    必须绑 `column:` 字段。
 
 ## 8. 下一步候选（按建议顺序）
 

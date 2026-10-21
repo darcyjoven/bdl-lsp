@@ -1,9 +1,8 @@
 # 待办与待确认
 
-> 更新：2026-10-21（第二轮：纳入 P7）  
-> 当前阶段：**P1–P6 全部功能已完成**（Block 1–7 / Zed / GLOBALS / 字段校验 / 格式化 /
-> 部署 / 补全 / 重命名 / Code Action / 语义高亮 / record 成员校验）。  
-> **下一步：P7**（缺陷修复 · 内置符号 · 链接资料索引 · 诊断级别统一），
+> 更新：2026-10-21（**P7-A 已完成**）  
+> 当前阶段：**P1–P6 全部功能已完成**；**P7-A 已完成**（Zed 大纲层级 + Windows GLOBALS 路径）。  
+> **下一步：P7-B**（诊断级别统一 + 调用点误报修正），随后 C 内置符号 / D 链接索引 / E 链接 UI。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
@@ -13,37 +12,38 @@
 
 ---
 
-## ★ 下一轮立即处理（P7-A）
+## ★ P7-A 已完成（2026-10-21）
 
-> 2026-10-21 Windows 实测发现。完整根因分析与修法见 [PLAN-P7.md](PLAN-P7.md) §2。
+> 执行记录见 [PLAN-P7.md](PLAN-P7.md) §10。下一轮做 **P7-B**。
 
-### A-1 Zed 大纲：同一条 `DEFINE` 的多个变量变成层级
+### A-1 Zed 大纲：同一条 `DEFINE` 的多个变量变成层级 ✅
 
-- [ ] 复现断言：`zed-extension/tests/verify-queries.mjs` 增加「所有 `@item` 的
-      (start,end) 两两不同」检查，先在旧 query 上确认**失败**。
-- [ ] 修 `zed-extension/languages/bdl/outline.scm`：`define` / `type` / `constant`
-      三处把 `@item` 从整条语句改到名字节点（`(define name: (identifier) @name @item)`）。
-- [ ] 断言转绿；`verify-queries.mjs` 全通过。
+- [x] 复现断言：`verify-queries.mjs` 增加「所有 `@item` 的 (start,end) 两两不同」，
+      在旧 query 上确认为**失败**（bdl 报 10 处重复）。
+- [x] 修 `languages/bdl/outline.scm`：`define` / `type` / `constant` 三处
+      把 `@item` 改绑到名字节点。
+- [x] **额外发现并修复 `.per` 的同类缺陷**：`PHANTOM table.column` 的
+      `field_ref` 有两个 name（表名 + 列名），旧规则 `(field_ref (name) @name)`
+      让两者区间重合。改为只绑 `column:` 字段。
+- [x] 断言转绿；`verify-queries.mjs` **40 项全通过**；`cargo check` 通过。
+- [x] 新增 fixture `tests/fixtures/outline.4gl` / `outline.per`（均 0 ERROR）。
 - [ ] 手工验证（需 GUI）：`DEFINE l_name LIKE type_file.chr20, l_sql STRING`
       在 Zed 大纲中 `l_name`、`l_sql` **同级**。
 
-> 根因：grammar 里一条 `DEFINE` 是**单节点多 `name:` 字段**，现 query 产出多个
-> `@item` 区间完全重合的 match，Zed 按区间建父子关系 → 误判为层级。
-> VSCode 正常是因为 `internal/server/symbols.go` 走 `index.FileIndex`，本来就拆平了。
+### A-2 VSCode 下 GLOBALS 文件路径识别不到（Zed 正常）✅
 
-### A-2 VSCode 下 GLOBALS 文件路径识别不到（Zed 正常）
-
-- [ ] Windows 实机抓两个客户端的 `initialize` 入参，确认 `rootUri` 形态
-      （预期 VSCode `file:///c%3A/...`、Zed `file:///c:/...`）。
-- [ ] 新建 `internal/fileuri`：`ToPath` / `FromPath`，全量百分号解码 + 盘符/UNC 归一。
-- [ ] 单测覆盖 7 条用例（`%3A`、`%23`、`%20`、非 ASCII、UNC、大小写盘符、往返）。
-- [ ] 替换 `internal/globals.PathOfURI` 与 `internal/config.uriToPath` 两处**重复实现**。
-- [ ] `initialize` 的 `rootUri` 增加 `workspaceFolders[0].uri` → `rootPath` 回退。
-- [ ] `go test -race ./...` 全绿；Windows 实机复验 `axmt620.4gl` 无 `globals-file-not-found`。
-
-> 根因：`PathOfURI` 只剥 `file://` 与 `%20`，不解析 `%3A`。
-> 实测 `file:///c%3A/work/proj` → `/c%3A/work/proj`（非法路径）→
-> `s.rootPath`、`.bdl-lsp/config.json`、文档相对路径全线失效。
+- [x] 按 vscode-uri 规则复现编码形态（无需 Windows 实机）：
+      VSCode `file:///C%3A/work/x`（冒号编码）、Zed `file:///C:/work/x`（不编码）。
+- [x] 新建 `internal/fileuri`（`ToPath` / `FromPath`），完整百分号解码 +
+      盘符/UNC 归一；**Windows 语义可在 Linux 上单测**（`toPathWindows` 纯函数）。
+- [x] 单测 **22 个用例**（`%3A`、`%23`、`%20`、非 ASCII、UNC、大小写盘符、往返、
+      拒绝非 file URI、防双重编码）。
+- [x] 替换**三处**重复实现（原计划以为两处）：`globals` / `form` / `config`。
+- [x] `initialize` 增加 `rootUri → workspaceFolders[0].uri → rootPath` 三级回退。
+- [x] `go test -race ./...` 20 包全绿（281 个测试函数）；`make lint` 通过。
+- [x] 语料回归：25 个真实 `.4gl`，`globals-file-not-found` = **0**（无退化）。
+- [ ] **Windows 实机复验**（本沙箱无 Windows）：打开 `axmt620.4gl`，
+      确认无 `globals-file-not-found`。
 
 ## 0. 已确认决策
 

@@ -11,8 +11,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
+
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 )
 
 // GeneroVersion 是目标 Genero 版本。
@@ -168,19 +169,19 @@ func configPath(rootURI string) (string, bool) {
 	return filepath.Join(root, ".bdl-lsp", "config.json"), true
 }
 
-// uriToPath 把 file:// URI 转换为本地路径（最小实现，避免额外依赖）。
+// uriToPath 把 file:// URI 转换为本地路径。
+//
+// 委托 internal/fileuri（P7-A-2）。旧版本在这里手写第二份实现，
+// 只处理 `%20`；VSCode 在 Windows 上把盘符冒号编码成 `%3A`，
+// 旧实现解出 `/c%3A/...` → `.bdl-lsp/config.json` 永远读不到。
 func uriToPath(uri string) (string, error) {
-	const prefix = "file://"
-	if !strings.HasPrefix(uri, prefix) {
-		return "", fmt.Errorf("不是 file URI: %s", uri)
+	p, err := fileuri.ToPath(uri)
+	if err != nil {
+		return "", err
 	}
-	p := strings.TrimPrefix(uri, prefix)
-	// Windows: file:///C:/x → /C:/x → C:/x
-	if len(p) > 2 && p[0] == '/' && p[2] == ':' {
-		p = p[1:]
+	if p == "" {
+		return "", fmt.Errorf("空的 file URI: %s", uri)
 	}
-	// 百分号解码（仅处理常见字符）
-	p = strings.ReplaceAll(p, "%20", " ")
 	return p, nil
 }
 

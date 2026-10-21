@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
@@ -404,28 +405,17 @@ func key(path string) string {
 // URI ↔ 路径（与 globals 包同实现；两包各自持有一份避免相互依赖）
 // ---------------------------------------------------------------------------
 
-// PathOfURI 把 file:// URI 转为本地路径。
+// PathOfURI 把 file:// URI 转为本地路径（委托 internal/fileuri，P7-A-2）。
+//
+// 与 globals/form 各自手写的旧版本相比，这里做完整百分号解码与盘符归一，
+// 修掉 VSCode 在 Windows 上 `%3A` 解不出来的问题。逻辑只有一份。
 func PathOfURI(uri string) string {
-	const prefix = "file://"
-	if !strings.HasPrefix(uri, prefix) {
+	p, err := fileuri.ToPath(uri)
+	if err != nil {
 		return uri
 	}
-	p := strings.TrimPrefix(uri, prefix)
-	if len(p) > 2 && p[0] == '/' && p[2] == ':' {
-		p = p[1:]
-	}
-	return strings.ReplaceAll(p, "%20", " ")
+	return p
 }
 
-// URIOfPath 把本地路径转为 file:// URI。
-func URIOfPath(path string) string {
-	p := strings.ReplaceAll(path, "\\", "/")
-	p = strings.ReplaceAll(p, " ", "%20")
-	if len(p) > 1 && p[1] == ':' {
-		return "file:///" + p
-	}
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	return "file://" + p
-}
+// URIOfPath 把本地路径转为 file:// URI（委托 fileuri）。
+func URIOfPath(path string) string { return fileuri.FromPath(path) }

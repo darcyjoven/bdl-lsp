@@ -932,23 +932,128 @@ VSCode `package.json` 需同步新增（当前 32 项 → 约 40 项），并跑
 
 ---
 
-## 10. 本轮（下一轮）执行清单
+## 10. P7-A 执行记录（✅ 已完成 2026-10-21）
 
-只做 P7-A，两件事，都可在一轮内完成：
+### 10.1 A-1 Zed 大纲层级
 
-1. **A-1 Zed 大纲层级**
-   - [ ] 先给 `verify-queries.mjs` 加"`@item` 区间两两不同"断言，在旧 query 上确认失败
-   - [ ] 改 `outline.scm`：`define` / `type` / `constant` 三个规则
-   - [ ] 断言转绿；`cargo check` + 全部 query 校验通过
-2. **A-2 VSCode GLOBALS 路径**
-   - [ ] Windows 实机抓 `initialize` 入参（确定 URI 形态）
-   - [ ] 新建 `internal/fileuri` + 单测（7 条用例）
-   - [ ] 替换 `globals.PathOfURI` / `config.uriToPath`；补 `workspaceFolders` 回退
-   - [ ] `go test -race ./...` 全绿
-   - [ ] Windows 实机复验 `axmt620.4gl` 无 `globals-file-not-found`
-3. 收尾：更新 TODO / HANDOVER / 本文档的状态；三个仓库提交推送。
+**复现优先**：先在 `zed-extension/tests/verify-queries.mjs` 加断言
+"所有 `@item` 的 (start,end) 两两不同"，在**旧 query 上确认失败**：
 
-### 10.1 P7 现已无遗留待确认项
+```text
+✗ bdl/outline.scm: 10 个 @item 区间重复
+    重复区间：(20,0)..(21,17), (24,0)..(26,18), (29,0)..(33,22), …
+```
+
+**修复**（`languages/bdl/outline.scm`）——`@item` 从整条语句改绑到名字节点：
+
+```scheme
+; 修改前
+(define name: (identifier) @name) @item
+(constant (identifier) @name) @item
+(type name: (identifier) @name) @item
+; 修改后
+(define name: (identifier) @name @item)
+(constant (identifier) @name @item)
+(type name: (identifier) @name @item)
+```
+
+**意外收获：`.per` 有同类缺陷**。
+
+新断言在 `per/outline.scm` 上也报 2 处重复：
+
+```text
+✗ per/outline.scm: 2 个 @item 区间重复
+    重复区间：(35,0)..(35,24), (36,0)..(36,25)     ← PHANTOM formonly.p_flag;
+```
+
+根因不同但机理相同：`field_ref` 有**两个 name 子节点**（表名 + 列名）：
+
+```text
+(field_ref
+  (name ...)              ← 表名 formonly
+  column: (name ...))     ← 列名 p_flag
+```
+
+而规则写的是 `(field_ref (name) @name)`，两个都命中 → 区间重合。
+修法：只绑 `column` 字段，并把 `@item` 绑到列名节点：
+
+```scheme
+(phantom_item
+  (field_ref
+    column: (name) @name @item))
+```
+
+副作用（正面）：PHANTOM 在大纲里从"表名+列名两条"变成"列名一条"，更符合直觉。
+
+**验证**：
+
+| 检查 | 结果 |
+|---|---|
+| `node tests/verify-queries.mjs` | **40 项全通过**（新增 2 项区间断言） |
+| `cargo check --target wasm32-wasip2` | 通过 |
+| `python3 tests/verify-manifest.py` | 14 项通过 |
+| 用户报告的原始写法 | `l_name` / `l_sql` 区间完全独立 |
+| 真实文件 `ammr110.4gl`（654 行） | 16 条 @item，**0 重复**（修复前 5 条含重复） |
+
+**新增 fixture**：`tests/fixtures/outline.4gl` / `outline.per`，
+专门覆盖多变量 DEFINE / 多 CONSTANT / 多 TYPE / 多 PHANTOM。两者均 0 ERROR。
+
+### 10.2 A-2 VSCode GLOBALS 路径
+
+**根因确认**（无需 Windows 实机，按 vscode-uri 的编码规则复现）：
+
+```text
+VSCode: file:///C%3A/work/proj/x.4gl     ← 盘符冒号编码为 %3A，`#` 编码为 %23
+Zed:    file:///C:/work/proj/x.4gl       ← 不编码
+旧实现: → "/c%3A/work/proj/x.4gl"        ← 非法路径，全线失效
+```
+
+**修复**：新建 `internal/fileuri` 包（`ToPath` / `FromPath`），
+用 `net/url` 做**完整百分号解码** + 盘符/UNC 归一。
+
+替换了**三处**重复实现（原计划以为只有两处）：
+
+| 位置 | 原实现 | 影响面 |
+|---|---|---|
+| `globals.PathOfURI` / `URIOfPath` | 只剥 `file://` + `%20` | GLOBALS 解析、文档相对路径 |
+| `form.PathOfURI` / `URIOfPath` | 同上（第二份拷贝） | 表单路径解析、字段校验 |
+| `config.uriToPath` | 同上（第三份拷贝） | `.bdl-lsp/config.json` 永远读不到 |
+
+三处都改为委托 `fileuri`，导出名保持不变（不动调用点）。
+
+**同时补上 `workspaceFolders` 回退**（`server.workspaceRootURI`）：
+
+```text
+rootUri → workspaceFolders[0].uri → rootPath → ""（无工作区）
+```
+
+原因：VSCode 在"打开单个文件"或多根工作区时 `rootUri` 为 `null`，
+旧实现直接当空串 → `rootPath` 为空 → searchPaths / perRoots / config.json 静默失效。
+
+**关键设计：Windows 语义可在 Linux 上单测**。
+
+`toPathWindows` 抽成不依赖 `runtime.GOOS` 的纯函数，
+所以 CI 没有 Windows runner 也能守住这段逻辑。
+另外**刻意不用 `filepath.FromSlash`**——它在非 Windows 平台是恒等函数，
+会让跨平台单测失效（初版踩过，测试立刻抓到）。
+
+**验证**：
+
+| 检查 | 结果 |
+|---|---|
+| `internal/fileuri` 单测 | 22 个用例全通过（Windows/POSIX/UNC/往返/拒绝非 file URI） |
+| `go test -race ./...` | 20 个包全绿，**281 个测试函数** |
+| `make lint` | 通过（vet + gofmt + keywords-check） |
+| 语料回归（25 个真实 .4gl，`globals-file-not-found`） | **0**（无退化） |
+
+**旧测试修正**：`config` 与 `globals` 各有一个测试断言"在 Linux 上也剥盘符"，
+那是旧实现的猜测行为，已改为"按宿主平台正确"，
+Windows 语义由 `fileuri` 的专门用例覆盖。
+
+**遗留**：Windows 实机复验仍需用户在真机执行（本沙箱无 Windows）。
+复验点：打开 `axmt620.4gl`，确认无 `globals-file-not-found`。
+
+### 10.3 P7 现已无遗留待确认项
 
 2026-10-21 三次答复后，所有冲突已消解：
 

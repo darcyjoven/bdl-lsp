@@ -202,6 +202,32 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 	}
 }
 
+// workspaceRootURI 选出工作区根 URI，按可靠性排序：
+//
+//  1. rootUri             —— 单根工作区的标准字段（LSP 3.0+）
+//  2. workspaceFolders[0] —— 多根工作区；rootUri 常为 null
+//  3. rootPath            —— 已废弃的字段，个别老客户端只发这个
+//
+// 三级都空时返回空串（无工作区，一切依赖绝对路径的功能降级但不崩溃）。
+//
+// 为什么需要回退（P7-A-2）：VSCode 在"打开单个文件"或配置了多根时
+// 会让 rootUri 为 null，旧实现只读 RootURI，导致 rootPath 为空，
+// 于是 globals.searchPaths / perRoots / .bdl-lsp/config.json 全都不生效。
+func workspaceRootURI(params *protocol.InitializeParams) string {
+	if u := string(params.RootURI); u != "" {
+		return u
+	}
+	if len(params.WorkspaceFolders) > 0 {
+		if u := string(params.WorkspaceFolders[0].URI); u != "" {
+			return u
+		}
+	}
+	if params.RootPath != "" {
+		return params.RootPath
+	}
+	return ""
+}
+
 // handleUnknown 对未实现的方法：请求回 MethodNotFound，通知仅记录。
 func (s *Server) handleUnknown(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	if _, isCall := req.(*jsonrpc2.Call); isCall {
@@ -223,8 +249,15 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	s.initParms = &params
 	s.mu.Unlock()
 
-	// 用 rootUri 定位工作区配置并校验
-	s.cfg = config.NewManager(string(params.RootURI))
+	// 工作区根：rootUri 优先，缺失时回退 workspaceFolders / rootPath。
+	//
+	// 多根工作区、或"只打开单个文件"时 rootUri 会是 null，
+	// 旧实现直接把它当空串 → rootPath 为空 → searchPaths、perRoots、
+	// .bdl-lsp/config.json 全部失效（且不报错，极难排查）。
+	rootURI := workspaceRootURI(&params)
+
+	// 用工作区根定位工作区配置并校验
+	s.cfg = config.NewManager(rootURI)
 	if problems := s.cfg.Get().Validate(); len(problems) > 0 {
 		for _, p := range problems {
 			s.logger.Warn("配置问题", "detail", p)
@@ -232,7 +265,7 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	}
 
 	// P3a：GLOBALS 解析器（searchPaths 来自配置，热更新时按变化重建）
-	s.rootPath = globals.PathOfURI(string(params.RootURI))
+	s.rootPath = globals.PathOfURI(rootURI)
 	s.lastSearchPaths = append([]string(nil), s.settings().Globals.SearchPaths...)
 	s.newGlobalsResolver(s.rootPath)
 

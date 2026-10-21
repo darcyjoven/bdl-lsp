@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -359,11 +360,33 @@ func TestChainImportsResolved(t *testing.T) {
 	}
 }
 
+// TestURIPathRoundTrip 覆盖 URI ↔ 路径往返（实现已委托 internal/fileuri）。
+//
+// 注意 Windows 段：fileuri.FromPath 按 VSCode 的形态把盘符冒号编码成
+// `%3A`（`file:///C%3A/work/x.4gl`）。这是 P7-A-2 修正的一部分——
+// 旧实现不编码冒号，而 VSCode 会编码，两者不一致导致 Zed 能用、VSCode 不能用。
+// 现在服务端统一生成 `%3A` 形态，两种客户端都能正确解析。
 func TestURIPathRoundTrip(t *testing.T) {
-	// 正斜杠路径：完全可逆
+	if runtime.GOOS == "windows" {
+		// Windows 上做完整往返：编码、解码都必须还原原始路径
+		for _, p := range []string{
+			`C:\work\x.4gl`,
+			`C:\a b\y.4gl`,
+			`C:\中文\z.4gl`,
+		} {
+			uri := URIOfPath(p)
+			if back := PathOfURI(uri); back != p {
+				t.Errorf("往返失败：%q → %q → %q", p, uri, back)
+			}
+		}
+		return
+	}
+
+	// POSIX：正斜杠路径完全可逆
 	cases := []struct{ path, uri string }{
 		{"/code/workspace/x.4gl", "file:///code/workspace/x.4gl"},
 		{"/code/a b/x.4gl", "file:///code/a%20b/x.4gl"},
+		{"/tmp/a#b/x.4gl", "file:///tmp/a%23b/x.4gl"},
 	}
 	for _, c := range cases {
 		if got := URIOfPath(c.path); got != c.uri {
@@ -374,12 +397,8 @@ func TestURIPathRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Windows 反斜杠：URI 化统一为正斜杠（往返后不保留原始分隔符，
-	// 这是预期行为——路径比较统一走正斜杠或 norm 处理）
-	if got := URIOfPath("C:\\work\\x.4gl"); got != "file:///C:/work/x.4gl" {
-		t.Errorf("URIOfPath(Windows) = %q", got)
-	}
-	if got := PathOfURI("file:///C:/work/x.4gl"); got != "C:/work/x.4gl" {
-		t.Errorf("PathOfURI(Windows) = %q", got)
+	// Windows 路径的编码形态：盘符冒号必须是 %3A（与 vscode-uri 一致）
+	if got := URIOfPath(`C:\work\x.4gl`); got != "file:///C%3A/work/x.4gl" {
+		t.Errorf("URIOfPath(Windows) = %q，期望 %q", got, "file:///C%3A/work/x.4gl")
 	}
 }

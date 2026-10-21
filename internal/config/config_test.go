@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -99,22 +100,48 @@ func TestWorkspaceConfigMissingFallsBack(t *testing.T) {
 	}
 }
 
+// TestURIToPath 覆盖 uriToPath 的委托行为（实现已移到 internal/fileuri）。
+//
+// Windows 盘符的归一化语义在 fileuri 包里有专门的跨平台单测
+// （TestToPathWindows），这里只断言"按宿主平台正确"，
+// 不再断言"在 Linux 上也能猜出 Windows 盘符"——那正是 P7-A-2 要修掉的旧行为。
 func TestURIToPath(t *testing.T) {
-	cases := map[string]string{
-		"file:///tmp/x":       "/tmp/x",
-		"file:///c:/work/app": "c:/work/app",
-		"file:///tmp/a%20b":   "/tmp/a b",
+	posix := []struct{ uri, want string }{
+		{"file:///tmp/x", "/tmp/x"},
+		{"file:///tmp/a%20b", "/tmp/a b"},
+		{"file:///tmp/a%23b", "/tmp/a#b"},
 	}
-	for uri, want := range cases {
+	for _, c := range posix {
+		got, err := uriToPath(c.uri)
+		if err != nil {
+			t.Errorf("uriToPath(%q) 报错: %v", c.uri, err)
+			continue
+		}
+		if runtime.GOOS != "windows" && got != c.want {
+			t.Errorf("uriToPath(%q) = %q，期望 %q", c.uri, got, c.want)
+		}
+	}
+
+	// 盘符形态：Windows 归一成反斜杠绝对路径；POSIX 上原样保留前导斜杠
+	// （`/c:/work` 在 Linux 上是合法路径，不做跨平台猜测）。
+	driveWant := "/c:/work/app"
+	if runtime.GOOS == "windows" {
+		driveWant = `C:\work\app`
+	}
+	for _, uri := range []string{
+		"file:///c:/work/app",   // Zed 风格：冒号不编码
+		"file:///c%3A/work/app", // VSCode 风格：冒号编码（P7-A-2 的 bug 形态）
+	} {
 		got, err := uriToPath(uri)
 		if err != nil {
 			t.Errorf("uriToPath(%q) 报错: %v", uri, err)
 			continue
 		}
-		if got != want {
-			t.Errorf("uriToPath(%q) = %q，期望 %q", uri, got, want)
+		if got != driveWant {
+			t.Errorf("uriToPath(%q) = %q，期望 %q", uri, got, driveWant)
 		}
 	}
+
 	if _, err := uriToPath("http://x"); err == nil {
 		t.Error("非 file URI 应报错")
 	}

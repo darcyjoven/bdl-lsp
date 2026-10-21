@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
@@ -471,31 +472,21 @@ func fileExists(path string) bool {
 // ---------------------------------------------------------------------------
 
 // PathOfURI 把 file:// URI 转为本地路径；非 file URI 原样返回。
+//
+// 实现委托给 internal/fileuri（P7-A-2）：旧实现在这里手写，
+// 只剥 `file://` 与 `%20`，遇到 VSCode 在 Windows 上编码的 `%3A`
+// （`file:///c%3A/...`）会解出 `/c%3A/...` 非法路径，导致 GLOBALS
+// 路径全部失效。fileuri 做完整百分号解码 + 盘符/UNC 归一。
+//
+// 保留本函数名是为了不改动全部调用点；逻辑只有一份。
 func PathOfURI(uri string) string {
-	const prefix = "file://"
-	if !strings.HasPrefix(uri, prefix) {
+	p, err := fileuri.ToPath(uri)
+	if err != nil {
+		// 非 file URI（untitled:/git: 等）：原样返回，保持旧行为。
 		return uri
 	}
-	p := strings.TrimPrefix(uri, prefix)
-	// Windows: file:///C:/x → /C:/x → C:/x
-	if len(p) > 2 && p[0] == '/' && p[2] == ':' {
-		p = p[1:]
-	}
-	// 百分号解码（仅常见字符）
-	p = strings.ReplaceAll(p, "%20", " ")
 	return p
 }
 
-// URIOfPath 把本地路径转为 file:// URI。
-func URIOfPath(path string) string {
-	p := strings.ReplaceAll(path, "\\", "/")
-	p = strings.ReplaceAll(p, " ", "%20")
-	// Windows: C:/x → /C:/x → file:///C:/x
-	if len(p) > 1 && p[1] == ':' {
-		return "file:///" + p
-	}
-	if !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	return "file://" + p
-}
+// URIOfPath 把本地路径转为 file:// URI（委托 fileuri）。
+func URIOfPath(path string) string { return fileuri.FromPath(path) }
