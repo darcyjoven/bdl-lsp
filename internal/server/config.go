@@ -43,7 +43,7 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	// 必须显式告警而不是静默忽略。
 	for _, code := range diag.ValidateSettings(settings) {
 		s.logger.Warn("未知诊断码（配置不生效）", "code", code,
-			"hint", "已注册的码见 bdl-lsp diagnostics 或文档")
+			"hint", "已注册的码见 docs/FEATURES.md 或 go run ./cmd/diag-audit -codes")
 	}
 	s.logger.Info("配置已更新", "generoVersion", settings.GeneroVersion)
 
