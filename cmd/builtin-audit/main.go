@@ -230,12 +230,7 @@ type gap struct {
 //
 // 只列表里没有的——已经收录的名字不该再占据注意力。
 func printGaps(title string, m map[string]*stat, set *builtin.Set, show int) {
-	type row struct {
-		name  string
-		count int
-		files int
-	}
-	var rows []row
+	var rows []gap
 	for name, s := range m {
 		if set != nil {
 			if _, ok := set.Lookup(name); ok {
@@ -245,7 +240,7 @@ func printGaps(title string, m map[string]*stat, set *builtin.Set, show int) {
 				continue // 用户显式禁用，不是缺口
 			}
 		}
-		rows = append(rows, row{name: name, count: s.count, files: len(s.files)})
+		rows = append(rows, gap{name: name, count: s.count, files: len(s.files)})
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].count != rows[j].count {
