@@ -449,7 +449,7 @@ axmt620   AXM    axmt620        Y
 | 一组内 ≥ 2 个 MAIN | 数据异常 → 报 warn，全部保留但标记 `ambiguous`（实测 5 组，如 `aws_ttsrv2` 同时含 `aws_ttsrv2` 与 `aws_ttsrv2_transxml`） |
 | 程序代码重复出现在同组 | 去重（实测存在，如 `apmt722` 组内重复列出自身） |
 | `gal04 <> 'Y'` | **SQL 阶段过滤**（R4），导入时再兜底一次（实测 51 行） |
-| 程序代码在磁盘上找不到 | 不报错；计入 meta 的 `missingFiles`（实测 800 条/700 个代码，集中在语料中不存在的 `W*` 模组） |
+| 程序代码在磁盘上找不到 | **保留在 `links.jsonl` 中，不忽略**；不产生任何诊断（实测 800 条/700 个代码，集中在语料中不存在的 `W*` 模组）。用户 2026-10-21 明确：链接里存在但代码不存在，忽略即可，但 jsonl 要保存 |
 
 ### 5.2.0 现状：目前**根本没有**函数存在性判定（回答 Q14）
 
@@ -469,32 +469,36 @@ axmt620   AXM    axmt620        Y
 **为什么当初跳过**：`queryVariables` 有注释——`pattern 2 跳过 call.name（函数名：来自其他模块，无跨文件函数索引）`。
 在没有链接资料的前提下，跨文件函数无法判定，所以只能不查。链接资料正是解锁这个检查的前提。
 
-**P7-D 要做的是**（按下面矩阵）：
-1. 建立"可见函数集合" = 本文件函数 ∪ GLOBALS 引入 ∪ 链接文件函数 ∪ 模组矩阵允许的函数；
+**P7-D 要做的是**（按下面规则）：
+1. 建立"可见函数集合" = 本文件函数 ∪ GLOBALS 引入 ∪ 链接文件函数 ∪ 全局模组（sub/lib/qry）的全部函数；
 2. `function-not-found` = 调用名不在该集合中；
 3. **无链接资料时整个检查不启用**（否则回到满屏误报）。
 
-### 5.2.1 模组间可见性矩阵（Q14 定稿）
+### 5.2.1 模组间可见性（Q14 二次定稿：扁平规则，无矩阵）
 
-用户规则：**`sub` 可用 `lib`；`lib` 不能用 `sub`；`qry` 谁都能用。**
+**用户最终规则（2026-10-21 第二次答复）**：
 
-落地成定向可见性矩阵（不是"全部默认链接"这种粗粒度）：
+> `sub` `lib` `qry` 所有程序都默认可用，**包括它们自己**。
 
-| 调用方 ↓ 可调用 → | 本文件 | 链接文件 | `qry` | `lib` | `sub` |
-|---|:---:|:---:|:---:|:---:|:---:|
-| 普通可执行文件（含 MAIN） | ✅ | ✅ | ✅ | ✅ | ✅ |
-| 子文件（无 MAIN，被链接） | ✅ | ✅ | ✅ | ✅ | ✅ |
-| `qry/` 内文件 | ✅ | — | ✅ | ✅ | ✅ |
-| `lib/` 内文件 | ✅ | — | ✅ | ✅ | ❌ |
-| `sub/` 内文件 | ✅ | — | ✅ | ✅ | ✅ |
+即：这三个模组是**全局可见**的——任何文件（含这三个模组内部的文件）都能调用其中的函数。
+规则从"定向矩阵"简化成一条平铺规则：
+
+```text
+可见函数 = 本文件 ∪ GLOBALS 引入 ∪ 链接文件 ∪ (sub ∪ lib ∪ qry 的全部函数)
+```
 
 要点：
 
-1. 矩阵按**当前文件所属模组**决定，不按链路（隐式模组不在链路里）。
-2. `qry` 对所有人可见 = 列而非行的规则，直接特判。
-3. `lib → sub` 是唯一禁止项。实测语料有 11 处反例（见 §8.1），需二次确认。
-4. 隐式模组**不是靠链路数据**，而是靠矩阵；因此即使 CSV 里没有 sub/lib/qry 也能工作
-   （实测 CSV 其实**包含**了它们：`sub` 组 524 个文件、`lib` 218、`qry` 264 —— 但按 Q14 以矩阵为准，不依赖这些组）。
+1. **不再有禁止方向**。之前 `lib → sub` 的冲突（实测 11 处反例）**自动消解**——
+   `sub` 全局可见，`lib` 调 `s_errmsg` 完全合法。`allowModuleDeps` 白名单配置**一并删除**（已无必要）。
+2. **包括它们自己**：`lib/` 文件可以调 `sub/` 的函数，`sub/` 可以调 `qry/` 的，任意方向都行。
+3. 实现上就是一张**全局可见模组集合**（默认 `["sub","lib","qry"]`），不做按调用方的差异判断。
+   代码比矩阵简单得多。
+4. 这三个模组的函数来源**不依赖链接资料**：即使 CSV 里没有它们的组也能工作。
+   （实测 CSV 里恰好也有：`sub` 组 524 文件 / `lib` 218 / `qry` 264 —— 但按本规则以全局集合为准，
+   仍优先使用 CSV 数据，因为它更贴近实际编译产物；两者取并集。）
+5. 允许用户配置覆盖：`bdl.link.globalModules`，默认 `["sub","lib","qry"]`。
+   某些项目若把公共库放在别的模组（如 `clib`），改这里即可。
 
 
 ### 5.3 文档结构（已用真实数据定稿）
@@ -593,7 +597,7 @@ axmt620   AXM    axmt620        Y
 |---|---|---|
 | **组内 0 个 MAIN** | **81**（文件存在的）+ 389（全缺失无法判定） | 归入 `orphan`；不参与"打开可执行文件"的链路，但保留以便反查 |
 | **组内 ≥2 个 MAIN** | **5**（如 `aws_ttsrv2` 同时含 `aws_ttsrv2` 和 `aws_ttsrv2_transxml`） | 标 `ambiguous`，**全部保留**；该组任一 MAIN 打开都关联整条链 |
-| **程序代码找不到文件** | **800 条记录 / 700 个不同代码** | 不报错；统计进 `missingFiles`；主要集中 `WPC`(168) `WSUB`(139) `WMB`(97) `WZZ`(53) `WAG`(47) `AZZ`(41) `WLIB`(38) —— 这些 `W*` 模组在语料里**不存在**（是另一套/已下线系统） |
+| **程序代码找不到文件** | **800 条记录 / 700 个不同代码** | **原样保留在 `links.jsonl`**，运行时跳过、**不产生诊断**；meta 里只作统计（`missingFiles: 800`）。用户明确：忽略即可，但 jsonl 要保存。主要集中在 `WPC`(168) `WSUB`(139) `WMB`(97) `WZZ`(53) `WAG`(47) `AZZ`(41) `WLIB`(38) —— 这些 `W*` 模组在语料里**不存在**（另一套/已下线系统） |
 
 另两个关键事实：
 
@@ -654,7 +658,7 @@ axmt620   AXM    axmt620        Y
 
 ### 5.6 采集：三套方式（Q15 定稿：双驱动并行）
 
-统一接口，三种方式都产出同一份 `links.jsonl`：
+统一接口，三种方式都产出同一份 `links.jsonl`（S1 Go 直连 / S2 脚本导出 / S3 命令执行）：
 
 ```go
 // internal/link/source
@@ -664,48 +668,25 @@ type Source interface {
 }
 ```
 
-**S1a. 本地 Oracle 驱动（用户 Q15 的原始诉求）**
+**S1. 纯 Go 直连 Oracle（唯一内置方案，Q15 三度定稿）**
 
-用户原话："默认用户本地有 oracle 驱动，用户只要配置驱动目录即可。"
+用户最终决定（2026-10-21 第三次答复）：
 
-- 前提：客户端机器已装 Oracle Instant Client（或完整客户端）。插件**不下载、不打包**驱动。
-- 配置只给**驱动目录**：
-
-```jsonc
-"bdl.link.sync": {
-  "source": "driver",
-  "driver": {
-    "kind": "instantclient",              // instantclient | thick
-    "libDir": "C:/oracle/instantclient_21_3",   // 仅配这个
-    "user": "readonly_user",
-    "password": "${env:BDL_ORA_PASSWORD}",
-    "host": "", "port": 1521, "service": ""
-  }
-}
-```
-
-- **实现难点（必须提前说清）**：CGO 场景下动态加载 `libclntsh` 需要 cgo 链接；
-  纯 Go 无法直接调 Instant Client。可行路径有两条：
-  1. **`database/sql` + ODBC 驱动**：走 `godror`（需 CGO + Instant Client SDK 头文件）或
-     ODBC（`github.com/alexbrainman/odbc`，仅 Windows）。
-  2. **命令行转发**：调用用户已装的 `sqlplus`（这就退化成 S3）。
-- **结论（建议）**：S1a 的真实形态是 **`godror` + CGO 构建变体**，产物比主线大且需要用户机器有驱动。
-  所以做成**独立构建标签** `ora-native`，默认不编译；用户需要时下这个变体。
-  `libDir` 通过 `LD_LIBRARY_PATH`（Linux）/ `PATH`（Windows）在启动时注入，并做**启动自检**：
-  `dlopen` 失败 → 明确提示"驱动目录不可用，已退回内置 Go 驱动"。
-- 启动自检 + 自动回退到 S1b，避免"配错目录就静默不工作"。
-
-**S1b. 纯 Go 直连（内置，默认可用）**
+> 既然不能直接调用 oracle 驱动，就保留一个 go 使用 `sijms/go-ora/v2` 查询 Oracle 方案，
+> **忽略本地驱动**。
 
 - 驱动：`github.com/sijms/go-ora/v2`（**纯 Go，无需任何 Oracle 客户端**）。
   已实测可获取（`go list -m -versions` 成功，最新 `v2.9.0`）。
-- 代价：二进制 +2–3 MB（当前 11 MB → 约 14 MB）。
-- 配置（与 S1a 共用大部分字段）：
+- **本地驱动方案（原 S1a / `godror` + CGO）已取消**，不留构建标签、不留配置项。
+  原因：纯 Go 无法调 Instant Client，走 CGO 会让构建、分发、跨平台全部复杂化，
+  收益却只是"少装一个纯 Go 库"。
+- 代价：二进制 +2–3 MB（当前 11 MB → 约 14 MB）。可接受。
+- 配置：
 
 ```jsonc
 "bdl.link.sync": {
   "enable": true,
-  "source": "golang",                 // golang | driver | script | command
+  "source": "golang",                 // golang | script | command
   "interval": 21600,                  // 秒；0 = 不自动同步
   "onStart": true,
   "db": {
@@ -735,7 +716,7 @@ type Source interface {
 - `exec.Command`，账号密码**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
 - Zed 无密码框 → 交给 `.zed/tasks.json` 终端任务。
 
-**三种方式共用**：导入校验 → 原子写入 → 报告（含 `missingFiles` 统计）。
+**三种方式共用**：导入校验 → 原子写入 → 报告（`missingFiles` 仅作统计，**不产生诊断**）。
 
 ### 5.6.1 导入校验清单（用真实数据验证过）
 
@@ -752,7 +733,7 @@ type Source interface {
 
 ### 5.7 语义规则与诊断
 
-链路可用后，函数解析的可见性顺序（按 §5.2.1 矩阵）：
+链路可用后，函数解析的可见性顺序（按 §5.2.1 扁平规则）：
 
 ```text
 局部作用域 → 本文件 → GLOBALS 引入 → 链接文件 → 模组可见性（qry 恒可见 / lib / sub）
@@ -768,10 +749,16 @@ type Source interface {
 
 | 码 | 含义 | 默认 | 说明 |
 |---|---|---|---|
-| `function-not-found` | 调用的函数在本文件/GLOBALS/链接/隐含模组中都找不到 | warn | 无链接资料时**不报** |
-| `link-file-missing` | 链接资料里的程序代码在磁盘上找不到 | warn | 指向上游数据问题 |
-| `link-data-invalid` | 链接资料 schema/字段不合法 | warn | 导入时也进报告 |
+| `function-not-found` | 调用的函数在本文件/GLOBALS/链接/全局模组中都找不到 | warning | 无链接资料时**整项不启用** |
+| `link-data-invalid` | 链接资料 schema/字段不合法 | warning | 导入时进报告；畸形的 `links.jsonl` 才会报 |
 | `link-data-stale` | 资料超过 `maxAgeDays` 未更新 | hint | 温和提示，不骚扰 |
+
+**刻意不做的诊断（用户 2026-10-21 明确）**：
+
+- ~~`link-file-missing`~~ **删除**。链接里存在但磁盘上找不到对应 4gl 文件 → **完全忽略**，
+  不报任何诊断，也不在编辑器里提示。原因：实测 800 条这类记录（`W*` 模组整批不在语料），
+  报出来纯属噪声，且大概率是另一个系统/已下线模块的数据。
+  这类记录**仍然写进 `links.jsonl`**（用户要求保存原样），只是读取时跳过。
 
 用户明确要求：
 
@@ -785,7 +772,8 @@ type Source interface {
 - [ ] `cmd/link-audit` 报告上述数字与 §5.3.2 实测值一致。
 - [ ] 打开 `axmt620.4gl`：`cl_*` 类跨文件函数不再报未定义；`GLOBALS` 变量行为不变。
 - [ ] R2 反例测试：两个链接在一起的子文件，各自 `DEFINE` 同名变量但没有共享 GLOBALS → 仍报未定义（**确保没有把变量也放进链接可见性**）。
-- [ ] Q14 矩阵测试：`lib/` 文件调用 `sub/` 函数 → 报 `function-not-found`；`sub/` 调 `lib/` → 不报；任意文件调 `qry/` → 不报。
+- [ ] Q14 测试：`lib/` 调 `sub/` 的 `s_errmsg` **不报**（实测语料 11 处真实调用）；`sub/` 调 `lib/` 不报；任意文件调 `qry/` 不报；调用三者都不存在的函数 → 报 `function-not-found`。
+- [ ] 缺失文件测试：`links.jsonl` 保留 800 条磁盘不存在的记录，加载时跳过且**零诊断**。
 - [ ] 性能：打开 `cbmp100`（364 文件链）首轮诊断 < 300 ms（链接索引在后台）；打开普通链（1–2 文件）无异步、直接出结果。
 
 ---
@@ -881,25 +869,17 @@ type Source interface {
 "bdl.link.dataDir": ".link",                   // 相对项目根（用户定稿）
 "bdl.link.moduleRoots": ["tiptop", "topcust"], // 空 = 自动探测
 "bdl.link.maxAgeDays": 7,                      // 0 = 不提示过期
-"bdl.link.allowModuleDeps": [],                // 例外，如 ["lib>sub"]（见 §8.1）
 
-// Q14：模组可见性按矩阵算，不再用 implicitModules 数组
-"bdl.link.visibility": {
-  "alwaysVisible": ["qry"],                    // 谁都能用
-  "deny": ["lib>sub"]                          // 禁止方向
-},
+"bdl.link.globalModules": ["sub", "lib", "qry"], // Q14：对所有程序可见，含它们自己
 
-// Q15：三种采集方式并存
+// Q15：S1 Go 直连（唯一内置）/ S2 脚本导出 / S3 命令执行
 "bdl.link.sync": {
   "enable": false,
-  "source": "golang",                          // golang | driver | script | command
+  "source": "golang",                          // golang（唯一内置）| script | command
   "interval": 21600, "onStart": true,
   "db": {
     "host": "", "port": 1521, "service": "", "user": "",
     "password": "${env:BDL_ORA_PASSWORD}"
-  },
-  "driver": {                                  // source=driver 时用
-    "kind": "instantclient", "libDir": ""
   },
   "command": {
     "path": "/usr/bin/sqlplus", "args": [], "passwordViaStdin": true
@@ -919,29 +899,22 @@ VSCode `package.json` 需同步新增（当前 32 项 → 约 40 项），并跑
 | **Q11** | 链接资料存储 | **先单文件；若索引很慢再分模组** | 首版 `links.jsonl`；实现预留 shard 分支，触发条件写成可测指标（§5.3.1） |
 | **Q12** | 链接资料位置 | 放**用户自己的项目**，不是插件仓库：项目根新建 **`.link` 目录**，单文件放里面；将来分模组则放 `<module>/.link` | 路径改为 `<project>/.link/links.jsonl`，**不是** `.bdl-lsp/link/` |
 | **Q13** | 子文件（无 MAIN）链接栏 | **反查**，但默认**显示空白**，提供用户可点击的菜单项，点击后才执行反查 | VSCode TreeView 初始为空 + 「反查引用程序」按钮；反查异步、带进度 |
-| **Q14** | sub/lib/qry 可见性 | **`sub` 可用 `lib`；`lib` 不能用 `sub`；`qry` 谁都能用** | §5.2.1 定向可见性矩阵（比"全部默认链接"更精确） |
-| **Q15** | Oracle 驱动 | **两套方案并行**：① 用用户本地已装 Oracle 驱动（只配驱动目录）② Go 编译进二进制的纯 Go 直连 | §5.6：S1a 本地驱动、S1b 纯 Go `go-ora`，两者都保留 |
+| **Q14** | sub/lib/qry 可见性 | **三者对所有程序默认可用，包括它们自己**（无方向限制） | §5.2.1 扁平全局集合；原 `lib→sub` 冲突自动消解 |
+| **Q15** | Oracle 驱动 | **只用 `sijms/go-ora/v2`（纯 Go）**；本地驱动方案取消 | §5.6 S1；不留 CGO build tag、不留 `driver` 配置 |
 
-### 8.1 Q14 有一处事实冲突需要二次确认
+### 8.1 原 Q14 冲突已消解（2026-10-21 第二次答复）
 
-规则是"`lib` 不能用 `sub`"。但实测语料**存在 11 处反例**（已排除注释行）：
+第一版规则"`lib` 不能用 `sub`"与语料实测的 11 处反例冲突
+（`lib/4gl/cl_prt.4gl:466` 等调用 `sub/4gl/s_showmsg.4gl` 的 `s_errmsg`）。
 
-```text
-lib/4gl/cl_prt.4gl:466      CALL s_errmsg('','','!','lib-216',1)
-lib/4gl/cl_formula.4gl:1080 CALL s_errmsg(...)
-lib/4gl/cl_gr_edit.4gl:376  CALL s_gr_gdwcopy_gdw08(...)
-统计：s_errmsg × 47、s_gr_gdwcopy_gdw08 × 2、s_showmsg_init × 1、s_showmsg × 1
-（s_errmsg / s_showmsg 定义在 sub/4gl/s_showmsg.4gl）
-```
+用户改为"**sub/lib/qry 所有程序都默认可用，包括它们自己**"后：
 
-两种解释：
+- 冲突**自动消失**——`lib` 调 `sub` 的函数完全合法，那 11 处是真代码不是缺陷。
+- `bdl.link.allowModuleDeps` 白名单配置**删除**（已无必要）。
+- 结论：**没有遗留待确认项**。
 
-- **(a) 规则成立**，这 11 处是历史遗留/潜在缺陷 —— `fgllink` 把所有 `.42m` 一起链接才没炸。
-- **(b) 规则是逻辑分层**而非编译可见性 —— `lib` 需要回调 `sub` 的底层错误显示函数。
-
-**处理**：按用户规则实现（`lib` 看不到 `sub`），这 11 处会变成 `function-not-found` 真阳性告警。
-若用户认为合理，再加例外白名单 `bdl.link.allowModuleDeps`（如 `["lib>sub"]`）。
-这是**唯一需要二次确认**的点，已列进 §12 执行清单第一步。
+> 保留这段记录，是因为它说明了"规则与语料冲突"这件事本身有价值：
+> 如果当时硬按第一版规则实现，会凭空产出 11 条假告警。
 
 ---
 
@@ -950,12 +923,11 @@ lib/4gl/cl_gr_edit.4gl:376  CALL s_gr_gdwcopy_gdw08(...)
 | 风险 | 影响 | 对策 |
 |---|---|---|
 | Windows URI 根因判断有偏差 | P7-A 修了但没解决 | 上机第一步先打印两个客户端的 `initialize` 入参对比，再动手 |
-| `lib→sub` 11 处反例 | 严格规则会产出 11 条告警 | 提供 `allowModuleDeps` 例外配置；默认按用户规则 |
+| 全局模组函数量巨大（983 文件） | 首次索引 2–4 s | 只建函数名索引（不建完整符号）+ 后台一次性 + 内存缓存；不阻塞首轮诊断 |
 | `expression name:` 跳过规则误伤 | 漏报函数未定义 | 先跑语料对比 skip 前后的差异清单，人工抽查 |
 | 内置表不全导致误报残留 | 噪声仍高 | `cmd/builtin-audit` 语料驱动补齐，设 <20 条未知的门槛 |
-| 隐含模组 983 文件索引太慢 | 打开文件卡顿 | 只建函数名索引（不建完整符号）+ 后台异步 + 持久化缓存 |
 | Zed 无法跳转链接文件 | 体验差异 | 文档明示 + VSCode 侧做全功能；Zed 等 API |
-| 本地 Oracle 驱动路径配置错误 | S1a 静默失败 | 启动自检：驱动目录存在性 + `libclntsh` 可加载性；失败给可操作提示并回退 S1b |
+| 纯 Go 驱动 +2–3 MB 二进制 | 体积从 11 MB → 约 14 MB | 可接受；如需瘦身可后加 build tag 排除 `link sync` 子命令 |
 | 链接资料含生产库信息 | 泄露 | `.link/` 加入推荐 `.gitignore`；文档写明不要提交 |
 
 ---
@@ -976,17 +948,17 @@ lib/4gl/cl_gr_edit.4gl:376  CALL s_gr_gdwcopy_gdw08(...)
    - [ ] Windows 实机复验 `axmt620.4gl` 无 `globals-file-not-found`
 3. 收尾：更新 TODO / HANDOVER / 本文档的状态；三个仓库提交推送。
 
-### 10.1 开始 P7-D 之前必须先确认的一件事
+### 10.1 P7 现已无遗留待确认项
 
-**`lib → sub` 那 11 处调用怎么算**（§8.1）。三种处理：
+2026-10-21 三次答复后，所有冲突已消解：
 
-| 选项 | 结果 |
+| 原待确认 | 结论 |
 |---|---|
-| A. 严格按规则 | 这 11 处报 `function-not-found`，用户看到后自行判断 |
-| B. 加白名单 | 配置 `allowModuleDeps: ["lib>sub"]`，默认空 |
-| C. 放宽规则为"sub/lib 互相可见" | 与用户说的"lib 不能用 sub"冲突，不推荐 |
+| `lib → sub` 11 处反例 | **消解**：Q14 改为"sub/lib/qry 对所有程序可用，含它们自己"，这 11 处是合法代码 |
+| 本地 Oracle 驱动怎么接 | **消解**：Q15 取消本地驱动，只用纯 Go `go-ora` |
+| 链接有、代码没有的文件怎么办 | **消解**：保留在 `links.jsonl`，运行时忽略，零诊断 |
 
-建议 **A**（保持规则纯粹，让问题暴露），同时提供 B 作为配置能力。
+所以 P7 可以**直接开工，不需要再问**。按 §1 的顺序：P7-A → B → C → D → E。
 
 ---
 
@@ -1010,7 +982,7 @@ lib/4gl/cl_gr_edit.4gl:376  CALL s_gr_gdwcopy_gdw08(...)
 | 9 | CSV 含 UTF-8 BOM | 是 | 必须 `utf-8-sig` 读，否则首列名带 BOM |
 | 10 | 链大小分布 | p50=1、p90=2、max=364 | 99% 无需异步 |
 | 11 | 单文件 JSONL 体积 | 415 KB（剔除隐式组后） | 单文件够用 |
-| 12 | CSV 也含 sub/lib/qry 成员 | sub 524 / lib 218 / qry 264 | 但按 Q14 以矩阵为准 |
+| 12 | CSV 也含 sub/lib/qry 成员 | sub 524 / lib 218 / qry 264 | 按 Q14 作为全局模组集合，与 CSV 取并集 |
 | 13 | `lib → sub` 调用 | 11 文件 / 84 调用点 | 与 Q14 规则冲突，待确认 |
 | 14 | `sub → lib` 调用 | 436 文件 / 13226 调用点 | 印证"sub 可用 lib" |
 | 15 | `→ qry` 调用 | sub 9 点 / lib 20 点 | 印证"qry 谁都能用" |

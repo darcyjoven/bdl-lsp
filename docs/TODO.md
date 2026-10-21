@@ -546,33 +546,31 @@ Block P2 已完成：
       模组目录**大小写不敏感**匹配（实测数据 92 个模组全大写，磁盘全小写）。
 - [ ] 缺失文件不报错：实测 **800 条 / 700 个代码**找不到（集中在语料中不存在的
       `WPC`/`WSUB`/`WMB`/`WZZ`/`WAG`/`AZZ`/`WLIB`），计入 meta `missingFiles`。
-- [ ] 可见性矩阵（**Q14 定稿**，替代 `implicitModules` 数组）：
-      `qry` 谁都能用；`sub` 可用 `lib`；**`lib` 不能用 `sub`**。
-      实测印证：`sub→lib` 436 文件/13226 点、`qry→lib` 261 文件/6734 点。
-- [ ] **待确认**：`lib→sub` 实测有 11 处反例（`s_errmsg`×47、`s_gr_gdwcopy_gdw08`×2 等）。
-      按用户规则会报 `function-not-found`。需用户确认是"历史遗留"还是"应放行"；
-      若放行则加 `bdl.link.allowModuleDeps: ["lib>sub"]`。见 PLAN-P7 §8.1。
-- [ ] 采集 **S1b 纯 Go 直连**（默认）：`github.com/sijms/go-ora/v2`（已实测模块可获取）；
+- [x] ~~可见性矩阵~~ → **Q14 二次定稿：扁平规则**。`sub`/`lib`/`qry` **对所有程序默认可用，
+      包括它们自己**，无方向限制。配置项 `bdl.link.globalModules = ["sub","lib","qry"]`。
+      原 `lib→sub` 11 处反例**自动消解**（是合法代码），`allowModuleDeps` 白名单**删除**。
+- [ ] 采集 **S1 纯 Go 直连**（**唯一内置方案**）：`github.com/sijms/go-ora/v2`（已实测模块可获取）；
       密码走环境变量/`.link/secrets.json`(0600)/交互输入，不明文落盘；
       进程内定时（`interval`）+ `onStart` + 指数退避；主动运行三入口（CLI/VSCode 命令/Zed task）。
-- [ ] 采集 **S1a 本地 Oracle 驱动**（Q15 第二方案）：只配驱动目录 `libDir`，
-      走 `godror` + CGO（构建标签 `ora-native`，默认不编译）；
-      启动自检 `libclntsh` 可加载性，失败给提示并**自动回退 S1b**。
+- [x] ~~采集 S1a 本地 Oracle 驱动~~ → **Q15 三度定稿：取消**。纯 Go 无法直调 Instant Client，
+      走 CGO 会让构建/分发/跨平台复杂化；只保留 `go-ora`。不留 build tag、不留 `driver` 配置。
 - [ ] 采集 **S2 服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
       `SET MARKUP CSV ON` 直出 CSV，已按真实表结构写好 `gal04='Y'` 过滤）+ `bdl-lsp link import`。
 - [ ] 采集 **S3 命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
-- [ ] 函数可见性：`局部 → 本文件 → GLOBALS → 链接文件 → 模组矩阵`；变量可见性**不变**。
-- [ ] 诊断：`function-not-found` / `link-file-missing` / `link-data-invalid` / `link-data-stale`。
+- [ ] 函数可见性：`局部 → 本文件 → GLOBALS → 链接文件 → 全局模组(sub/lib/qry)`；变量可见性**不变**。
+- [ ] 诊断：`function-not-found` / `link-data-invalid` / `link-data-stale`。
+- [x] ~~`link-file-missing`~~ → **不做**（Q2 答复）。链接有、代码无 → 忽略，零诊断；
+      但记录**必须保留在 `links.jsonl`**。
 - [ ] 性能（按实测分布）：链 p50=1 文件、p90=2 → 典型链 2–10 ms **同步**即可；
       **仅当链文件数 > 20** 才走后台（最大链 `cbmp100` 364 文件约 0.7–1.8 s）。
-      模组矩阵涉及 983 文件（sub 518 + lib 204 + qry 261），只建函数名索引，后台一次性 2–4 s。
+      全局模组涉及 983 文件（sub 518 + lib 204 + qry 261），只建函数名索引，后台一次性 2–4 s。
       首版仅内存缓存。
 - [ ] `cmd/link-audit`：用真实 `link.csv` 复跑，核对 §11 的数字
       （链 5846 / orphan 81 / ambiguous 5 / missingFiles 800 / 过滤 51）。
 - [ ] **R2 反例测试**：两个链接在一起的子文件各自 `DEFINE` 同名变量但无共享 GLOBALS
       → 仍报未定义（防止把变量也放进链接可见性）。
-- [x] ~~Q14 待确认~~ → **已定稿：矩阵制**（qry 恒可见、sub→lib 可、lib→sub 禁止）。
-      隐含模组**参与** `function-not-found` 判定（否则 `cl_*` 仍大面积误报）。
+- [x] ~~Q14 待确认~~ → **已定稿：扁平规则**（sub/lib/qry 对所有程序可用，含自己）。
+      全局模组**参与** `function-not-found` 判定（否则 `cl_*` 仍大面积误报）。
 
 ### P7-E 链接资料 UI
 
@@ -594,10 +592,9 @@ Block P2 已完成：
 "bdl.diagnostics": { "*": "warning", "record-member-unknown": "off" }
 "bdl.builtins.enable": true
 "bdl.link.enable" / "dataDir"(".link") / "moduleRoots" / "maxAgeDays"
-"bdl.link.visibility": { "alwaysVisible": ["qry"], "deny": ["lib>sub"] }
-"bdl.link.allowModuleDeps": []                  // 例外白名单
+"bdl.link.globalModules": ["sub", "lib", "qry"]   // 全局可见模组
 "bdl.link.sync": { enable / source / interval / onStart
-                   db{...} / driver{kind,libDir} / command{...} }
+                   db{...} / command{...} }
 ```
 
 - [ ] VSCode `package.json` 32 项 → 约 40 项，`make manifest-check` 通过。
@@ -610,7 +607,7 @@ Block P2 已完成：
 - [ ] 链接资料含生产库信息 → `.link/` 建议 gitignore，文档写明不要提交。
 - [ ] 纯 Go 驱动 `go-ora` 依赖 +2–3 MB 二进制（当前 11 MB）；
       本地驱动方案走 build tag `ora-native`，默认不编译。
-- [ ] 本地 Oracle 驱动路径配错会静默失败 → 启动自检 + 自动回退 S1b。
+- [x] ~~本地 Oracle 驱动路径配错~~ → 已取消该方案，无此风险。
 
 ### P7 真实数据验证（2026-10-21 已完成）
 
@@ -618,7 +615,7 @@ Block P2 已完成：
 - [x] 结论已回写 [PLAN-P7.md](PLAN-P7.md) §5.3 / §5.3.2 / §5.6.1 / §11。
 - [x] 关键修正：体积 1–2 MB → **415 KB**；隐含模组 980 → **983**；
       典型链解析 100–300 ms → **2–10 ms**（p50=1 文件）。
-- [x] 发现待确认项：`lib→sub` 11 处反例（PLAN-P7 §8.1）。
+- [x] ~~发现待确认项：`lib→sub` 11 处反例~~ → 已随 Q14 改为扁平规则而消解。
 - [ ] 待做：`cmd/link-audit` 落地后，用同一份 CSV 复跑并核对数字一致。
 
 
