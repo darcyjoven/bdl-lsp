@@ -150,6 +150,15 @@ func (s *Server) buildWorkspaceIndex(ctx context.Context, st *wsIndexState) {
 	st.err = nil
 	st.mu.Unlock()
 
+	if ix.FileCount() == 0 {
+		// 工作区里没有 BDL 代码（不是 tiptop 布局）：不用每次都记一条 info。
+		s.logger.Debug("工作区索引：没有可索引的文件", "root", s.rootPath)
+		st.mu.Lock()
+		st.idx = ix
+		st.stats = stats
+		st.mu.Unlock()
+		return
+	}
 	s.logger.Info("工作区索引就绪",
 		"files", ix.FileCount(), "reused", stats.Reused, "parsed", stats.Parsed,
 		"failed", stats.Failed, "ms", stats.Elapsed)
