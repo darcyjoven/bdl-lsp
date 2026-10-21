@@ -3,7 +3,7 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.7** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.8** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -16,11 +16,18 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 
 下一个是采集与 UI：
 
-**P7 全部收尾项已完成**（P7-A/B/C-1/D/D-2/D-3/E）。剩下的候选：
+**P7 全部收尾项已完成**（P7-A/B/C-1/C-2/D/D-2/D-3/E）。剩下的候选：
 
-- **P7-C-2 grammar 审计**：`cmd/grammar-audit` + `#{ … }#` 块注释缺口（需 `tree-sitter generate`）；
 - `field-not-in-form` 的 1725 条待查（多为模板生成的 `.per`）；
 - `make diagnostics-check` 的基线维护。
+
+**改 grammar 的两条硬规矩**（P7-C-2 踩过）：
+
+1. `bindings/go/binding.go` 是 `#include "../../src/parser.c"`，**Go 构建缓存不跟踪
+   被 include 的 C 文件** → 改完 `src/scanner.c` 必须 `go build -a ./internal/parser`，
+   否则跑的还是旧产物（症状：改前改后审计结果一模一样）；
+2. 每次改动都要跟 `make grammar-audit JSON=/tmp/before.json` 的逐文件结果 diff，
+   并跑 `go test ./internal/gramaudit/`（`TestCorpusGrammarBaseline` 会拦住"修一个坏两个"）。
 
 ### 已完成（本轮）
 
@@ -33,6 +40,7 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 | 诊断 | `function-not-found`（**默认 warning**）· `link-data-invalid` · `link-data-stale` |
 | 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
 | 采集 | `bdl-lsp link sync -source golang|command|file`；`scripts/fetch-gal-file.sh`（sqlplus 兜底） |
+| 语法审计（P7-C-2） | `make grammar-audit [TOP=60 JSON=/tmp/a.json]`；基线 `TestCorpusGrammarBaseline` |
 | 视图（VSCode） | Explorer「链接资料」：程序 → 链内文件（点击跳转）+ 反查引用程序（分页 50） |
 | 后台同步 | `bdl.link.sync.*`（默认关，失败指数退避，成功后自动重载） |
 | 审计 | `cmd/link-audit`（`-externals`/`-missing`）、`diag-audit -no-link` |
@@ -49,7 +57,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.7`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.8`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 

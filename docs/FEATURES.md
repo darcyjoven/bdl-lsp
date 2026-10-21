@@ -110,6 +110,7 @@
 | 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（11 个码）；优先级 新键 > 旧键 > 注册表默认；拼错记 warn；`syntaxDiagnostics` 默认已改 warning | P7-B（✅ 0.1.2） |
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
 | 39 | 程序链接资料索引 | `bdl-lsp link import/status`；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
+| 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
 | 39d | 链接资料视图（P7-E） | 自定义请求 `bdl/linkTree` / `bdl/linkReferences`；VSCode 独立 TreeView「链接资料」（程序 → 链内文件三级，点击跳转）+ 反查引用程序（默认不查、分页 50）；实测最大链组装 3.4 ms | P7-E（✅ 0.1.7） |
 | 39b | 采集通道（P7-D-3） | `bdl-lsp link sync -source golang|command|file`：纯 Go 直连 Oracle（`go-ora`，无需客户端）/ 命令 stdout / 已导出的 CSV。密码只从环境变量或 `.link/secrets.json`(0600) 取 | P7-D-3（✅ 0.1.6） |
 | 39c | 后台自动同步 | `bdl.link.sync.*`（默认**全关**）：`onStart` 启动时跑一次、`interval` 定时；失败指数退避上限 1 h；成功后自动重载资料并补发诊断 | P7-D-3（✅ 0.1.6） |

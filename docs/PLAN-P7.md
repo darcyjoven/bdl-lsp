@@ -1971,6 +1971,99 @@ Zed 侧改为：用 `bdl-lsp link status` / `cmd/link-audit -externals` 看资�
 
 ---
 
+### 10.10 P7-C-2 语法缺口清单（✅ 2026-10-21，`0.1.8`）
+
+**结论先说**：语料 **15108 个文件里只有 18 个（0.12%）解析失败，共 266 个
+ERROR 节点**。逐个确认后，**没有一个是高频语句级缺口**——全部是语料自身
+的问题，按计划"低频项只留档不排期"处理。
+
+工具：`make grammar-audit`（`internal/gramaudit` + `cmd/grammar-audit`）。
+
+```bash
+make grammar-audit                       # 前 30 个缺口
+make grammar-audit TOP=60 JSON=/tmp/a.json
+# 改完 grammar 后逐文件对比（真正的验收手段）
+go run ./cmd/grammar-audit -json /tmp/before.json && ... && diff <(...) <(...)
+```
+
+#### 判据：只记"最内层" ERROR
+
+语料里一个拼写错误（`END TUNCTION`）会让 tree-sitter 把**整个文件**包成
+一个根级 ERROR。第一版按外层记，清单头一行是"第 1 行的注释"——毫无用处。
+现在只记内部没有 ERROR 的节点，示例直接指到出错的语句。
+
+#### 18 个文件的实际成因（逐个确认过）
+
+| 文件 | 节点 | 成因 |
+|---|---:|---|
+| `demo/per/apmi252.per` | 97 | `.per` 尾部**文档附录**里的全角标点（`－`、`、`） |
+| `demo/per/aooi010.per` | 48 | 同上 |
+| `msv/4gl/findidx.4gl` | 67 | 手写开发文件：`smaillint` 拼写错 + 该文件本就残缺 |
+| `cws/4gl/cws_get_start_works.4gl` | 11 | **SQL `CASE … END CASE` 表达式**（真实缺口，见下） |
+| `asf/4gl/safi501.4gl` | 10 | 某处 `MENU` 未闭合引起的级联，未定位到具体语法缺口 |
+| `asf/4gl/TX_asfi301_1/2/3.4gl` | 5×3 | 同上（三份内容几乎相同的副本） |
+| `apm/4gl/sapmt540 (3).4gl` | 4 | 末行 `END TUNCTION` 拼写错 |
+| `apm/4gl/sapmt720_sub.4gl` | 4 | SQL `CASE … END **IF**`（应为 `END CASE`） |
+| `apm/4gl/baofei.4gl` | 2 | 赋值漏了 `LET`（`l_sql = " SELECT …"`） |
+| `asf/4gl/csfi510.4gl` | 2 | 两个完整程序**拼接**在一个文件里 |
+| `ghr/4gl/ghri0431.4gl` | 1 | 字符串被截断（`CALL cl_err('绱`） |
+| `ghr/4gl/ghri0471.4gl` | 1 | 文件头是乱码 BOM（字面 `锘`） |
+| `csf/4gl/csfq012.4gl` | 1 | `DEFINE` 列表漏逗号 |
+| `csub/4gl/cs_restful.4gl` | 1 | 复制粘贴残留半行（`when i == 0 && j >`） |
+| `cxc/4gl/cxcq761.4gl` | 1 | 多一个 `END IF` |
+| `cxm/4gl/saxmt400.4gl` | 1 | 文件**被截断**（结尾停在 `#No.FUN-AA0048  --Begin`） |
+
+#### 唯一的真实语法缺口：SQL 里的 `CASE … END CASE` 表达式
+
+```sql
+SELECT DISTINCT '2',sgm04,...,ta_ecd03,          -- 行尾逗号
+                CASE ta_ecd03 WHEN 'N' THEN 1 ELSE sfbud10 END CASE
+  INTO l_return2.*
+  FROM sgm_file ...
+```
+
+`sql_body` 是外部扫描器（`src/scanner.c`），它靠"关键字在行首 + 括号深度 0
++ CASE 栈空"判断 SQL 语句结束。`CASE`/`END CASE` 在 SQL 表达式和 BDL 的
+`CASE` 语句里长得一模一样，扫描器只能猜。
+
+**试过三种消歧规则，全部被语料否掉**（这是本轮最重要的结论）：
+
+| 尝试 | 结果 |
+|---|---|
+| 一律把 `END CASE` 当 SQL 表达式结束 | 18 → **20 文件 / 279 节点**（`axcp305`、`axcp312`、`aapq106` 回归） |
+| 行首 `CASE` = BDL 语句，行内 = SQL 表达式 | 回归更严重（`cws_get_start_works` 的 `CASE` 恰好也在行首） |
+| 再看 `END CASE` 后面的词（`INTO`/`FROM`/逗号 ⇒ 表达式） | 扫描器需要**向前多看一个词**，而 tree-sitter 的 lexer 不能回退；为了看这个词就得消费，消费后无法重扫 → 18 → **222 文件 / 16342 节点** |
+
+结论：**不改**。收益是 1 个文件（另一个是 `END IF` 拼写错，改语法也修不好），
+风险是任意文件。写进 `tree-sitter-bdl/BACKLOG.md`，等真出现大批 SQL CASE
+写法（比如换一套语料）再处理，届时的正确做法是在**语法层**给 `select`
+加一条 `sql_body END CASE` 的备选，而不是在扫描器里猜。
+
+#### 回归防线
+
+`internal/gramaudit/grammar_baseline_test.go`（`TestCorpusGrammarBaseline`）
+冻结了这 18 个文件的**相对路径白名单**：
+
+- 出现白名单外的文件 → 失败并列出；
+- 文件数变少 → 通过（修好了）。
+
+这比"总数 ≤ 18"强：总数不变也可能是"修好一个、坏掉一个"。
+
+#### 一个坑（写进 ENVIRONMENT/HANDOVER）
+
+`bindings/go/binding.go` 是 `#include "../../src/parser.c"` 的 cgo 绑定，
+**Go 的构建缓存不跟踪被 include 的 C 文件**。改了 `src/scanner.c` 之后
+直接 `go test` / `go run` 跑的还是旧编译产物（症状：改 grammar 前后
+审计结果一模一样）。必须：
+
+```bash
+go build -a ./internal/parser   # 或者 go clean -cache
+```
+
+本轮就在这里白白多花了两轮：以为改动没生效，其实是缓存。
+
+---
+
 ## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |

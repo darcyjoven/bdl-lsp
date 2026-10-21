@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit grammar-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -80,6 +80,10 @@ diag-audit: build
 ## builtin-audit: 内置符号表（P7-C）的缺口审计——列出语料里"不在表里"的名字
 builtin-audit: build
 	@$(GO) run ./cmd/builtin-audit $(if $(LIMIT),-limit $(LIMIT),) -show $(or $(SHOW),40)
+
+## grammar-audit: 语法缺口审计（P7-C-2）——语料里解析失败的文件与上下文，按频次排序
+grammar-audit: build
+	@$(GO) run ./cmd/grammar-audit $(if $(LIMIT),-limit $(LIMIT),) -top $(or $(TOP),30) -examples 2 $(if $(JSON),-json $(JSON),)
 
 ## link-audit: 程序链接资料（P7-D）——用真实 CSV 复跑导入并核对统计
 link-audit: build

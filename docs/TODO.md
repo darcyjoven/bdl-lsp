@@ -1,11 +1,12 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7 全部收尾项已完成**，`bdl-lsp 0.1.7`）  
+> 更新：2026-10-21（**P7 全部收尾项已完成，含 P7-C-2 语法缺口审计**，`bdl-lsp 0.1.8`）  
 > 当前阶段：**P1–P6 全部功能已完成**；**P7 全部收尾项已完成**
-> （Zed 大纲层级、诊断降噪、内置符号表、链接资料索引、外部函数过滤、采集通道、链接资料视图）。  
+> （Zed 大纲层级、诊断降噪、内置符号表、语法缺口审计、链接资料索引、外部函数过滤、
+> 采集通道、链接资料视图）。  
 > **下一步候选**：
-> ① P7-C-2（grammar ERROR 审计 + `#{ }#` 块注释，需 `tree-sitter generate`）；
-> ② `field-not-in-form` 的 1725 条待查。
+> ① `field-not-in-form` 的 1725 条待查；
+> ② `make diagnostics-check` 的基线维护。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -15,12 +16,12 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **61 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+未勾选共 **60 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **3** | P7-C-1 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：`.link` 提示 1 · P7-D 分片 1 · P7-C-2 grammar 2 |
+| **P7 路线图** | **2** | P7-C-1 ✅ · P7-C-2 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：`.link` 提示 1 · P7-D 分片 1 |
 | P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
 | P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
@@ -722,9 +723,12 @@ Block P2 已完成：
       设计见 [PLAN-P7.md](PLAN-P7.md) §4.4。
 - [x] 确认 `cl_null` / `cl_user` / `cl_gr_numfmt` **不是内置函数**（是 `lib/4gl/cl_null.4gl:16`
       一类用户函数），归 P7-D；单测里有专门断言防止误加。
-- [ ] **grammar 缺口清单**（`tree-sitter-bdl`，即 P7-C-2）：`cmd/grammar-audit` 收集 ERROR
-      上下文按频次排序；已知 `STARTLOG`（2 个文件）`fgl_report_configure`。低频项只留档不排期。
-      注：`builtin-audit` 复核了"语法能解析但语义未知"这一半，`FGL_*` 缺口已降为 **0**。
+- [x] **grammar 缺口清单**（`tree-sitter-bdl`，即 P7-C-2）：`make grammar-audit`
+      （`internal/gramaudit` + `cmd/grammar-audit`）收集最内层 ERROR 上下文按频次排序。
+      **实测 15108 文件里只有 18 个解析失败（266 节点），逐个人工确认全是语料自身问题**
+      （拼写 / 截断 / 多程序拼接 / `.per` 文档附录全角标点），唯一真实缺口是
+      SQL `CASE … END CASE` 表达式（1 个文件），三种消歧规则都被语料否掉 → **不改，留档**。
+      基线由 `TestCorpusGrammarBaseline` 冻结（白名单 + 允许变少）。详见 PLAN-P7 §10.10。
 
 ### P7-D 程序链接资料索引（大项）
 
