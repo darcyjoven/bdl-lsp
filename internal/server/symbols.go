@@ -88,6 +88,17 @@ func symbolDetail(sym *index.Symbol) string {
 			return sym.Signature
 		}
 		return string(sym.Kind)
+	case index.KindPrepare:
+		// 大纲里只给 SQL 来源的摘要，完整 SQL 在悬停里看。
+		if sym.TypeText != "" {
+			return "PREPARE FROM " + truncate(sym.TypeText, 60)
+		}
+		return "PREPARE"
+	case index.KindCursor:
+		if sym.RefName != "" {
+			return "CURSOR FOR " + sym.RefName
+		}
+		return "CURSOR"
 	default:
 		if sym.TypeText != "" {
 			return truncate(sym.TypeText, 80)
@@ -132,6 +143,10 @@ func toSymbolKind(kind index.Kind) protocol.SymbolKind {
 		return protocol.SymbolKindProperty
 	case index.KindScreenRec:
 		return protocol.SymbolKindStruct
+	case index.KindPrepare, index.KindCursor:
+		// LSP 没有"游标/prepared statement"这种 SymbolKind，用 Object 表示
+		// "这是个有身份的 SQL 句柄"，比混进 Variable 更容易在大纲里区分。
+		return protocol.SymbolKindObject
 	default:
 		return protocol.SymbolKindVariable
 	}
@@ -340,6 +355,29 @@ func hoverText(sym *index.Symbol) string {
 	case index.KindScreenRec:
 		sb.WriteString("```per\nSCREEN RECORD ")
 		sb.WriteString(sym.Name)
+		sb.WriteString("\n```")
+	case index.KindPrepare:
+		// prepare statement：展示它 prepare 的是哪条 SQL。
+		// 动态 SQL 常由多行字符串拼接，保留换行（TypeTextRaw）。
+		sb.WriteString("```bdl\nPREPARE ")
+		sb.WriteString(sym.Name)
+		decl := sym.TypeTextRaw
+		if decl == "" {
+			decl = sym.TypeText
+		}
+		if decl != "" {
+			sb.WriteString(" FROM ")
+			sb.WriteString(decl)
+		}
+		sb.WriteString("\n```")
+	case index.KindCursor:
+		sb.WriteString("```bdl\nDECLARE ")
+		sb.WriteString(sym.Name)
+		sb.WriteString(" CURSOR")
+		if sym.RefName != "" {
+			sb.WriteString(" FOR ")
+			sb.WriteString(sym.RefName)
+		}
 		sb.WriteString("\n```")
 	default:
 		// 优先用保留换行的形态：多行 RECORD 挤成一行后完全没法读

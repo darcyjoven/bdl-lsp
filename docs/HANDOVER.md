@@ -1,31 +1,49 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第六轮：**Zed 大纲层级彻底修好 + 游标问题已定位**）  
+> 更新时间：2026-10-21（第七轮：**游标 / prepare statement 支持完成**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
+>
+> 版本：`bdl-lsp` **0.1.1** / `vscode-extension` 0.1.0 / `zed-extension` 0.1.0。
+> 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
+> 三个仓库各自独立记版本，不要求一致。
 
 ---
 
-## 0. 下一步就做这个（P7-B-5 游标 / prepare statement）
+## 0. 下一步就做这个（P7-B 剩余：诊断降噪）
 
-> **下一轮就做这个**：游标 / prepare statement 的符号标记、悬停与跳转。
-> 待办见 [TODO.md](TODO.md) §B-5。**grammar 节点已齐全，不需要改 grammar**
-> （只有 `fetch` 的 `FROM` 疑点，已证伪——真实语料 0 处 `FETCH ... FROM`）。
+> **下一轮就做这个**：诊断码集中注册 + 调用点误报修正。
+> 待办见 [TODO.md](TODO.md) §B-4。
 >
-> 现状问题：
+> 1. `internal/diag/registry.go`：诊断码集中注册，级别统一解析。
+> 2. 新增 `bdl.diagnostics.<code>` 配置，优先级 `新键 > 旧键 > 注册表默认`。
+> 3. 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn。
+> 4. **修调用点误报**：`IF fn() THEN` 的函数名被当变量检查
+>    （query 只跳过了 `(call name:)`，漏了 `(expression name:)`）。
+> 5. 新增 `function-not-found`。
+> 6. 语料复测：24 文件 `variable-source-unresolved` 从 1717 降到新基线
+>    （预期 < 400，剩余主要是 `cl_*` 跨文件函数）。
 >
-> ```4gl
-> PREPARE p_admin_wo_fill_sfa_p FROM l_sql     ; prepare statement：无标记、无跳转
-> DECLARE p_admin_wo_fill_sfa CURSOR FOR p_admin_wo_fill_sfa_p
->                                                 ; cursor：悬停显示 "function"（应显示 "cursor"）
-> EXECUTE p_admin_wo_fill_sfa_p                 ; 缺悬停与跳转
-> ```
->
-> 关键点：grammar 里 `_cid` 规则是 `field("cursor", $.identifier)`，
-> 被 `prepare`/`execute`/`declare` **共用**——字段名叫 `cursor`，
-> 但在 `prepare`/`execute` 里实际是 **prepare statement**。
-> 实现时按**父节点类型**区分，不要按字段名。
-> `declare` 有**两个** `cursor:` 字段，靠**出现顺序**区分
-> （①游标自身 ②`FOR` 之后的来源）。
+> 详细见 [PLAN-P7.md](PLAN-P7.md) §3 与 §10.3 的 B-4。
+
+### ✅ 刚完成：P7-B-5 游标 / prepare statement（第七轮）
+
+| 项 | 结果 |
+|---|---|
+| `PREPARE p FROM sql` | 新增 `index.KindPrepare` 符号，SQL 来源进 `TypeText`/`TypeTextRaw` |
+| `DECLARE c CURSOR FOR p` | 新增 `index.KindCursor` 符号；`Symbol.RefName` 记来源 prepare |
+| `EXECUTE`/`OPEN`/`FETCH`/`CLOSE`/`FOREACH` | 悬停与跳转都已生效 |
+| 跳转为何不用写代码 | 名字是普通标识符，B-2 抽出的 `scopedSymbolsAt` **按名字+作用域**解析，进表即可用 |
+| 大纲/补全/语义高亮 | 补了 `symbolDetail` / `toSymbolKind` / `itemForSymbol` / `classifySymbol` |
+| 收集方案 | **源码找关键字 → `DescendantForByteRange` 定位节点**（前两个方案太慢被否，见下） |
+| 正确性 | 独立真相源（全树递归扫描）在**全部 7699 个真实 .4gl** 上比对，符号集合完全一致 |
+| 性能 | 自适应子节点遍历：大文件 **−26%/−31%**，中小文件 +9%/+18%（绝对量几十µs） |
+| 测试 | index +11、server +6；`go test -race ./internal/...` 20 包全绿 |
+
+**本轮最值钱的一条经验（性能）**：`Build` 的成本**几乎全由 cgo 调用次数决定**
+（约 230ns/次），tree-sitter 的 C 侧步进很便宜。所以 `NamedChild(i)` 的 O(i)
+不足为虑，而"看起来更优"的 `NamedChildren(cursor)`（每孩子 3 次 cgo）**实测慢
+2~2.7 倍**——我一度改错了方向。最优解是**按孩子数量选**（交叉点约 55，
+阈值取 64）。完整数据见 [PLAN-P7.md](PLAN-P7.md) §10.3 的 B-5。
 
 ### 已完成：P7-A + P7-B 第一批（2026-10-21）
 
@@ -116,16 +134,6 @@
 
 
 
-### 下一步：P7-B（诊断级别统一 + 调用点误报修正）
-
-1. `internal/diag/registry.go`：诊断码集中注册，级别统一解析。
-2. 新增 `bdl.diagnostics.<code>` 配置，优先级 `新键 > 旧键 > 注册表默认`。
-3. **修调用点误报**：`IF fn() THEN` 的函数名被当变量检查
-   （query 只跳过了 `(call name:)`，漏了 `(expression name:)`）。
-4. 语料复测：24 文件 `variable-source-unresolved` 从 1717 降到新基线。
-
-详细见 [PLAN-P7.md](PLAN-P7.md) §3。
-
 ### 0.1 P7 的六项决策已全部定稿（2026-10-21）
 
 | # | 决定 |
@@ -171,19 +179,22 @@
 
 ## 1. 一句话状态
 
-**P1–P6 全部功能已完成并推送**；P7 已立项、六项决策已定稿、链接数据已验证，
-**待执行**（缺陷修复 → 诊断框架 → 内置符号 → 链接索引 → 链接 UI）。
+**P1–P6 全部功能已完成并推送**；P7 已立项、六项决策已定稿、链接数据已验证。
+P7-A（缺陷修复）与 P7-B 前五批全部完成：**B-1/2 悬停作用域、B-3 Zed 大纲层级、
+B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§0），
+之后是 P7-C 内置符号 → P7-D 链接索引 → P7-E 链接 UI。
 剩下还有需要真实环境才能验的项（Windows / Zed GUI / macOS）。
-
-
 
 ## 2. 三个仓库（都已推送，工作树干净）
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `882ef00` | Go LSP 服务器 + CLI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a` | VSCode 插件 |
-| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `8fa1bff` | Zed 插件 |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.1`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
+| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
+
+> `bdl-lsp` 的 HEAD 不写死——它每轮都变，写死必然过期（这份文档里已经
+> 因此过期过两次）。用 `git -C /code/workspace/bdl-lsp log -1 --oneline` 现查。
 
 依赖的两个 grammar 仓库（本地 `replace`，未打 tag）：
 
@@ -228,7 +239,7 @@ workspace/didChangeConfiguration
 
 | 项目 | 结果 |
 |---|---|
-| `go test -race ./...` | 20 个包全绿（14 个含测试），**285 个测试函数** |
+| `go test -race ./internal/...` | 20 个包全绿（14 个含测试），**303 个测试函数**（server 129 / index 36） |
 | VSCode e2e | **33/33** |
 | `make lint` | 通过（含 `keywords-check` 防清单漂移） |
 | 语料规模 | `.4gl` 7699 / `.per` 7409（`/code/workspace/tiptop-gp`） |
@@ -238,6 +249,8 @@ workspace/didChangeConfiguration
 | 字段校验（`cmd/field-audit`） | 1725 条发现，模块一致率 97.2% |
 | record 成员（`cmd/record-audit`） | 可校验 271760 处，报出 **20**（0.007%） |
 | 性能（7138 行 / 329 KB） | didOpen 133ms，didChange 6.0ms |
+| 索引构建 `index.Build`（P7-B-5 后实测，600 行级真实文件） | `ammr100.4gl` 471µs、`aapi204.4gl` 398µs（比 P7-B-5 之前**快 26~31%**）；`apmi006.4gl` 490µs、`apmt721_icd.4gl` 31µs（比之前 +9~18%，为游标支持付的增量） |
+| 游标/prepare 符号规模（7699 个真实 .4gl） | prepare **37603** / cursor **36103**（其中 22787 带来源 prepare） |
 | **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条，其中 `variable-source-unresolved` **1717（99.1%）**；`field-not-in-form` 15；`file-too-large` 1 |
 | ↑ 噪声归因 | `cl_null` 311（`lib/` 用户函数）、`SQLCA` 252、`ARG_VAL` 248、`INT_FLAG` 183、`cl_gr_numfmt` 150、`STATUS` 98 —— 内置符号与链接缺失各占一半 |
 
@@ -348,19 +361,46 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     断言要直接检验**用户要求的行为**（变量的父级链上能找到所属函数），
     而不是"我的实现长什么样"。
 
+20. **`index.Build` 的成本几乎全是 cgo 调用**（P7-B-5 实测，最重要的一条性能经验）：
+    每次 Go↔C 调用约 **230ns**，而 tree-sitter 的 C 侧步进几乎免费。
+    两个直接推论：
+      - `NamedChild(i)` 在 tree-sitter 里是 O(i)（`ts_node__child` 每次
+        从头迭代子节点），**但逐个索引取 n 个孩子的 O(n²) 并不构成问题**
+        —— 全树遍历 1918 个节点时，耗时（880µs）正好等于 cgo 调用数
+        （~3836）× 230ns；
+      - 反过来，"看起来更优"的 `NamedChildren(cursor)` 每个孩子要 **3 次**
+        cgo 调用（`Node` + `IsNamed` + `GotoNextSibling`），实测**慢 2~2.7 倍**。
+    我按"消除 O(n²)"的思路把遍历全改成 `NamedChildren`，方向是**错的**。
+    正解是**按孩子数量选**（实测交叉点约 55；顶层 root 常有上百个孩子，
+    因为模块级 DEFINE 多）。实现见 `builder.forEachChild`，阈值 64。
+    **教训：先量再做**——"复杂度更优"不等于"更快"，
+    在这个 binding 上 cgo 调用次数才是唯一的一阶项。
+
+21. **找"某类节点"不要遍历整棵树**（P7-B-5）：prepare/declare 是可执行语句，
+    能嵌在任意深度，于是先试了两种全树方案——Go 侧递归（Build 翻倍）和
+    tree-sitter query（实测 **228ns/节点**，10678 节点的文件要 2.43ms）。
+    最终用「**源码字节里找关键字 → `DescendantForByteRange` 定位**」，
+    成本只与关键字出现次数成正比（一次 Build 只多几十µs）。
+    附带好处：不必维护"哪些节点可能含语句"的白名单——那种白名单会把
+    `PREPARE` 写在 `MENU`/`DIALOG` 里的情况漏掉，且**语料里恰好没有这种
+    写法，测试也发现不了**。
+    另外 `Node.Kind()` 每次 `C.GoString` 分配字符串，
+    类型比较要用 `KindId()`（uint16，零分配）。
+
 ## 8. 下一步候选（按建议顺序）
 
 ### ★ P7（已立项，下一轮直接做）
 
 见本文 §0 与 [PLAN-P7.md](PLAN-P7.md)。顺序：
 
-| 阶段 | 内容 | 前置 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| P7-A | Zed 大纲层级 + VSCode GLOBALS 路径（**下一轮**） | 无 |
-| P7-B | 诊断级别统一 + 调用点误报修正 | 无 |
-| P7-C | 内置符号表 + grammar 缺口清单 | P7-B |
-| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | P7-B、P7-C、真实 GAL_FILE 数据 |
-| P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | P7-D |
+| P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
+| P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ **游标/prepare（B-5）** | ✅ 完成 |
+| P7-B（剩余） | 诊断级别统一 + 调用点误报修正 | 🔜 **下一轮**（§0） |
+| P7-C | 内置符号表 + grammar 缺口清单 | 待 P7-B |
+| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 待 P7-B、P7-C |
+| P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）
 

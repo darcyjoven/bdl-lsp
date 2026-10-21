@@ -8,6 +8,7 @@ package index
 
 import (
 	"strings"
+	"sync"
 
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -28,6 +29,15 @@ const (
 	KindParameter Kind = "parameter"
 	KindFormItem  Kind = "form_item"
 	KindScreenRec Kind = "screen_record"
+	// KindPrepare 是 PREPARE p FROM <sql> 声明的 **prepare statement**。
+	//
+	// 注意：grammar 里 prepare/execute 用的字段名也叫 `cursor`
+	// （见 tree-sitter-bdl 的 sql.js `_cid`），但语义上是 prepared statement，
+	// 与 DECLARE CURSOR 的游标是两个命名空间的东西。实现必须按**父节点类型**
+	// 区分，不能按字段名区分。
+	KindPrepare Kind = "prepare"
+	// KindCursor 是 DECLARE c CURSOR FOR ... 声明的游标。
+	KindCursor Kind = "cursor"
 )
 
 // Scope 是符号的可见范围。
@@ -96,6 +106,20 @@ type Symbol struct {
 	TypeTextRaw string
 	// Signature 是函数/报表的签名文本，仅当 Kind 为 function/report 时填充。
 	Signature string
+	// RefName 是这个符号声明时**引用的另一个符号名**，供展示与解析使用。
+	//
+	// 目前只有游标用到：`DECLARE c CURSOR FOR p_q` 的 RefName 是 p_q
+	// （来源是 prepare statement，名字与游标处在不同命名空间）。
+	// 来源是静态 SQL（FOR SELECT ...）或 SQL 字符串（FROM l_sql）时为空。
+	//
+	// 之所以要在这里记下来：DECLARE 的两个 `cursor:` 字段在语法树里
+	// **字段名完全相同**，靠出现顺序区分（第一个是游标名，第二个才是来源）。
+	// 顺序信息在这里拿最自然，散到服务器层再解析一遍语法树容易写错。
+	//
+	// 注意：光标落在 `FOR p_q` 上时不需要它——那时 identAt 拿到的就是 p_q
+	// 本身，按普通作用域查找就能命中 prepare 符号。RefName 是用来说明
+	// "这个游标绑的是哪条 prepare"。
+	RefName string
 	// Children 是嵌套符号（记录字段、函数参数）。
 	Children []*Symbol
 }
@@ -165,15 +189,211 @@ func Build(lang parser.Lang, tree *ts.Tree, src []byte, version int32) *FileInde
 	b := &builder{src: src, fi: fi, cursor: tree.Walk()}
 	defer b.cursor.Close()
 
-	count := root.NamedChildCount()
+	b.forEachChild(root, func(child *ts.Node) {
+		b.visitTop(child, "")
+	})
+	// P7-B-5：PREPARE / DECLARE CURSOR。放在 visitTop 之后统一收集，
+	// 因为它们是可执行语句、能嵌在 IF/FOREACH 等任意深度（见 collectSQLStatements）。
+	b.collectSQLStatements(root, tree.Language())
+	return fi
+}
+
+// namedChildBulkThreshold 是"改用批量取子节点"的子节点数阈值。
+//
+// 两种取法各有代价，交叉点由实测决定（40 个真实 .4gl，见下表）：
+//
+//   - 逐个索引 NamedChild(i)：1 次 cgo 调用/孩子，但 tree-sitter 内部
+//     要**从头迭代到第 i 个**（node.c 的 ts_node__child），所以取 n 个
+//     孩子的 C 侧工作量是 O(n²)；
+//
+//   - NamedChildren(cursor)：一次成型，但每个孩子 3 次 cgo 调用
+//     （Node + IsNamed + GotoNextSibling）。
+//
+//     cgo 调用约 230ns/次，是绝对大头；C 侧步进几乎免费。因此小 n 时
+//     索引胜（cgo 少），大 n 时平方项压过 cgo 差，批量胜：
+//
+//     孩子数   逐个索引    批量      胜者
+//     14      3.1µs     6.8µs     索引
+//     54     19.4µs    25.1µs     索引
+//     64     31.6µs    29.1µs     批量
+//     163    172.6µs    72.5µs     批量（2.4 倍）
+//     204    306.8µs    87.6µs     批量（3.5 倍）
+//
+// 顶层 root 在实码里常有上百个孩子（大量模块级 DEFINE + 几十个函数），
+// 所以这一档最值钱。取 64：交叉点约在 55，64 已明确越过噪声。
+const namedChildBulkThreshold = 64
+
+// forEachChild 遍历 node 的具名子节点，按孩子数量自动选最优取法。
+//
+// fn 里可以安全调用需要 b.cursor 的辅助函数（如 fieldChildren）：
+// 批量分支先把孩子取进切片，此后不再依赖游标状态。
+func (b *builder) forEachChild(node *ts.Node, fn func(child *ts.Node)) {
+	count := node.NamedChildCount()
+	if count >= namedChildBulkThreshold {
+		kids := node.NamedChildren(b.cursor)
+		for i := range kids {
+			fn(&kids[i])
+		}
+		return
+	}
 	for i := uint(0); i < count; i++ {
-		child := root.NamedChild(i)
-		if child == nil {
+		if child := node.NamedChild(i); child != nil {
+			fn(child)
+		}
+	}
+}
+
+// sqlStmtKinds 把种类名预编译成**符号 id**。
+//
+// 为什么不直接比字符串：Node.Kind() 每次调用都走 C.GoString 分配一个
+// Go 字符串。定位语句时每个候选点都要问一次类型，累计开销可观。
+// Node.KindId() 返回 uint16，零分配。
+type sqlStmtKinds struct {
+	prepare uint16
+	declare uint16
+}
+
+// sqlStmtKindsOnce 缓存预编译结果。
+//
+// 符号 id 由编译期固定的 grammar 决定，同一个二进制里所有 Pool 的 BDL
+// Language 包的都是同一份 C grammar，所以进程内缓存一份是安全的。
+var (
+	sqlStmtKindsOnce  sync.Once
+	sqlStmtKindsCache *sqlStmtKinds
+)
+
+// sqlStmtKindsFor 预编译并缓存符号 id。
+func sqlStmtKindsFor(lang *ts.Language) *sqlStmtKinds {
+	sqlStmtKindsOnce.Do(func() {
+		sqlStmtKindsCache = &sqlStmtKinds{
+			prepare: lang.IdForNodeKind("prepare", true),
+			declare: lang.IdForNodeKind("declare", true),
+		}
+	})
+	return sqlStmtKindsCache
+}
+
+// sqlKeywordLen 是 PREPARE / DECLARE 的字面长度。
+const sqlKeywordLen = 7
+
+// collectSQLStatements 收集整个文件里的 PREPARE / DECLARE CURSOR 语句。
+//
+// 做法：**先在源码字节里找出关键字出现的位置，再让 tree-sitter 定位到
+// 对应节点**（root.DescendantForByteRange 只沿树下降一次，O(深度)）。
+//
+// 为什么不是"遍历语法树找这两类节点"（前后试过两种，都因为太慢放弃）：
+//   - 逐节点递归整棵树：NamedChild(i) 在 tree-sitter 里是 O(i)
+//     （ts_node__child 每次都从头迭代子节点），且每条语句都要问一次类型，
+//     光这一项就让 Build 翻倍；
+//   - tree-sitter query：由 C 侧扫描，实测约 230ns/节点，10678 节点的
+//     文件要 2.4ms；34KB 的真实文件上 Build 从 422µs 涨到 1212µs（2.9 倍）。
+//
+// 现在的成本只和**关键字出现次数**成正比。附带好处：不需要维护"哪些节点
+// 可能含语句"的白名单，grammar 加新的语句块也不会漏（那种白名单会把
+// PREPARE 写在 MENU/DIALOG 里的情况漏掉）。
+//
+// 误命中由类型检查兜住：字符串/注释里的 "prepare" 会被定位到 string/comment
+// 节点，走父链也到不了 prepare 语句，直接丢弃。
+func (b *builder) collectSQLStatements(root *ts.Node, lang *ts.Language) {
+	// PER grammar 里没有 prepare/declare 节点，不用走。
+	if b.fi.Lang != parser.LangBDL {
+		return
+	}
+	kinds := sqlStmtKindsFor(lang)
+
+	// 容器用于确定语句归属（作用域）。
+	var containers []*Symbol
+	for _, s := range b.fi.TopLevel {
+		switch s.Kind {
+		case KindMain, KindFunction, KindReport:
+			containers = append(containers, s)
+		}
+	}
+
+	// 同一条语句可能被命中多次（例如动态 SQL 字符串里也写着 "PREPARE"），
+	// 用节点 id 去重，避免收出重复符号。
+	seen := make(map[uintptr]bool)
+	forEachSQLKeyword(b.src, func(off int) {
+		stmt := sqlStmtNode(root.DescendantForByteRange(uint(off), uint(off+sqlKeywordLen)), kinds)
+		if stmt == nil || seen[stmt.Id()] {
+			return
+		}
+		seen[stmt.Id()] = true
+		switch stmt.KindId() {
+		case kinds.prepare:
+			b.addSQLSymbol(stmt, KindPrepare, containers)
+		case kinds.declare:
+			b.addSQLSymbol(stmt, KindCursor, containers)
+		}
+	})
+}
+
+// sqlStmtNode 从关键字处定位到的节点回溯出 prepare/declare 语句节点。
+//
+// 关键字本身是匿名 token，它就是语句节点的直接子节点，所以通常只要看
+// 父节点；但关键字也可能落在语句内部的字符串/表达式里（动态 SQL 文本），
+// 那种情况下走父链多上几层就能回到语句节点。上限 4 层：真正的关键字
+// 1~2 层必中，而字符串/注释里的误命中不必一路爬到根。
+func sqlStmtNode(n *ts.Node, kinds *sqlStmtKinds) *ts.Node {
+	for depth, cur := 0, n; cur != nil && depth < 4; depth, cur = depth+1, cur.Parent() {
+		switch cur.KindId() {
+		case kinds.prepare, kinds.declare:
+			return cur
+		}
+	}
+	return nil
+}
+
+// forEachSQLKeyword 在源码里找出所有 PREPARE / DECLARE 关键字（不分大小写），
+// 按出现顺序回调其起始字节。
+//
+// 只做字节扫描、不解析：成本约 1 字节一次比较，比语法树遍历低一个量级。
+// 前一个字节是标识符字符时跳过——否则 r100_prepare1 这类名字里的
+// "prepare" 会带来大量无谓的节点定位。
+func forEachSQLKeyword(src []byte, fn func(off int)) {
+	for i := 0; i+sqlKeywordLen <= len(src); i++ {
+		// 先用首字母快速筛掉绝大多数位置（PREPARE / DECLARE 同在 p/d 开头）。
+		c := src[i] | 0x20
+		if c != 'p' && c != 'd' {
 			continue
 		}
-		b.visitTop(child, "")
+		if i > 0 && isIdentByte(src[i-1]) {
+			continue
+		}
+		word := src[i : i+sqlKeywordLen]
+		if matchFoldASCII(word, "prepare") || matchFoldASCII(word, "declare") {
+			fn(i)
+		}
 	}
-	return fi
+}
+
+// matchFoldASCII 判断字节切片是否与 ASCII 字面量大小写不敏感相等。
+//
+// 只对 ASCII 字母做折叠：|0x20 只动 bit 5，能撞上 'p' 的字节只有
+// 'P'(0x50) 与 'p'(0x70)，不会把标点误判成字母。非 ASCII 字节
+// (>0x7F) 折叠后仍 >0x7F，也不会命中。
+func matchFoldASCII(b []byte, s string) bool {
+	if len(b) != len(s) {
+		return false
+	}
+	for i := 0; i < len(b); i++ {
+		if b[i]|0x20 != s[i]|0x20 {
+			return false
+		}
+	}
+	return true
+}
+
+// isIdentByte 判断字节是否可出现在 Genero 标识符里（ASCII 部分）。
+//
+// 只用于跳过标识符内部的关键字；非 ASCII（中文变量名）不会被误判成
+// 词首，但那只会多一次节点定位，结果仍然正确。
+func isIdentByte(c byte) bool {
+	return c == '_' ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9') ||
+		c >= 0x80
 }
 
 type builder struct {
@@ -255,12 +475,7 @@ func (b *builder) visitGlobals(node *ts.Node) {
 
 	// 块定义形式：遍历 constant/type/define 子节点
 	b.fi.HasGlobalsBlock = true
-	count := node.NamedChildCount()
-	for i := uint(0); i < count; i++ {
-		child := node.NamedChild(i)
-		if child == nil {
-			continue
-		}
+	b.forEachChild(node, func(child *ts.Node) {
 		switch child.Kind() {
 		case "define":
 			b.addDefines(child, ScopeGlobals, "")
@@ -269,7 +484,7 @@ func (b *builder) visitGlobals(node *ts.Node) {
 		case "type":
 			b.addTypeDecl(child, ScopeGlobals, "")
 		}
-	}
+	})
 }
 
 // unquoteString 去掉字符串字面量两侧的引号。
@@ -335,11 +550,9 @@ func (b *builder) addContainer(node *ts.Node, name string, kind Kind, parent, si
 	}
 
 	// 函数体内声明
-	count := node.NamedChildCount()
-	for i := uint(0); i < count; i++ {
-		child := node.NamedChild(i)
-		if child == nil || child.Id() == node.Id() {
-			continue
+	b.forEachChild(node, func(child *ts.Node) {
+		if child.Id() == node.Id() {
+			return
 		}
 		switch child.Kind() {
 		case "define":
@@ -353,10 +566,120 @@ func (b *builder) addContainer(node *ts.Node, name string, kind Kind, parent, si
 				sym.Children = append(sym.Children, s)
 			}
 		}
-	}
+	})
+	// PREPARE / DECLARE CURSOR 不在这里收：它们是可执行语句、能嵌在
+	// IF/FOREACH 等任意深度，由 Build 末尾的 collectSQLStatements 统一扫。
 
 	b.fi.Symbols = append(b.fi.Symbols, sym)
 	b.fi.TopLevel = append(b.fi.TopLevel, sym)
+}
+
+// addSQLSymbol 为一个 prepare/declare 节点建符号并挂到所属容器。
+//
+// containers 是全文件的 main/function/report 容器列表（见
+// collectSQLStatements）；语句区间落在谁的声明区间内就归谁。
+func (b *builder) addSQLSymbol(node *ts.Node, kind Kind, containers []*Symbol) {
+	var sym *Symbol
+	if kind == KindPrepare {
+		sym = b.makePrepare(node)
+	} else {
+		sym = b.makeCursor(node)
+	}
+	if sym == nil {
+		return
+	}
+	start, end := node.StartByte(), node.EndByte()
+	for _, c := range containers {
+		if c.DeclStart <= start && end <= c.DeclEnd {
+			sym.Scope = ScopeFunc
+			sym.Parent = c.Name
+			sym.Container = c.Name
+			c.Children = append(c.Children, sym)
+			break
+		}
+	}
+	b.fi.Symbols = append(b.fi.Symbols, sym)
+}
+
+// makePrepare 为 `PREPARE p FROM <sql>` 建 prepare statement 符号。
+//
+// 字段说明（tree-sitter-bdl 的 rule/sql.js）：
+//
+//	prepare: seq(kw("PREPARE"), $._cid, kw("FROM"), $._sqlstring)
+//	_cid     = field("cursor", $.identifier)   ← 这里的 `cursor` 字段其实是 prepare 名
+//	_sqlstring = field("sql", $.expression)
+//
+// 字段名叫 cursor 是 grammar 复用 `_cid` 造成的，语义上不是游标。所以这里
+// **不按字段名判断种类**，而是由父节点类型（prepare）决定。
+func (b *builder) makePrepare(node *ts.Node) *Symbol {
+	nameNode := node.ChildByFieldName("cursor")
+	if nameNode == nil {
+		return nil
+	}
+	name := b.text(nameNode)
+	if name == "" {
+		return nil
+	}
+	sym := &Symbol{
+		Name:      name,
+		Lower:     strings.ToLower(name),
+		Kind:      KindPrepare,
+		Scope:     ScopeGlobal,
+		StartByte: nameNode.StartByte(),
+		EndByte:   nameNode.EndByte(),
+		DeclStart: node.StartByte(),
+		DeclEnd:   node.EndByte(),
+	}
+	// SQL 来源作为类型文本：悬停时能直接看到 PREPARE 的是哪条 SQL。
+	// 保留换行（动态 SQL 常由多行字符串拼接而成）。
+	if sqlNode := node.ChildByFieldName("sql"); sqlNode != nil {
+		sym.TypeText = normalizeSpace(b.text(sqlNode))
+		sym.TypeTextRaw = normalizeIndent(b.text(sqlNode))
+	}
+	return sym
+}
+
+// makeCursor 为 `DECLARE c CURSOR FOR ...` 建游标符号。
+//
+// 字段说明（tree-sitter-bdl 的 rule/sql.js）：
+//
+//	declare: seq(kw("DECLARE"), $._cid, optional(kw("SCROLL")), kw("CURSOR"), ...
+//	             choice(seq(kw("FOR"), choice($._static_sql, $._cid)),
+//	                    seq(kw("FOR"), "(", ... , ")"),
+//	                    seq(kw("FROM"), choice($._static_sql, $._sqlstring))))
+//
+// **`cursor:` 字段会出现两次**：
+//  1. 第一个 = 游标名（DECLARE 后面那个）；
+//  2. 第二个 = 来源。只有当来源是标识符（prepare statement 名）时才有，
+//     来源是静态 SQL（FOR SELECT ...）或 SQL 字符串（FROM l_sql）时没有。
+//
+// 两者字段名完全一样，只能靠**出现顺序**区分，这就是必须在这里处理的原因：
+// 顺序信息在语法树上拿最自然，散到服务器层再解析一遍容易写错。
+func (b *builder) makeCursor(node *ts.Node) *Symbol {
+	names := b.fieldChildren(node, "cursor")
+	if len(names) == 0 {
+		return nil
+	}
+	nameNode := names[0]
+	name := b.text(nameNode)
+	if name == "" {
+		return nil
+	}
+	sym := &Symbol{
+		Name:      name,
+		Lower:     strings.ToLower(name),
+		Kind:      KindCursor,
+		Scope:     ScopeGlobal,
+		StartByte: nameNode.StartByte(),
+		EndByte:   nameNode.EndByte(),
+		DeclStart: node.StartByte(),
+		DeclEnd:   node.EndByte(),
+	}
+	// 第二个 cursor 字段是来源 prepare 名（静态 SQL / 字符串来源时不存在）。
+	if len(names) >= 2 {
+		sym.RefName = b.text(names[1])
+	}
+	return sym
 }
 
 // addDefines 为模块级 DEFINE 建符号。

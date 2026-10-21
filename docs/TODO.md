@@ -105,7 +105,7 @@
       ① 同一条 DEFINE 的多个变量在大纲里平级；
       ② **函数内变量归属所属函数、可折叠**。
 
-### B-5 游标 / prepare statement 支持（🔜 下一轮）
+### B-5 游标 / prepare statement 支持（✅ 已完成，第七轮）
 
 > 用户 2026-10-21 提出的第三组问题。示例：
 >
@@ -133,12 +133,29 @@
   `declare` 的两个 `cursor:` 字段靠**出现顺序**区分：第一个是游标自身，
   第二个是 `FOR` 之后的来源。
 
-- [ ] `PREPARE <name> FROM <sql>` → 声明一个 **prepare statement** 符号。
-      现状：没有标记、没有跳转。
-- [ ] `DECLARE <name> CURSOR FOR <prepare>` → 声明一个 **cursor** 符号。
-      现状：悬停显示的是 "function"，应改成 "cursor"。
-- [ ] `EXECUTE` / `FETCH` 等语句使用 prepare statement / cursor 时，
-      增加**悬停与跳转**。
+- [x] `PREPARE <name> FROM <sql>` → 声明一个 **prepare statement** 符号
+      （新增 `index.KindPrepare`）。
+- [x] `DECLARE <name> CURSOR FOR <prepare>` → 声明一个 **cursor** 符号
+      （新增 `index.KindCursor`），并记下它绑的 prepare（`Symbol.RefName`）。
+- [x] `EXECUTE` / `FETCH` / `OPEN` / `CLOSE` / `FOREACH` 等语句使用
+      prepare statement / cursor 时，**悬停与跳转**都已生效。
+
+      > 跳转不需要额外代码：这些语句里的名字是普通标识符，
+      > 按作用域查找就能命中新符号。`DECLARE c CURSOR FOR p` 里的 `p`
+      > 同理——`identAt` 拿到的就是 `p`，命中 prepare 符号。
+
+- [x] **收集实现**（关键决定，走了三个方案才定）：
+
+      最终用「**源码里找关键字 → `DescendantForByteRange` 定位节点**」，
+      成本只与关键字出现次数成正比（实测每次 Build 只多几十微秒）。
+      前两个方案都因太慢被否，详见 [PLAN-P7.md](PLAN-P7.md) §10.4。
+
+      好处之一是**不需要"哪些节点可能含语句"的白名单**——那种白名单会把
+      `PREPARE` 写在 `MENU`/`DIALOG` 里的情况漏掉。
+
+      正确性由一份独立真相源守住：`sqlstmt_test.go` 用**全树递归扫描**
+      做参照，在**全部 7699 个真实 .4gl** 上比对，符号集合完全一致
+      （prepare=37525 / cursor=36007）。
 - [x] **不是 grammar 缺口**：曾怀疑 `FETCH NEXT FROM c` 报 ERROR 是缺 `FROM`，
       语料检索（7699 个 `.4gl`，17491 条 FETCH）显示 **0 处** `FETCH ... FROM`，
       真实写法都是 `FETCH [NEXT|ABSOLUTE|FIRST|LAST|...] <cursor>`。

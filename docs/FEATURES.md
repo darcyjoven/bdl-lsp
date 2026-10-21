@@ -111,7 +111,7 @@
 | 38 | 内置函数/变量符号表 | 插件侧符号表（非 grammar）；`cmd/builtin-audit` 语料驱动补齐 | P7-C |
 | 39 | 程序链接资料索引 | 三种采集（DB 直连/服务器脚本/命令）+ 函数可见性 + `function-not-found` | P7-D |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
-| 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE` 悬停与跳转 | P7-B-5 |
+| 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
 
 ---
 

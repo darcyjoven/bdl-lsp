@@ -564,6 +564,217 @@ END MAIN
 	t.Fatal("找不到 rec")
 }
 
+// ── P7-B-5：游标 / prepare statement ──────────────────────────────────
+//
+// grammar 里 prepare/execute 的游标名用字段 `cursor` 承接（rule/sql.js 的
+// `_cid`），语义上却是 prepared statement，与 DECLARE CURSOR 的游标是两个
+// 命名空间。这些测试盯的就是"别按字段名判断种类"。
+
+// TestPrepareStatementSymbol 验证 PREPARE 建出 prepare statement 符号。
+func TestPrepareStatementSymbol(t *testing.T) {
+	src := `MAIN
+    DEFINE l_sql STRING
+    PREPARE p_fill FROM l_sql
+END MAIN
+`
+	fi := buildIndex(t, src)
+	sym := findSymbol(fi, "p_fill")
+	if sym == nil {
+		t.Fatal("找不到 p_fill")
+	}
+	if sym.Kind != KindPrepare {
+		t.Errorf("p_fill 的 Kind = %q，期望 %q", sym.Kind, KindPrepare)
+	}
+	if sym.Container != "main" {
+		t.Errorf("p_fill 的 Container = %q，期望 main", sym.Container)
+	}
+	if !strings.Contains(strings.ToUpper(sym.TypeText), "L_SQL") {
+		t.Errorf("p_fill 的 TypeText 应记录 SQL 来源 l_sql，实际 %q", sym.TypeText)
+	}
+}
+
+// TestDeclareCursorSymbol 验证 DECLARE CURSOR 建出游标符号并记下来源。
+//
+// `DECLARE c CURSOR FOR p` 在语法树里有两个同名字段 `cursor`：
+// 第一个是游标名，第二个才是来源。靠出现顺序区分，测这里就是钉住这个约定。
+func TestDeclareCursorSymbol(t *testing.T) {
+	src := `MAIN
+    DEFINE l_sql STRING
+    PREPARE p_fill FROM l_sql
+    DECLARE c_fill CURSOR FOR p_fill
+END MAIN
+`
+	fi := buildIndex(t, src)
+	sym := findSymbol(fi, "c_fill")
+	if sym == nil {
+		t.Fatal("找不到 c_fill")
+	}
+	if sym.Kind != KindCursor {
+		t.Errorf("c_fill 的 Kind = %q，期望 %q", sym.Kind, KindCursor)
+	}
+	if !strings.EqualFold(sym.RefName, "p_fill") {
+		t.Errorf("c_fill 的 RefName = %q，期望 p_fill（DECLARE 的来源）", sym.RefName)
+	}
+}
+
+// TestDeclareCursorStaticSQLHasNoRef 验证静态 SQL 来源的游标没有 RefName。
+//
+// 三种来源形式都要覆盖：FOR SELECT ... / FOR (SELECT ...) / FROM <sql字符串>。
+// 它们都没有第二个 `cursor` 字段，RefName 必须为空，否则会把 RefName
+// 当成一个不存在的 prepare 名去跳转。
+func TestDeclareCursorStaticSQLHasNoRef(t *testing.T) {
+	src := `MAIN
+    DEFINE l_sql STRING
+    DECLARE c_select CURSOR FOR SELECT * FROM t1
+    DECLARE c_paren CURSOR FOR (SELECT * FROM t2)
+    DECLARE c_string CURSOR FROM l_sql
+END MAIN
+`
+	fi := buildIndex(t, src)
+	for _, name := range []string{"c_select", "c_paren", "c_string"} {
+		sym := findSymbol(fi, name)
+		if sym == nil {
+			t.Fatalf("找不到 %s", name)
+		}
+		if sym.Kind != KindCursor {
+			t.Errorf("%s 的 Kind = %q，期望 %q", name, sym.Kind, KindCursor)
+		}
+		if sym.RefName != "" {
+			t.Errorf("%s 的 RefName = %q，静态 SQL 来源应为空", name, sym.RefName)
+		}
+	}
+}
+
+// TestPrepareKeepsSQLSourceVerbatim 验证多行 SQL 来源保留换行与缩进。
+//
+// 动态 SQL 常由多行字符串拼接而成（语料实测 ammr100.4gl 是 4 行），
+// 压成一行后悬停里完全没法读。
+func TestPrepareKeepsSQLSourceVerbatim(t *testing.T) {
+	src := `MAIN
+    PREPARE p_big FROM "INSERT INTO t (",
+                        "  a, b",
+                        "  ) VALUES (?, ?)"
+END MAIN
+`
+	fi := buildIndex(t, src)
+	sym := findSymbol(fi, "p_big")
+	if sym == nil {
+		t.Fatal("找不到 p_big")
+	}
+	if strings.Contains(sym.TypeText, "\n") {
+		t.Errorf("TypeText 应已压平换行，实际 %q", sym.TypeText)
+	}
+	if !strings.Contains(sym.TypeTextRaw, "\n") {
+		t.Errorf("TypeTextRaw 应保留源码换行，实际 %q", sym.TypeTextRaw)
+	}
+}
+
+// TestPrepareCursorInsideBlock 验证嵌套在控制流里的 PREPARE/DECLARE 也能收集。
+//
+// 语料实测：ammr100.4gl 的 `PREPARE r100_prepare1` 在 `IF ... THEN` 块里。
+// 只扫容器的直接子节点会漏掉这一大半（prepare 是**可执行语句**，
+// 不是声明段语句）。
+func TestPrepareCursorInsideBlock(t *testing.T) {
+	src := `FUNCTION f1()
+    DEFINE l_sql STRING
+    IF l_sql IS NOT NULL THEN
+        PREPARE p_deep FROM l_sql
+        DECLARE c_deep CURSOR FOR p_deep
+    END IF
+    WHILE TRUE
+        PREPARE p_loop FROM l_sql
+        EXIT WHILE
+    END WHILE
+END FUNCTION
+`
+	fi := buildIndex(t, src)
+	for _, want := range []struct {
+		name string
+		kind Kind
+	}{
+		{"p_deep", KindPrepare},
+		{"c_deep", KindCursor},
+		{"p_loop", KindPrepare},
+	} {
+		sym := findSymbol(fi, want.name)
+		if sym == nil {
+			t.Errorf("找不到 %s（嵌套块里的声明漏收了）", want.name)
+			continue
+		}
+		if sym.Kind != want.kind {
+			t.Errorf("%s 的 Kind = %q，期望 %q", want.name, sym.Kind, want.kind)
+		}
+		if sym.Container != "f1" {
+			t.Errorf("%s 的 Container = %q，期望 f1", want.name, sym.Container)
+		}
+	}
+}
+
+// TestPrepareAndCursorShareNoNamespace 验证两个命名空间互不干扰。
+//
+// PREPARE p / DECLARE p CURSOR FOR p 里三处 p 各自独立：prepare 名与游标名
+// 是不同命名空间，同名不算冲突，也不该互相覆盖索引条目。
+func TestPrepareAndCursorShareNoNamespace(t *testing.T) {
+	src := `MAIN
+    DEFINE l_sql STRING
+    PREPARE p_x FROM l_sql
+    DECLARE p_x CURSOR FOR p_x
+END MAIN
+`
+	fi := buildIndex(t, src)
+	var nPrepare, nCursor int
+	for _, s := range fi.Symbols {
+		if !strings.EqualFold(s.Name, "p_x") {
+			continue
+		}
+		switch s.Kind {
+		case KindPrepare:
+			nPrepare++
+		case KindCursor:
+			nCursor++
+		}
+	}
+	if nPrepare != 1 {
+		t.Errorf("prepare 符号数 = %d，期望 1", nPrepare)
+	}
+	if nCursor != 1 {
+		t.Errorf("cursor 符号数 = %d，期望 1", nCursor)
+	}
+}
+
+// TestPrepareSymbolRangeCoversStatement 验证符号名区间落在语句内部。
+//
+// StartByte/EndByte 必须是**名字本身**（悬停高亮要精确），
+// DeclStart/DeclEnd 才是整条语句（用于折叠/大纲范围）。
+func TestPrepareSymbolRangeCoversStatement(t *testing.T) {
+	src := "MAIN\n    PREPARE p_fill FROM l_sql\nEND MAIN\n"
+	fi := buildIndex(t, src)
+	sym := findSymbol(fi, "p_fill")
+	if sym == nil {
+		t.Fatal("找不到 p_fill")
+	}
+	if sym.EndByte > uint(len(src)) || sym.DeclEnd > uint(len(src)) {
+		t.Fatalf("区间越界：name=[%d,%d) decl=[%d,%d) src len=%d",
+			sym.StartByte, sym.EndByte, sym.DeclStart, sym.DeclEnd, len(src))
+	}
+	if got := src[sym.StartByte:sym.EndByte]; got != "p_fill" {
+		t.Errorf("名字区间文本 = %q，期望 p_fill", got)
+	}
+	if decl := src[sym.DeclStart:sym.DeclEnd]; !strings.HasPrefix(strings.ToUpper(decl), "PREPARE") {
+		t.Errorf("声明区间应以 PREPARE 开头，实际 %q", decl)
+	}
+}
+
+// findSymbol 按大小写不敏感查第一个同名符号。
+func findSymbol(fi *FileIndex, name string) *Symbol {
+	for _, s := range fi.Symbols {
+		if strings.EqualFold(s.Name, name) {
+			return s
+		}
+	}
+	return nil
+}
+
 // childNames 返回符号子节点名列表。
 func childNames(s *Symbol) []string {
 	out := make([]string, 0, len(s.Children))

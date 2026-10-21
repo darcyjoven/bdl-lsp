@@ -235,6 +235,12 @@ func itemForSymbol(sym *index.Symbol) (Item, bool) {
 	case index.KindScreenRec:
 		return Item{Label: sym.Name, Kind: KindStruct, Detail: "SCREEN RECORD",
 			SortText: "3" + sym.Name}, true
+	case index.KindPrepare:
+		return Item{Label: sym.Name, Kind: KindVariable, Detail: "PREPARE（prepared statement）",
+			SortText: "1" + sym.Name}, true
+	case index.KindCursor:
+		return Item{Label: sym.Name, Kind: KindVariable, Detail: "游标",
+			SortText: "1" + sym.Name}, true
 	default:
 		return Item{Label: sym.Name, Kind: KindText, Detail: symbolDetail(sym),
 			SortText: "7" + sym.Name}, true

@@ -1295,6 +1295,117 @@ fixture `outline.4gl` 的头部注释也一并重写（原文写的是"函数内
 诊断码集中注册表、`bdl.diagnostics.<code>` 配置、拼错保护、
 修调用点误报、新增 `function-not-found`、语料复测降噪。见 TODO §B-4。
 
+#### B-5 游标 / prepare statement（✅ 2026-10-21，第七轮）
+
+需求见 TODO §B-5。落地内容：
+
+| 项 | 实现 |
+|---|---|
+| `PREPARE p FROM sql` | 新增 `index.KindPrepare`；`TypeText/TypeTextRaw` 存 SQL 来源 |
+| `DECLARE c CURSOR FOR p` | 新增 `index.KindCursor`；`Symbol.RefName` 记来源 prepare 名 |
+| 悬停 | `hoverText` 两个新分支：`PREPARE p FROM <sql>` / `DECLARE c CURSOR FOR p` |
+| 跳转 | **无需新代码**——那些名字是普通标识符，按作用域查找即命中 |
+| 大纲/补全/语义高亮 | 分别补 `symbolDetail`、`toSymbolKind`、`itemForSymbol`、`classifySymbol` |
+
+跳转"不用写代码"这点值得记下来：P7-B 抽出的 `scopedSymbolsAt` 是**按名字
+和作用域**解析的，prepare/cursor 一旦进了符号表就自动可用。**这验证了
+B-2 那次"悬停与跳转共用一套作用域规则"的重构是正确的投资**——
+新语法元素接入时不需要在两处各写一遍。
+
+##### 收集方案：走了三个方案才定（这一节是本文最重要的性能记录）
+
+难点：prepare/declare 是**可执行语句**，能嵌在 `IF`/`FOREACH`/`MENU` 等
+任意深度（实测 `ammr100.4gl` 的 `PREPARE` 就在 `IF` 里），所以要"找全"，
+但又不能付全树遍历的代价。
+
+| 方案 | 成本 | 结论 |
+|---|---|---|
+| ① 逐节点递归全树（Go 侧） | 整树遍历；`ammr100` 上让 Build 翻倍 | ❌ |
+| ② tree-sitter query `(prepare)` / `(declare)` | **实测 228ns/节点**，线性；10678 节点的文件要 2.43ms | ❌ |
+| ③ **源码里找关键字 → `DescendantForByteRange` 定位** | 只与关键字出现次数成正比 | ✅ 采用 |
+
+方案 ③ 的形态：
+
+```go
+forEachSQLKeyword(b.src, func(off int) {          // 字节扫描，不加解析器
+    stmt := sqlStmtNode(root.DescendantForByteRange(  // 只沿树下降一次
+        uint(off), uint(off+7)), kinds)
+    ...                                            // 按 KindId 确认种类
+})
+```
+
+三个好处：
+
+1. **成本与关键字次数成正比**。`ammr100.4gl` 只有 4 处命中，`apmi006.4gl` 9 处。
+2. **误命中由类型检查兜住**：字符串/注释里的 `"prepare"` 会被定位到
+   `string`/`comment` 节点，走父链也到不了 prepare 语句，直接丢弃。
+3. **不需要"哪些节点可能含语句"的白名单**。方案 ① 期间维护过一份从
+   grammar 的 `_statement` 出现位置推出来的白名单——它能通过语料验证，
+   却把 `PREPARE` 写在 `MENU`/`DIALOG` 里的情况漏掉（语料里恰好没有这种
+   写法，所以测试也发现不了）。方案 ③ 没有这个隐患。
+
+实施中另外两处要点：
+
+- 关键字比较用**预编译的 `KindId()`（uint16）**，不用 `Node.Kind()`——
+  后者每次调用都 `C.GoString` 分配一个 Go 字符串。
+- 同一条语句可能被命中多次（动态 SQL 字符串里也写着 `PREPARE`），
+  按节点 id 去重。
+
+##### 性能：一个反直觉的发现（cgo 调用次数才是成本）
+
+追性能时踩到一个反直觉的事实，**差点把一次优化做反**，记在这里避免重犯：
+
+`tree-sitter` 的 `ts_node__child` 每次都从头迭代子节点直到第 i 个
+（`src/node.c`），所以 `for i := 0; i < NamedChildCount(); i++ { NamedChild(i) }`
+在 C 侧是 **O(n²)**。据此把这种循环全改成 `NamedChildren(cursor)`（一次成型）
+看起来是稳赚的——**实测却慢了 2~2.7 倍**：
+
+| 全树遍历 1918 个节点 | 耗时 | cgo 调用数 |
+|---|---|---|
+| 逐个索引 `NamedChild(i)` | 880µs | ~3836 |
+| 批量 `NamedChildren(cursor)` | 1680µs | ~7672 |
+
+两个数一除正好是 cgo 调用数之比（1.91 ≈ 2.0）。结论：
+
+> **每次 cgo 调用约 230ns，是成本的全部；C 侧的 O(i) 步进几乎免费。**
+
+所以 `NamedChild(i)` 的 O(n²) 在真实规模下并不构成问题，而
+`NamedChildren` 每个孩子要 3 次 cgo 调用（`Node` + `IsNamed` + `GotoNextSibling`）。
+真正的最优解是**按孩子数量选**——实测交叉点约 55：
+
+| 孩子数 | 逐个索引 | 批量 | 胜者 |
+|---|---|---|---|
+| 14 | 3.1µs | 6.8µs | 索引 |
+| 54 | 19.4µs | 25.1µs | 索引 |
+| 64 | 31.6µs | 29.1µs | 批量 |
+| 163 | 172.6µs | 72.5µs | **批量（2.4 倍）** |
+| 204 | 306.8µs | 87.6µs | **批量（3.5 倍）** |
+
+顶层 root 在实码里常有上百个孩子（大量模块级 `DEFINE` + 几十个函数），
+所以这一档最值钱。据此加了 `builder.forEachChild`，阈值取 **64**。
+
+**最终性能**（400 次迭代，同一台机器）：
+
+| 文件 | root 子节点 | 改动前 | 改动后 | 变化 |
+|---|---|---|---|---|
+| `apmt721_icd.4gl`（2.4KB，无关键字） | 少 | 28.7µs | 31.3µs | +9% |
+| `apmi006.4gl`（30KB） | 少 | 417µs | 490µs | +18% |
+| `ammr100.4gl`（24KB） | 192 | 636µs | 471µs | **−26%** |
+| `aapi204.4gl` | 204 | 576µs | 398µs | **−31%** |
+
+四个文件合计 1.66ms → 1.39ms，**平均快 16%**：大文件（root 孩子多）
+因自适应遍历显著变快，中小文件为游标支持付 9~18% 的增量（绝对量几十µs）。
+
+##### 验证
+
+- **独立真相源交叉验证**：`sqlstmt_test.go` 用**全树递归扫描**做参照实现，
+  在**全部 7699 个真实 .4gl** 上与生产实现比对符号集合，**完全一致**
+  （prepare=37525 / cursor=36007）。日常套件里跑 300 个文件（约 4s），
+  用 `CORPUS_LIMIT=0` 可跑全量。
+- 全语料统计：prepare=37603 / cursor=36103（带 `RefName` 22787）。
+- 单测：index 新增 11 个（7 个符号语义 + 4 个收集机制），server 新增 6 个
+  （悬停 3 / 跳转 1 / 大纲 1 / 诊断不误报 1）。
+
 ### 10.4 P7 现已无遗留待确认项
 
 2026-10-21 三次答复后，所有冲突已消解：

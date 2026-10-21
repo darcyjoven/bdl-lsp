@@ -190,6 +190,11 @@ func classifySymbol(sym *index.Symbol) (typ, mods int, ok bool) {
 		return tokTypeProperty, modDeclaration, true
 	case index.KindParameter:
 		return tokTypeParameter, modDeclaration, true
+	case index.KindPrepare, index.KindCursor:
+		// SQL 句柄（prepared statement / 游标）：按 variable 标注。
+		// 不新增 token 类型——客户端主题里没人给这种类型配过颜色，
+		// 多一档只会让它落到默认色。
+		return tokTypeVariable, withStatic(sym, modDeclaration), true
 	default:
 		return 0, 0, false
 	}
