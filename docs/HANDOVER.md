@@ -1,20 +1,42 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第五轮：**P7-A + P7-B 第一批（悬停）已完成**）  
+> 更新时间：2026-10-21（第六轮：**Zed 大纲层级彻底修好 + 游标问题已定位**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 
 ---
 
-## 0. 下一步就做这个（P7-B）
+## 0. 下一步就做这个（P7-B-5 游标 / prepare statement）
 
-> P7-A 已完成。执行记录：[PLAN-P7.md](PLAN-P7.md) §10。待办：[TODO.md](TODO.md) §P7-A 已完成。
+> **下一轮就做这个**：游标 / prepare statement 的符号标记、悬停与跳转。
+> 待办见 [TODO.md](TODO.md) §B-5。**grammar 节点已齐全，不需要改 grammar**
+> （只有 `fetch` 的 `FROM` 疑点，已证伪——真实语料 0 处 `FETCH ... FROM`）。
+>
+> 现状问题：
+>
+> ```4gl
+> PREPARE p_admin_wo_fill_sfa_p FROM l_sql     ; prepare statement：无标记、无跳转
+> DECLARE p_admin_wo_fill_sfa CURSOR FOR p_admin_wo_fill_sfa_p
+>                                                 ; cursor：悬停显示 "function"（应显示 "cursor"）
+> EXECUTE p_admin_wo_fill_sfa_p                 ; 缺悬停与跳转
+> ```
+>
+> 关键点：grammar 里 `_cid` 规则是 `field("cursor", $.identifier)`，
+> 被 `prepare`/`execute`/`declare` **共用**——字段名叫 `cursor`，
+> 但在 `prepare`/`execute` 里实际是 **prepare statement**。
+> 实现时按**父节点类型**区分，不要按字段名。
+> `declare` 有**两个** `cursor:` 字段，靠**出现顺序**区分
+> （①游标自身 ②`FOR` 之后的来源）。
+
+### 已完成：P7-A + P7-B 第一批（2026-10-21）
+
+> 执行记录：[PLAN-P7.md](PLAN-P7.md) §10。待办：[TODO.md](TODO.md) §P7-A、§P7-B。
 
 ### 已完成：P7-A（2026-10-21）
 
 | 项 | 结果 |
 |---|---|
-| **A-1 Zed 大纲层级** | `outline.scm` 的 `@item` 改绑名字节点。**额外发现 `.per` 的 `PHANTOM` 有同类缺陷**（`field_ref` 的表名/列名双 name），一并修好 |
-| 回归防护 | `verify-queries.mjs` 新增「`@item` 区间两两不同」断言，**先在旧 query 上复现失败**再修；现 40 项全通过 |
+| **A-1 Zed 大纲层级** | `outline.scm` 的 `@item` 改绑名字节点。**额外发现 `.per` 的 `PHANTOM` 有同类缺陷**（`field_ref` 的表名/列名双 name），一并修好。（⚠️ 容器部分后来又改了，见 §0 的 B-3 补修） |
+| 回归防护 | `verify-queries.mjs` 新增「`@item` 区间两两不同」断言，**先在旧 query 上复现失败**再修 |
 | **A-2 VSCode GLOBALS 路径** | 新建 `internal/fileuri`（完整百分号解码 + 盘符/UNC 归一） |
 | 替换范围 | **三处**重复实现（原估两处）：`globals` / `form` / `config` |
 | 额外修复 | `initialize` 补 `rootUri → workspaceFolders[0] → rootPath` 三级回退 |
@@ -45,32 +67,52 @@
 改为"光标是否落在声明该字段的记录区间内"。这个改动一度让 `TestHoverRecordField`
 变红——说明那个旧测试守住了东西。
 
-### ✅ 已修复：Zed 大纲层级（P7-B-3）
+### ✅ 已修复：Zed 大纲层级（P7-B-3，两轮）
 
-上一轮只修了一半（"区间完全相同"），用户反馈仍有层级。本轮读 Zed 源码定位到真根因：
+用户先后报了三个现象，最终定位到**两个互相独立的 bug**，修法方向相反：
 
-**Zed 的 depth 判据是"区间相交/重叠"，不只是"区间完全相同"**
-（`crates/language/src/buffer.rs`：`if last_end < item.range.end { pop } else { break }`）。
+| 现象 | 根因 | 修法 |
+|---|---|---|
+| 同一条 DEFINE 的多个变量出现树结构 | 叶子 `@item` 绑了整条语句，多个名字区间相同 | 叶子 `@item` 绑 `name:` 标识符 |
+| 函数内变量与函数平级、无法折叠 | 容器 `@item` 绑了名字节点，函数体未被覆盖 | 容器 `@item` 绑整个节点 |
 
-主因是**函数的 `@item` 覆盖整个函数体**，函数内部变量的 item 落在其中 → 被判为子级。
+**第 1 轮（`1ee95bf`）只修了一半**：把 `function`/`report`/`main` 的 `@item`
+从"整个节点"改成"名字节点"，假层级确实消失了，语料实测 0 处层级。
+**但这是错的方向**——把"变量归属函数"这个正确行为一起消灭了。
 
-修法：`@item` 绑到最小语义单元（函数名 / 报表名 / MAIN 关键字）。
+**第 2 轮（`7f80d21`）改为容器/叶子模型**：
 
 ```scheme
-(function name: (identifier) @name @item)   ; 原来 @item 绑整个函数体
-(report   name: (identifier) @name @item)
-(main . "MAIN" @name @item)                ; 锚点只匹配开头 MAIN
+(function name: (identifier) @name) @item   ; 容器：@item 绑整个节点
+(main . "MAIN" @name) @item                 ; 锚点只匹配开头 MAIN
+(define  name: (identifier) @name @item)    ; 叶子：@item 绑名字标识符
 ```
 
-全语料实测（7135 个 `.4gl`）：
+这与 Zed 内置语言一致：Rust/Python 的 `outline.scm` 里函数 `@item` 同样
+覆盖整块（`crates/grammars/src/<lang>/outline.scm`）。
+**"父 item 覆盖子 item 区间"是合法的层级表达，不是 bug**——
+假层级应在**叶子侧**解决，不该动容器。
+
+全语料实测（7699 个 `.4gl` + 7409 个 `.per`）：
 
 ```text
-修复前：6941/7135 文件有层级，345608 个条目有层级
-修复后：0/7135 文件有层级，0 个条目有层级（条目总数不变）
+@item 区间重复的文件：0
+叶子当父级的事件：0
 ```
 
-**回归防护**：断言升级为直接复刻 Zed 的 depth 算法（`zedDepths()`），
-并新增语料级扫描检查。旧 query 上断言报 `16/28 个条目会被判为子级`，复现成功。
+**回归防护**：三条断言，其中断言 3 是关键。
+
+1. `@item` 区间两两不同
+2. 叶子的父级不能是叶子
+3. **容器内部的每个变量，其 Zed 父级链上必须能找到该容器**
+
+断言 3 的真相源是 `tree-sitter parse` 的语法树（独立于 `outline.scm`）。
+**断言 1/2 抓不住 `1ee95bf` 的回归**——"函数容器"和"变量叶子"都是
+单行短标识符，用"单行且 ≤64 列"这类启发式无法区分，两者都被误判为叶子。
+这正是上一轮断言全部绿、用户却仍报问题的原因。
+
+断言 3 对两个回归都变红，且对 `1ee95bf` 回归时断言 1/2 仍绿——
+证明它是独立信号，不是巧合。
 
 
 
@@ -281,13 +323,30 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 16. **Zed 层级判据是"区间相交"，不是"区间相同"**（P7-B-3 踩，最贵的坑）：
     源码判据是 `if last_end < item.range.end { pop } else { break }`——
     只要前一条目的**结束位置**不小于当前条目就算父子。
-    所以"@item 绑在最小语义单元上"是硬要求：
-    函数 item 绑整个函数体 → 内部变量全变子级。
     P7-A-1 的断言只查"区间完全相同"，对这种相交完全无感——
     写这类断言要**直接复刻 Zed 的 depth 算法**，别自己发明近似条件。
+    （原写的结论"@item 必须绑最小语义单元"是**错的**，见第 18 条。）
 17. **跳转与悬停必须共用同一套作用域规则**（P7-B-2 踩）：
     原来跳转按作用域过滤、悬停不过滤，于是"能跳转但悬停列出别的函数的同名变量"。
     抽出 `scopedSymbolsAt` 给两处共用，别再各写一套。
+18. **Zed 里"父 item 覆盖子 item 区间"是合法层级，不是 bug**（P7-B-3 补修踩）：
+    内置语言的 outline 查询在 `crates/grammars/src/<lang>/outline.scm`
+    （**不是** Rust 源码里的字面量，`grep outline` 在 `.rs` 里搜不到）。
+    Rust/Python 都让函数的 `@item` 覆盖整块，另用 `@open`/`@close` 标折叠。
+    所以：
+    - 容器（函数/报表/MAIN/MENU）→ `@item` 绑**整个节点**
+    - 叶子（DEFINE/TYPE/CONSTANT/LABEL）→ `@item` 绑**名字标识符**
+    假层级要在**叶子侧**解决；把容器 `@item` 缩到名字节点会消灭
+    "函数内变量归属函数"这个**正确行为**（用户会立刻发现变量没法折叠了）。
+    一句话：**父覆盖子合法，兄弟区间相同才是不合法**。
+19. **断言里的"容器/叶子"分类不能靠启发式**（P7-B-3 补修踩）：
+    曾用"单行且 ≤64 列"判定叶子——但**函数容器和变量叶子都是单行短标识符**，
+    两者被混为一谈，于是"把函数 `@item` 缩到名字节点"这个回归
+    断言全绿、用户照样报问题。
+    正确做法：用 `tree-sitter parse` 的语法树作**独立真相源**，
+    按区间覆盖关系判断"这个 item 是否覆盖了整个定义块"。
+    断言要直接检验**用户要求的行为**（变量的父级链上能找到所属函数），
+    而不是"我的实现长什么样"。
 
 ## 8. 下一步候选（按建议顺序）
 

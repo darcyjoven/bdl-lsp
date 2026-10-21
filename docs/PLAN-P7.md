@@ -1175,44 +1175,120 @@ for item in items {
 修复前：条目 532386  有层级文件 6941/7135  有层级项 345608
 ```
 
-**修法**：把 `@item` 绑到**最小语义单元**上——函数名、报表名、MAIN 关键字：
+#### B-3 补修：函数内变量必须归属函数（✅ 2026-10-21，`7f80d21`）
+
+**用户反馈**：上一轮修完后"zed 变量问题现在没有树结构了，但是又有新问题。
+**函数内归属的变量应该归属函数，可以折叠，现在和函数同级别了**，修复此问题"。
+
+**上一轮（`1ee95bf`）错在哪**：把 `function`/`report`/`main` 的 `@item`
+从"整个节点"改成"名字节点"，假层级确实全平了（0/7135），
+**但同时消灭了"变量归属函数"这个正确行为**——变量变成与函数平级，
+在 Zed 里没法折叠。**方向反了**。
+
+**关键证据：Zed 内置语言就是这么做的**。内置语言的 outline 查询在
+`crates/grammars/src/<lang>/outline.scm`（**不是** Rust 源码里的字面量——
+`grep outline` 在 `.rs` 里搜不到）：
 
 ```scheme
-(function name: (identifier) @name @item)   ; 原来 @item 绑整个函数体
-(report   name: (identifier) @name @item)   ; 同理
-(main . "MAIN" @name @item)                ; main 无名字节点，用锚点匹配开头关键字
+; rust/outline.scm
+(function_item ... body: (_ . "{" @open "}" @close .)) @item   ; item 覆盖整块
+; python/outline.scm
+(function_definition "async"? @context "def" @context name: (_) @name) @item
+```
+
+所以 **"父 item 覆盖子 item 区间"是合法的层级表达**，不是 bug。
+假层级要在**叶子侧**解决，不该动容器。
+
+**最终模型（容器 + 叶子，`@item` 绑法相反）**：
+
+| 类别 | 节点 | `@item` 绑 | `@name` 绑 |
+|---|---|---|---|
+| 容器 | `function` / `report` / `main` / `menu` / `dialog` | **整个节点** | 名字 / 标题 |
+| 叶子 | `define` / `type` / `constant` / `label` | **名字 identifier** | 同节点 |
+
+```scheme
+(function name: (identifier) @name) @item    ; 容器：整块
+(main . "MAIN" @name) @item                  ; 锚点只匹配开头 MAIN
+(define  name: (identifier) @name @item)     ; 叶子：名字
 ```
 
 `main` 的锚点 `.` 很关键：没有它会同时匹配开头和 `END MAIN` 的 MAIN，出现两条条目。
-
-菜单同理（嵌套 MENU 时整块 item 会包含内层）：
+`menu` 同理（嵌套 MENU 时整块 item 会包含内层）：
 
 ```scheme
 [
-  (menu title: (_) @name @item)
+  (menu title: (_) @name)
   (menu !title) @item        ; title 可选，用否定字段避免重复匹配
 ]
 ```
 
 `dialog` 没有 title 字段，保持整块即可（实测无层级问题）。
 
-**结果**：
+**结果**（7699 个真实 `.4gl` + 7409 个 `.per`）：
 
 ```text
-修复后：条目 532386  有层级文件 0/7135  有层级项 0
+@item 区间重复的文件：0
+叶子当父级的事件：0
 ```
 
-条目总数不变（532386），只是层级全平了。
+模拟 Zed depth 算法的实际大纲：
 
-**回归防护**：断言升级为**直接复刻 Zed 的 depth 算法**：
+```text
+f_outline   [86,0]..[94,12]
+  ├─ l_local1   [87,9]..[87,17]
+  ├─ l_local2   [88,9]..[88,17]
+  ├─ l_single   [89,9]..[89,17]
+  ├─ l_third1   [90,9]..[90,17]
+  ├─ l_third2   [91,9]..[91,17]
+f_single   [96,0]..[100,12]
+  ├─ l_only   [97,9]..[97,15]
+MAIN   [104,0]..[110,8]
+  ├─ m_one   [105,9]..[105,14]
+  ...
+```
 
-- `verify-queries.mjs` 新增 `zedDepths()`，实现 Zed 的排序 + 栈算法；
-- fixture `outline.4gl` 增加"函数/报表/MAIN 内部的变量"场景；
-- 断言从"区间两两不同"扩展为"**层级必须全为 0**"；
-- 新增**语料级**检查：抽样真实文件用 depth 算法扫，有层级就失败。
+函数/MAIN/报表在顶层，内部变量归属其下（**可折叠**），
+同一条 DEFINE 的多个变量**互为兄弟**（`l_local1`/`l_local2` 不嵌套），
+独立的一条 DEFINE（`l_single`）也与它们平级。
 
-验证：旧 query 上断言 2 报 `16/28 个条目会被 Zed 判为子级`（复现成功）；
-新 query 下 45 项校验全通过。
+#### B-3 回归防护：为什么上一轮的断言没抓住
+
+上一轮的三条断言里，`isLeafItem()` 用"单行且 ≤64 列"判定叶子：
+
+```js
+const isLeafItem = (it) => it.start[0] === it.end[0] && it.end[1] - it.start[1] <= 64;
+```
+
+**但"函数容器"和"变量叶子"都是单行短标识符**——两者被混为一谈。
+于是"把函数 `@item` 缩到名字节点"这个回归，断言全绿，用户照样报问题。
+
+**修法**：用 `tree-sitter parse` 的语法树作**独立真相源**（`parseContainers()`），
+按区间覆盖关系判断"这个 item 是否覆盖了整个定义块"，
+再**直接检验用户要求的行为**——变量的 Zed 父级链上必须能找到所属容器：
+
+```text
+✓ bdl/outline.scm: 4 个容器的内部变量均归属所属容器（可折叠）
+```
+
+**断言 3 是独立信号**——对 `1ee95bf` 回归时，断言 1/2 仍绿：
+
+```text
+✓ bdl/outline.scm: 30 个 @item 区间两两不同          ← 仍绿
+✓ bdl/outline.scm: 30 个条目，叶子条目均无子级        ← 仍绿
+✗ bdl/outline.scm: 4 个变量未归属所属容器（会与容器平级、无法折叠）
+    示例：function @ [86,0] 内 5 个变量（容器本身没有对应的 outline 条目）
+```
+
+对"DEFINE `@item` 绑整条语句"这个回归也变红：
+
+```text
+✗ bdl/outline.scm: 8 个 @item 区间重复（Zed 会误判为父子层级）
+✗ bdl/outline.scm: 10 个变量未归属所属容器（会与容器平级、无法折叠）
+```
+
+fixture `outline.4gl` 的头部注释也一并重写（原文写的是"函数内部变量必须与
+函数名平级"，与新模型矛盾），并补了"一条多变量 DEFINE + 独立 DEFINE 语句
+并存"的场景。
 
 #### B-4 P7-B 剩余项（未做）
 

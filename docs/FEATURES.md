@@ -105,12 +105,13 @@
 
 | # | 功能 | 说明 | 阶段 |
 |---|---|---|---|
-| 35 | Zed 大纲层级修复 | 一条 `DEFINE` 多变量不再变层级（`@item` 绑到名字节点） | P7-A |
+| 35 | Zed 大纲层级修复 | **容器/叶子模型**：容器（函数/报表/MAIN/菜单）`@item` 绑整块 → 内部变量归属函数可折叠；叶子（DEFINE/TYPE/常量）`@item` 绑名字 → 同语句多变量平级 | P7-A / P7-B-3 |
 | 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
 | 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表；拼错保护；清单防漂移 | P7-B |
 | 38 | 内置函数/变量符号表 | 插件侧符号表（非 grammar）；`cmd/builtin-audit` 语料驱动补齐 | P7-C |
 | 39 | 程序链接资料索引 | 三种采集（DB 直连/服务器脚本/命令）+ 函数可见性 + `function-not-found` | P7-D |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
+| 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE` 悬停与跳转 | P7-B-5 |
 
 ---
 

@@ -76,7 +76,7 @@
       （`TestHoverRecordField` 一度因此变红，已修好。）
 - [x] 语料抽样：29 个真实 RECORD 变量悬停，0 个出现多条目泄露。
 
-### B-3 Zed 大纲仍有层级 ✅ 已修复
+### B-3 Zed 大纲仍有层级 ✅ 已修复（两轮）
 
 > 用户 2026-10-21 给了三个具体写法：`DEFINE i,j INTEGER` 与
 > `DEFINE i INTEGER,j INTEGER` 都会变两层，`DEFINE i INTEGER` +
@@ -86,17 +86,63 @@
       判据是"前一条目结束位置 ≥ 当前条目结束位置"，即**区间相交/重叠**，
       不只是"区间完全相同"。上一轮断言只查后者，是盲区。
 - [x] 识别出两种层级来源：① 区间完全相同（同语句多变量，上一轮已修）
-      ② 区间相交（函数 item 覆盖整个函数体，**这才是主因**）。
-- [x] 修法：`@item` 绑到最小语义单元 —— 函数名 / 报表名 / MAIN 关键字。
-      `main` 用锚点 `.` 只匹配开头的 MAIN（否则匹配到 END MAIN 出现两条）。
-- [x] 菜单同理：`title` 可选，用 `[ (menu title: (_) @name @item) (menu !title) @item ]`
-      避免重复匹配；`dialog` 无 title 字段，保持整块。
-- [x] **断言升级**：新增 `zedDepths()` 直接复刻 Zed 的 depth 算法；
-      断言从"区间两两不同"扩展为"**层级必须全为 0**"；
-      fixture 增加函数/报表/MAIN 内部变量场景；新增**语料级**扫描检查。
-- [x] 全语料实测（7135 个 `.4gl`）：修复前 6941 文件有层级 / 345608 项有层级 →
-      修复后 **0 文件 / 0 项**，条目总数不变（532386）。
-- [ ] 手工验证（需 GUI）：用户三个写法在大纲里都是平级。
+      ② 区间相交（函数 item 覆盖整个函数体）。
+- [x] **第 1 轮（`1ee95bf`）**：把 `function`/`report`/`main` 的 `@item`
+      绑到最小语义单元（名字节点）。假层级全平（0/7135），
+      **但把"变量归属函数"这个正确行为一起消灭了** —— 方向错了。
+- [x] **第 2 轮（`7f80d21`）**：改用**容器/叶子模型**，
+      `@item` 绑法相反（容器绑整块、叶子绑名字标识符）。
+      关键证据：Zed 内置语言的 outline 查询在
+      `crates/grammars/src/<lang>/outline.scm`，Rust/Python 都让函数
+      `@item` 覆盖整块 + `@open`/`@close` 标折叠——
+      **"父 item 覆盖子 item 区间"是合法层级表达，不是 bug**。
+- [x] **断言 3（关键）**：容器内部变量的 Zed 父级链上必须能找到该容器。
+      真相源是 `tree-sitter parse` 的语法树。
+      断言 1/2 抓不住 `1ee95bf` 回归——"函数容器"和"变量叶子"都是
+      单行短标识符，启发式区分不了。
+- [x] 全语料实测（7699 个 `.4gl` + 7409 个 `.per`）：0 处假层级。
+- [ ] 手工验证（需 GUI）：
+      ① 同一条 DEFINE 的多个变量在大纲里平级；
+      ② **函数内变量归属所属函数、可折叠**。
+
+### B-5 游标 / prepare statement 支持（🔜 下一轮）
+
+> 用户 2026-10-21 提出的第三组问题。示例：
+>
+> ```4gl
+> PREPARE p_admin_wo_fill_sfa_p FROM l_sql
+> DECLARE p_admin_wo_fill_sfa CURSOR FOR p_admin_wo_fill_sfa_p
+> EXECUTE p_admin_wo_fill_sfa_p
+> ```
+
+- [x] 摸清 grammar 现状（`tree-sitter-bdl/rule/sql.js`）：
+      **节点已齐全，不需要改 grammar**（除了下面那条 `FETCH ... FROM` 缺口）。
+
+  | 语句 | 节点 | 关键字段 |
+  |---|---|---|
+  | `PREPARE p FROM sql` | `prepare` | `cursor:` = prepare 名，`sql:` = 来源表达式 |
+  | `DECLARE c CURSOR FOR p` | `declare` | `cursor:` ×2 —— ①游标名 ②来源 prepare 名 |
+  | `EXECUTE p` | `execute` | `cursor:` = prepare 名 |
+  | `OPEN c` / `CLOSE c` | `open` / `close` | `cursor:` = 游标名 |
+  | `FETCH NEXT c` | `fetch` | `cursor:` = 游标名 |
+
+  注意 `_cid` 规则（`field("cursor", $.identifier)`）被 prepare/execute 共用，
+  字段名叫 `cursor` 但在 `prepare`/`execute` 里实际是 prepare statement——
+  实现时按**父节点类型**区分，不要按字段名。
+
+  `declare` 的两个 `cursor:` 字段靠**出现顺序**区分：第一个是游标自身，
+  第二个是 `FOR` 之后的来源。
+
+- [ ] `PREPARE <name> FROM <sql>` → 声明一个 **prepare statement** 符号。
+      现状：没有标记、没有跳转。
+- [ ] `DECLARE <name> CURSOR FOR <prepare>` → 声明一个 **cursor** 符号。
+      现状：悬停显示的是 "function"，应改成 "cursor"。
+- [ ] `EXECUTE` / `FETCH` 等语句使用 prepare statement / cursor 时，
+      增加**悬停与跳转**。
+- [x] **不是 grammar 缺口**：曾怀疑 `FETCH NEXT FROM c` 报 ERROR 是缺 `FROM`，
+      语料检索（7699 个 `.4gl`，17491 条 FETCH）显示 **0 处** `FETCH ... FROM`，
+      真实写法都是 `FETCH [NEXT|ABSOLUTE|FIRST|LAST|...] <cursor>`。
+      grammar 的 `fetch` 规则是对的。
 
 ### B-4 后续待办（原有 P7-B 内容）
 
