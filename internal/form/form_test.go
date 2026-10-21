@@ -178,6 +178,7 @@ func TestCheckFieldMissing(t *testing.T) {
     NEXT FIELD also_missing
   END INPUT
   CONSTRUCT BY NAME q ON gone1, gone2
+  CONSTRUCT q2 ON col1 FROM gone3
   DISPLAY "x" TO vanish
   IF INFIELD(ghost) THEN END IF
 END MAIN
@@ -199,9 +200,19 @@ END MAIN
 			t.Errorf("问题应带表单位置：%+v", iss)
 		}
 	}
-	for _, want := range []string{"no_such", "also_missing", "gone1", "gone2", "vanish", "ghost"} {
+	// gone3 来自 `CONSTRUCT … FROM gone3`：FROM 后面才是字段列表，要报。
+	for _, want := range []string{"no_such", "also_missing", "gone3", "vanish", "ghost"} {
 		if !got[want] {
 			t.Errorf("缺失字段 %q 未被报告（全部：%v）", want, got)
+		}
+	}
+	// gone1/gone2 来自 `CONSTRUCT BY NAME q ON …`：ON 后面是**列名**不是字段，
+	// 表单里没有该字段是合法的（该列不进查询条件），不能报。
+	// 依据：4js 手册 "The CONSTRUCT sub-dialog"——
+	// `CONSTRUCT BY NAME var ON column-list` 用列名隐式匹配同名表单字段。
+	for _, notWant := range []string{"gone1", "gone2"} {
+		if got[notWant] {
+			t.Errorf("CONSTRUCT 的 ON 列名 %q 不该当字段校验", notWant)
 		}
 	}
 }
@@ -428,5 +439,67 @@ END MAIN
 	r.ClearEdges(docURI)
 	if got := r.Importers(target); len(got) != 0 {
 		t.Errorf("清边后应为空，实际 %v", got)
+	}
+}
+
+// TestCheckFieldNameVsItemTag 钉住"字段名 ≠ item tag"的判定。
+//
+// Tiptop 的表单大量这样写：LAYOUT 里 tag 是 `aa1`，ATTRIBUTES 里
+// `Edit aa1=Formonly.ada01`。4GL 的 BEFORE/AFTER FIELD、FROM/TO 引用的是
+// **字段名**（ada01），不是 tag；只认 tag 会把 `FROM ada01` 报成缺失
+// （实测全量 236 条这种误报）。
+func TestCheckFieldNameVsItemTag(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"amm/4gl", "amm/per"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	per := "SCHEMA ds\n\nLAYOUT\nGRID\n{\n  [aa1        ]\n}\nEND\nEND\n\n" +
+		"ATTRIBUTES\nEDIT aa1 = formonly.ada01;\nEND\n"
+	if err := os.WriteFile(filepath.Join(root, "amm/per/ammr110.per"), []byte(per), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fourgl := filepath.Join(root, "amm/4gl/main.4gl")
+	if err := os.WriteFile(fourgl, []byte("MAIN\nEND MAIN\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	pool, err := parser.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(pool.Close)
+	qs := CompileQueries(pool)
+	if qs == nil {
+		t.Fatal("query 编译失败")
+	}
+	t.Cleanup(qs.Close)
+	r := NewResolver(pool, root, nil, nil)
+
+	src := []byte(`MAIN
+  OPEN WINDOW w1 WITH FORM "amm/42f/ammr110"
+  INPUT x FROM ada01, aa1
+  DISPLAY "y" TO nope
+END MAIN
+`)
+	tree, err := pool.Parse(parser.LangBDL, src, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(tree.Close)
+
+	issues, _ := r.Check(tree, src, fourgl, qs)
+	got := map[string]bool{}
+	for _, iss := range issues {
+		got[iss.Field] = true
+	}
+	for _, ok := range []string{"ada01", "aa1"} {
+		if got[ok] {
+			t.Errorf("%q 存在于表单（字段名 / item tag），不该报缺失", ok)
+		}
+	}
+	if !got["nope"] {
+		t.Errorf("nope 不存在，应当报警（实际 %v）", got)
 	}
 }

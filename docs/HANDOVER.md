@@ -3,7 +3,7 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.8** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.9** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -18,8 +18,12 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 
 **P7 全部收尾项已完成**（P7-A/B/C-1/C-2/D/D-2/D-3/E）。剩下的候选：
 
-- `field-not-in-form` 的 1725 条待查（多为模板生成的 `.per`）；
-- `make diagnostics-check` 的基线维护。
+- P6 质量债（record `.*`、schema 索引、全工作区符号索引、跨文件重命名）；
+- 各仓小遗留（工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`）。
+
+**诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
+`make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md`，再跑 `make lint`
+（内含 `diagnostics-check`，会核对 VSCode `package.json` 的枚举与老键默认值）。
 
 **改 grammar 的两条硬规矩**（P7-C-2 踩过）：
 
@@ -41,6 +45,7 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 | 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
 | 采集 | `bdl-lsp link sync -source golang|command|file`；`scripts/fetch-gal-file.sh`（sqlplus 兜底） |
 | 语法审计（P7-C-2） | `make grammar-audit [TOP=60 JSON=/tmp/a.json]`；基线 `TestCorpusGrammarBaseline` |
+| 诊断码表 | `make diagnostics-check`（并入 lint）· `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md` |
 | 视图（VSCode） | Explorer「链接资料」：程序 → 链内文件（点击跳转）+ 反查引用程序（分页 50） |
 | 后台同步 | `bdl.link.sync.*`（默认关，失败指数退避，成功后自动重载） |
 | 审计 | `cmd/link-audit`（`-externals`/`-missing`）、`diag-audit -no-link` |
@@ -57,7 +62,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.8`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.9`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -117,13 +122,13 @@ workspace/didChangeConfiguration
 | 解析成功率 | `.4gl` 7683/7699（16 个真实语法错误） |
 | 格式化审计（`cmd/fmt-audit`） | 成功 7683、幂等失败 **0**、新增 ERROR **0** |
 | GLOBALS 解析 | 8403 resolved / 107 not-found |
-| 字段校验（`cmd/field-audit`） | 1725 条发现，模块一致率 97.2% |
+| 字段校验（`cmd/field-audit`） | **869** 条发现（修语义前 1725），`-form <字面量>` 逐个表单抽查 |
 | record 成员（`cmd/record-audit`） | 可校验 271760 处，报出 **20**（0.007%） |
 | 性能（7138 行 / 329 KB） | didOpen 133ms，didChange 6.0ms |
 | 索引构建 `index.Build`（P7-B-5 后实测，600 行级真实文件） | `ammr100.4gl` 471µs、`aapi204.4gl` 398µs（比 P7-B-5 之前**快 26~31%**）；`apmi006.4gl` 490µs、`apmt721_icd.4gl` 31µs（比之前 +9~18%，为游标支持付的增量） |
 | 游标/prepare 符号规模（7699 个真实 .4gl） | prepare **37603** / cursor **36103**（其中 22787 带来源 prepare） |
 | **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条 → P7-C-1 后 **7 条**（`variable-source-unresolved`） |
-| **全量诊断（15108 文件，P7-D-2 后全开）** | 合计 **9244**：`variable-source-unresolved` 6030、`field-not-in-form` 1725、`function-not-found` **1358**、`globals-file-not-found` 107、表单类 24 |
+| **全量诊断（15108 文件，P7-B 收尾后）** | 合计 **8453**：`variable-source-unresolved` 6030、`function-not-found` 1423、`field-not-in-form` **869**、`globals-file-not-found` 107、表单类 24 |
 | 链接资料（真实 CSV 导入） | 5398 链 / 451 orphan / 0 ambiguous / 7931 文件 / 缺失 800；`.link/links.jsonl` **753 KB**，加载 ~10 ms，导入 **24 s**（含全语料 7600 文件解析） |
 | 外部函数（P7-D-2） | **62** 个名字（`cl_err3` 3340 文件、`WSHelper_*` 29 个…），fnf 86612 → **1358** |
 | ↑ 噪声归因 | `cl_null` 311（`lib/` 用户函数）、`SQLCA` 252、`ARG_VAL` 248、`INT_FLAG` 183、`cl_gr_numfmt` 150、`STATUS` 98 —— 内置符号与链接缺失各占一半 |

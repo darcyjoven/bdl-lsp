@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit grammar-audit bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit grammar-audit diagnostics-check diagnostics-write bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -55,7 +55,7 @@ fmt:
 	$(GO) fmt ./...
 
 ## lint: fmt 检查 + vet
-lint: vet keywords-check builtin-check
+lint: vet keywords-check builtin-check diagnostics-check
 	@GOFMT="$$(GOBIN="$$($(GO) env GOROOT)/bin" command -v gofmt || echo "$$($(GO) env GOROOT)/bin/gofmt")"; \
 	out=$$("$$GOFMT" -l . | grep -v '^artifacts/' || true); \
 	if [ -n "$$out" ]; then echo "以下文件未格式化："; echo "$$out"; exit 1; fi; \
@@ -84,6 +84,14 @@ builtin-audit: build
 ## grammar-audit: 语法缺口审计（P7-C-2）——语料里解析失败的文件与上下文，按频次排序
 grammar-audit: build
 	@$(GO) run ./cmd/grammar-audit $(if $(LIMIT),-limit $(LIMIT),) -top $(or $(TOP),30) -examples 2 $(if $(JSON),-json $(JSON),)
+
+## diagnostics-check: 校验诊断码注册表 ↔ docs/DIAGNOSTICS.md ↔ VSCode 设置项三处一致
+diagnostics-check:
+	@$(GO) run ./cmd/diagnostics-check -doc docs/DIAGNOSTICS.md -vscode ../vscode-extension/package.json
+
+## diagnostics-write: 按注册表重新生成 docs/DIAGNOSTICS.md（新增/调整诊断码后运行）
+diagnostics-write:
+	@$(GO) run ./cmd/diagnostics-check -write -doc docs/DIAGNOSTICS.md -vscode ../vscode-extension/package.json
 
 ## link-audit: 程序链接资料（P7-D）——用真实 CSV 复跑导入并核对统计
 link-audit: build

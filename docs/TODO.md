@@ -1,12 +1,12 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7 全部收尾项已完成，含 P7-C-2 语法缺口审计**，`bdl-lsp 0.1.8`）  
+> 更新：2026-10-21（**P7-B 收尾完成：诊断降噪 + 码表防漂移**，`bdl-lsp 0.1.9`）  
 > 当前阶段：**P1–P6 全部功能已完成**；**P7 全部收尾项已完成**
 > （Zed 大纲层级、诊断降噪、内置符号表、语法缺口审计、链接资料索引、外部函数过滤、
 > 采集通道、链接资料视图）。  
 > **下一步候选**：
-> ① `field-not-in-form` 的 1725 条待查；
-> ② `make diagnostics-check` 的基线维护。
+> ① P6 质量债（record `.*`、schema 索引、全工作区符号索引、跨文件重命名）；
+> ② 各仓小遗留（工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`）。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -16,13 +16,13 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **60 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+未勾选共 **57 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **2** | P7-C-1 ✅ · P7-C-2 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：`.link` 提示 1 · P7-D 分片 1 |
-| P7-B 收尾 | 2 | `field-not-in-form` 1725 条待查 · `make diagnostics-check` |
+| **P7 路线图** | **1** | P7-C-1 ✅ · P7-C-2 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：P7-D 分片（等体积/耗时触发条件，当前 415 KB 远未到） |
+| P7-B 收尾 | 0 | ✅ `field-not-in-form` 查清（9309→8453） · ✅ `make diagnostics-check` |
 | P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
 | **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp 3 · Zed 加载 1 · Xvfb 已解决 |
@@ -208,12 +208,19 @@
       - `form-screen-record-undefined` 4850 → **5**（SCREEN RECORD 引用的是
         **字段名** `= formonly.more` 的 `more`，不是 item tag `mor`）。
 
-- [ ] **`field-not-in-form` 1725 条待查**：抽样全是
-      `CONSTRUCT BY NAME l_wc ON apa01, apa02, …`（aapr106.4gl）。
-      需要确认这些字段来自哪个表单——是 `BY NAME` 的语义差异，还是表单
-      解析没命中。量级不大（0.6%），排 P7-C 之后。
-- [ ] `make diagnostics-check` 防漂移（Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔
-      VSCode `package.json` 的 enum）：留到 P7-C，那时码表会明显变大。
+- [x] **`field-not-in-form` 1725 条查清**：两类系统性误报，共 **9309 → 8453**。
+      - `CONSTRUCT BY NAME var ON <列表>` 的列表是**数据库列名**，不是表单字段
+        （4js 手册"The CONSTRUCT sub-dialog"：BY NAME 用列名去**隐式匹配**同名
+        表单字段）→ 跳过 ON 列表，只校验 `FROM` 后面的字段列表（−620）；
+      - 表单里 `Edit aa1=FormOnly.ada01` 这种写法，4GL 的 `FROM`/`AFTER FIELD`
+        引用的是**字段名 ada01**，不是 item tag `aa1` → 字段名也算存在（−236）。
+      剩余 869 条抽样确认为真：代码引用的字段表单里确实没有（如 `axdr222` 引用
+      `ada01` 而表单只有 `to_apa15`；合并文件 `saapt110.4gl` 3 万行引用别的表单
+      的字段）。
+- [x] `make diagnostics-check` 防漂移：`internal/diag.Specs()` 是唯一来源，
+      生成 `docs/DIAGNOSTICS.md`（`make diagnostics-write`）并校验 VSCode
+      `package.json` 的 `bdl.diagnostics` 枚举 + 六个老键的 `default`/`enum`；
+      并入 `make lint`。故意改坏一个默认值即失败（有单测钉住）。
 
 ## 0. 已确认决策
 
@@ -828,8 +835,10 @@ Block P2 已完成：
 ```
 
 - [x] VSCode `package.json` → **40 项**，`make manifest-check` 通过。
-- [ ] 安装时**提示**把 `.link/` 加入 `.gitignore`（不擅自改用户文件）。
-      —— 现有实现只在 README 写明，未做运行时提示。
+- [x] ~~安装时**提示**把 `.link/` 加入 `.gitignore`~~ → **不做**（用户 2026-10-21
+      决定）：`.link/` 里是程序链接索引（模块名、程序码、文件名），不含连接串与
+      口令；README 已写明建议 gitignore，再弹提示属于打扰。"不擅自改用户文件"
+      的取舍在此之前已经定了，运行时提示这一条不再需要。
 
 ### P7 专项风险
 

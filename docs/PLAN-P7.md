@@ -2064,6 +2064,93 @@ go build -a ./internal/parser   # 或者 go clean -cache
 
 ---
 
+### 10.11 P7-B 收尾：诊断降噪 + 码表防漂移（✅ 2026-10-21，`0.1.9`）
+
+两项：`field-not-in-form` 的 1725 条查清（**9309 → 8453**），
+`make diagnostics-check` 落地。
+
+#### 一、`field-not-in-form`：两类系统性误报
+
+**结论：不是表单解析没命中，是校验语义错了两处。**
+
+**(1) `CONSTRUCT BY NAME` 的 ON 列表是数据库列名**
+
+4js 手册 "The CONSTRUCT sub-dialog" 写得很清楚：
+
+> `CONSTRUCT BY NAME string-variable ON column-list`
+> The `BY NAME` clause implicitly binds the form fields to the columns,
+> where the form field identifiers **match the column names** specified in
+> the column-list after the `ON` keyword.
+
+即 ON 后面是**列**，Genero 拿列名去*隐式匹配*同名表单字段。列在表单里没有，
+只说明"这一列不进查询条件"，代码完全合法。语料 4456 处 `CONSTRUCT BY NAME`，
+其中 1725 处 ON 列表里有表单中没有的列——全部误报。
+
+同一语句还有第二种写法 `CONSTRUCT var ON column-list FROM field-list`，
+**只有 FROM 后面才是字段列表**。语法树里两者都用同一个 `field` 字段名，
+所以校验按位置判断（`constructOnColumns`：找祖先 `construct` 节点，看该标识符
+之前有没有 `FROM` 关键字）。
+
+**(2) 表单的"字段名"不等于"item tag"**
+
+Tiptop 表单大量这样写：
+
+```
+LAYOUT   { [aa1        ] }                              -- tag = aa1
+ATTRIBUTES   Edit aa1 = FormOnly.ada01;                 -- 字段名 = ada01
+```
+
+4GL 里 `BEFORE/AFTER FIELD`、`NEXT FIELD`、`INPUT … FROM`、`DISPLAY … TO`
+引用的是**字段名**（`ada01`），不是 tag（`aa1`）。索引一直在收集字段名
+（`FormFieldNames`，当初为修 `form-screen-record-undefined` 的 4850 条误报），
+但字段校验只看 `Symbols`（KindFormItem = tag）与 SCREEN RECORD 成员，
+漏了这一项 → 236 条误报（如 `axdr222.4gl` 的 `INPUT … FROM ada01`）。
+
+#### 二、结果与剩余项
+
+| 指标 | 修前 | 修后 |
+|---|---:|---:|
+| 全量诊断总数 | 9309 | **8453** |
+| `field-not-in-form` | 1725 | **869** |
+| `variable-source-unresolved` | 6030 | 6030 |
+| `function-not-found` | 1423 | 1423 |
+| `globals-file-not-found` | 107 | 107 |
+
+> 注：`function-not-found` 现在是 1423（不是 P7-D-2 文档里的 1358）——那之后
+> 链接资料重建过，可见集变了。以本轮实测为准。
+
+剩余 869 条抽样确认是**真**问题：代码引用的字段在表单里确实不存在
+（`axdr222` 引用 `ada01`、而该表单只有 `to_apa15`；`aapr160` 的
+`INPUT BY NAME tm.plant_1..8` 指向的 QBE 表单只有 12 个字段；
+合并文件 `saapt110.4gl` 3 万行里混着别的程序的表单一侧）。
+
+`-form <字面量>` 参数（本轮给 `cmd/field-audit` 加的）就是为逐个表单抽查用的。
+
+#### 三、`make diagnostics-check`（码表防漂移）
+
+一个诊断码同时在三处出现，漂移方式各不相同：
+
+| 位置 | 漂移后果 |
+|---|---|
+| Go 注册表（`internal/diag`） | 事实来源 |
+| `docs/DIAGNOSTICS.md` | 手写必然滞后，用户查不到新码 |
+| VSCode `package.json` | 设置界面能填的级别/默认值可能与服务端不一致 |
+
+做法：
+
+- 注册表补 `summaries`（每码一句话）+ `Specs()`，作为**唯一来源**；
+- 文档由 `make diagnostics-write` **生成**（13 个码 + 老键映射表 + 动态码说明），
+  `make diagnostics-check` 逐字比对；
+- `package.json` 校验三项：`bdl.diagnostics` 的级别枚举、六个老键的
+  `default`/`enum`、**同一老键覆盖的码默认级别必须一致**（否则"老键的默认值"
+  是二义的——这是最容易被忽视的一条，已单测钉住）；
+- 并入 `make lint`，忘不掉。
+
+校验有牙：故意把 `bdl.fieldDiagnostics.default` 改成 `off`，`make lint` 立刻失败
+并指出是哪个键。
+
+---
+
 ## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |

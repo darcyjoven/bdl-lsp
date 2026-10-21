@@ -38,7 +38,8 @@ import (
 //	(input field: (variable (identifier) @field))
 //	  —— INPUT ... FROM f1, f2
 //	(construct field: (variable (identifier) @field))
-//	  —— CONSTRUCT ... ON f1, f2
+//	  —— CONSTRUCT ... ON c1, c2 / CONSTRUCT ... FROM f1, f2
+//	  （ON 后面是**数据库列名**，不是表单字段，校验时按位置跳过，见 constructOnColumns）
 //	(display field: (variable (identifier) @field))
 //	  —— DISPLAY ... TO f
 //	(infield_function params: (expression (variable (identifier) @field)))
@@ -218,6 +219,13 @@ func (r *Resolver) Check(tree *ts.Tree, src []byte, refPath string, qs *Queries)
 				usedForms[res.Path] = true
 			}
 		case "field":
+			if constructOnColumns(&c.node, src) {
+				// CONSTRUCT 的 ON 列表是**列名**，不是表单字段：
+				// `CONSTRUCT BY NAME var ON column-list` 由 Genero 拿列名去
+				// 隐式匹配同名表单字段，列不在表单里不等于写错
+				// （4js 手册 "The CONSTRUCT sub-dialog"）。
+				continue
+			}
 			word := parser.TextOf(&c.node, src)
 			// 模块级（ci=-1）或函数内无表单绑定 → 不校验（无法确定）
 			if word == "" || ci < 0 {
@@ -242,7 +250,53 @@ func (r *Resolver) Check(tree *ts.Tree, src []byte, refPath string, qs *Queries)
 	return issues, paths
 }
 
+// constructOnColumns 报告该标识符是否位于 CONSTRUCT 的 ON 列表里。
+//
+// Genero 有**两种** CONSTRUCT 写法，ON 后面都跟着**数据库列名**：
+//
+//	CONSTRUCT BY NAME var ON column-list
+//	CONSTRUCT var ON column-list FROM field-list
+//
+// 只有 FROM 后面才是表单字段列表。BY NAME 时 Genero 用列名去隐式匹配
+// 同名表单字段——"表单里没有这个字段"是完全合法的（该列不进查询条件），
+// 所以 ON 列表不能拿来做字段存在性校验。
+//
+// 实测：语料 4456 处 `CONSTRUCT BY NAME … ON`，校验 ON 列表会报 1725 条
+// 全是这种误报。语法树里 ON 与 FROM 用的是同一个 `field` 字段名，所以只能
+// 按位置判断——看该节点之前有没有 FROM 关键字。
+func constructOnColumns(node *ts.Node, src []byte) bool {
+	var construct *ts.Node
+	for cur := node.Parent(); cur != nil; cur = cur.Parent() {
+		if cur.Kind() == "construct" {
+			construct = cur
+			break
+		}
+	}
+	if construct == nil {
+		return false
+	}
+	start := node.StartByte()
+	for i := uint(0); i < construct.ChildCount(); i++ {
+		ch := construct.Child(i)
+		if ch == nil || ch.StartByte() >= start {
+			break
+		}
+		if ch.Kind() == "FROM" {
+			return false // 在 FROM 之后 → 真的是字段列表
+		}
+	}
+	return true
+}
+
 // checkField 校验一个字段是否存在于表单。
+//
+// 一个"字段"在表单里有三个可能的写法，4GL 都可能引用到，全部要算存在：
+//
+//  1. item tag：LAYOUT 里方括号的名字（`[aa1 ]`）——索引的 KindFormItem；
+//  2. 字段名：ATTRIBUTES 里 `=` 后面的列（`EDIT aa1=FORMONLY.ada01` 的
+//     `ada01`）。**BEFORE/AFTER FIELD、NEXT FIELD、FROM/TO 引用的都是这个**，
+//     不是 tag；只认 tag 会把 `axdr222.4gl` 里合法的 `FROM ada01` 报成缺失；
+//  3. SCREEN RECORD 的成员（`s_x(ada_file.ada01)` 的 `ada01`）。
 func checkField(form *Resolved, word string, start, end uint) *FieldIssue {
 	lower := strings.ToLower(word)
 	for _, sym := range form.Index.Symbols {
@@ -252,6 +306,12 @@ func checkField(form *Resolved, word string, start, end uint) *FieldIssue {
 		// SCREEN RECORD 的字段（table.column 的 column 部分）也算：
 		// 4gl 的 ON CHANGE 等可以引用 screen record 字段
 		if sym.Kind == index.KindField && sym.Lower == lower {
+			return nil
+		}
+	}
+	// 字段名（`= tablename.column` 的列部分）
+	for _, fn := range form.Index.FormFieldNames {
+		if fn.Lower == lower {
 			return nil
 		}
 	}

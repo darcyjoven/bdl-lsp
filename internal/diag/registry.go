@@ -94,6 +94,47 @@ var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeMissingNode: config.LevelWarning,
 }
 
+// summaries 是各诊断码的一句话说明（对外文档 `docs/DIAGNOSTICS.md` 与
+// `make diagnostics-check` 的唯一来源）。
+//
+// 放在这里而不是文档里手写：码表是 Go 定义的，文档一旦手写就会漂——
+// 加了一个码忘了写文档，用户看到的 Problems 里就多出一个查不到的码。
+var summaries = map[Code]string{
+	CodeGlobalsFileNotFound:       "`GLOBALS \"路径\"` 的目标文件找不到（路径写错或文件未随代码分发）",
+	CodeVariableSourceUnresolved:  "变量使用处查不到任何定义（局部 / 模块级 / GLOBALS 引入均无）",
+	CodeFieldNotInForm:            "`INPUT … FROM`、`AFTER FIELD` 等引用的字段不在表单 `.per` 里（表单未同步或字段名写错）",
+	CodeFormDuplicateItem:         "表单 `ATTRIBUTES` 里重复定义了同名 item",
+	CodeFormLayoutTagUndefined:    "表单 `LAYOUT` 里引用了 `ATTRIBUTES` 未定义的 item tag",
+	CodeFormScreenRecordUndefined: "表单 `SCREEN RECORD` 引用了未定义的 item 或字段名",
+	CodeRecordMemberUnknown:       "`BY NAME rec.member` 的成员不在 RECORD 声明里（`LIKE table.*` 时静态不可知）",
+	CodeFileTooLarge:              "文件超过解析上限（`bdl.limits.maxFileBytes` / `maxFileLines`），已跳过语法检查",
+	CodeFunctionNotFound:          "调用处的函数名在当前模块及可用模组中找不到定义（需链接资料）",
+	CodeLinkDataInvalid:           "链接资料格式不合法（JSONL 解析失败、schema 版本过高）",
+	CodeLinkDataStale:             "链接资料超过 `bdl.link.maxAgeDays` 未更新",
+	CodeSyntaxError:               "grammar 的 ERROR 节点（无法解析的片段）",
+	CodeMissingNode:               "grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等）",
+}
+
+// Spec 是一个诊断码的完整定义。
+type Spec struct {
+	Code    Code
+	Level   config.DiagnosticLevel
+	Summary string
+}
+
+// Specs 返回全部已注册诊断码的定义（按码字典序）。
+//
+// 刻意不导出 summary 与 defaultLevel 两个 map：一处定义、一处读取，
+// 调用方拿到的顺序与内容都稳定，文档生成与漂移校验才能逐字比对。
+func Specs() []Spec {
+	codes := Registered()
+	out := make([]Spec, 0, len(codes))
+	for _, c := range codes {
+		out = append(out, Spec{Code: c, Level: DefaultLevel(c), Summary: summaries[c]})
+	}
+	return out
+}
+
 // SeverityFor 依据诊断码与配置决定诊断级别；ok=false 表示该诊断被关闭。
 //
 // 优先级：

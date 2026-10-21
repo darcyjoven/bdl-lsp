@@ -42,6 +42,7 @@ func main() {
 	root := flag.String("root", "/code/workspace/tiptop-gp", "语料根目录")
 	limit := flag.Int("limit", 0, "最多处理文件数（0=全部）")
 	sample := flag.Int("sample", 30, "未命中样本输出数")
+	formFilter := flag.String("form", "", "只输出该表单字面量（含子串匹配）的问题，用于逐个表单人工抽查")
 	flag.Parse()
 
 	pool, err := parser.New()
@@ -80,6 +81,7 @@ func main() {
 	// 自动标注：模块段一致性（字面量 aap/42f/x 的 aap 应出现在解析路径里；
 	// 不一致 = 可能解析到了错误表单 = 可疑误报）
 	var segMatch, segMismatch, segNone int
+	var mismatchSamples []string
 
 	for _, f := range files {
 		src, err := os.ReadFile(f)
@@ -96,8 +98,13 @@ func main() {
 			filesWithForms++
 		}
 		// 引用数：粗略用 query 再跑一次？不——用 issues 数即可
-		totalIssues += len(issues)
+		if *formFilter == "" {
+			totalIssues += len(issues)
+		}
 		for _, iss := range issues {
+			if *formFilter != "" && !strings.Contains(iss.Literal, *formFilter) {
+				continue
+			}
 			issueByForm[iss.Literal]++
 			// 模块段一致性标注
 			if seg := firstSegment(iss.Literal); seg != "" {
@@ -105,6 +112,11 @@ func main() {
 					segMatch++
 				} else {
 					segMismatch++
+					if len(mismatchSamples) < 10 {
+						line := 1 + strings.Count(string(src[:iss.Start]), "\n")
+						mismatchSamples = append(mismatchSamples,
+							fmt.Sprintf("%s:%d  %s  [%s]", f, line, iss.Message, iss.FormPath))
+					}
 				}
 			} else {
 				segNone++
@@ -112,7 +124,7 @@ func main() {
 			if len(issueSamples) < *sample {
 				line := 1 + strings.Count(string(src[:iss.Start]), "\n")
 				issueSamples = append(issueSamples,
-					fmt.Sprintf("%s:%d  %s", f, line, iss.Message))
+					fmt.Sprintf("%s:%d  %s  [%s]", f, line, iss.Message, iss.FormPath))
 			}
 		}
 		_ = totalRefs
@@ -144,6 +156,13 @@ func main() {
 	fmt.Printf("  模块一致   : %d\n", segMatch)
 	fmt.Printf("  模块不一致 : %d  ← 可疑误报（解析到别的模块的表单）\n", segMismatch)
 	fmt.Printf("  无模块段   : %d\n", segNone)
+	if len(mismatchSamples) > 0 {
+		fmt.Println()
+		fmt.Println("模块不一致样本（解析到的表单不在字面量的模块下）:")
+		for _, m := range mismatchSamples {
+			fmt.Println("  " + m)
+		}
+	}
 	fmt.Println()
 	fmt.Printf("未命中样本（%d 条，供人工标注误报）:\n", len(issueSamples))
 	for _, s := range issueSamples {
