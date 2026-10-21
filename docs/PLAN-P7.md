@@ -1127,47 +1127,92 @@ g_qryparam : RECORD
 
 新增回归测试 `internal/server/hover_test.go`（6 个用例）。
 
-#### B-3 Zed 大纲仍有层级（本轮只记录，不修）
+#### B-3 Zed 大纲层级（✅ 已修复 2026-10-21）
 
-用户反馈修复后 Zed 里**仍有**同层级变量变成树结构。
-按用户要求"先记录，后续再修复"，本轮只做记录与根因定位。
+用户反馈：修复后 Zed 里**仍有**同层级变量变成树结构。用户给出了三个具体写法：
 
-**实测结论**（20 个真实文件）——两种情况要分开看：
+| 写法 | 现象 |
+|---|---|
+| `DEFINE i,j INTEGER` | 两层结构（`i` 下有 `j`）❌ |
+| `DEFINE i INTEGER,j INTEGER` | 两层结构 ❌ |
+| `DEFINE i INTEGER` + `DEFINE j INTEGER` | 一层结构 ✅ |
 
-| 情况 | `@item` 区间包含关系 | 状态 |
-|---|---|---|
-| 同一条 `DEFINE` 声明多个变量 | **0** | ✅ 上一轮已修好 |
-| **函数内部的 `DEFINE` 变量** | **每个文件都有** | ❌ 剩余的层级来源 |
+**上一轮为什么没修好**：上一轮只把 `@item` 从"整条 DEFINE 语句"改到"名字节点"，
+解决了"同一语句多变量"的情况。但用户报的三个写法里，
+前两个恰好是**同一语句多变量**——说明还有别的机制在起作用。
 
-实例：
+**根因（读 Zed 源码定位）**：
 
-```text
-FUNCTION fa()
-    DEFINE i INTEGER
-END FUNCTION
+Zed 的层级判定在 `crates/language/src/buffer.rs`：
 
-item 数: 4
-包含对数: 2
-   [0,0-2,12] 包含 [1,11-1,12]     ← 函数区间包含其内部变量区间
-   [3,0-5,12] 包含 [4,11-4,12]
+```rust
+items.sort_by_key(|item| (item.range.start, Reverse(item.range.end)));
+let mut item_ends_stack = Vec::<Point>::new();
+for item in items {
+    while let Some(last_end) = item_ends_stack.last().copied() {
+        if last_end < item.range.end { item_ends_stack.pop(); } else { break; }
+    }
+    depth = item_ends_stack.len();          // ← 层级深度
+    item_ends_stack.push(item.range.end);
+}
 ```
 
-根因：`(function name: (identifier) @name) @item` 把 `@item` 绑在**整个函数**上，
-函数内部的 `DEFINE` 变量的 `@item` 落在函数区间内，Zed 按包含关系判成子级。
+翻译：**只要前一条目的结束位置 ≥ 当前条目的结束位置，当前条目就被判为子级**
+（`Point` 按 行,列 比较）。注意这**不是"区间相同"，而是"区间相交/重叠"**。
 
-**上一轮断言的盲区**（重要）：断言只查"`@item` 区间**完全相同**"，
-**不查"包含"**。所以它对"函数包含内部变量"这种情况完全无感。
-下一轮要补"不允许 A 包含 B"的检查——但要先确定**哪些包含是有意的**
-（比如函数与其内部变量，也许就应该有层级）。
+上一轮的断言只查"区间完全相同"，查不出这种相交——这是断言的盲区。
 
-**待用户在 Zed GUI 确认**：是"函数下的变量缩进"这种形态吗？
-确认后才能选方案：
+于是两种层级来源：
 
-| 方案 | 效果 | 代价 |
+| 来源 | 例子 | 上一轮 |
 |---|---|---|
-| A. 函数的 `@item` 也绑到名字节点 | 区间不包含 → 全平级 | 函数条目范围变小 |
-| B. 函数内 `DEFINE` 不进大纲 | 只留模块级变量 | 丢失函数内变量导航 |
-| C. 只保留模块级 `DEFINE` | 同 B 但范围明确 | 同上 |
+| ① 区间**完全相同** | `DEFINE i,j INT` 两个变量的 item 都是整条语句 | ✅ 已修 |
+| ② 区间**相交/包含** | 函数 item 覆盖整个函数体，内部变量落在其中 | ❌ 未修 |
+
+用源码复刻的算法实测（7135 个真实 `.4gl`）：
+
+```text
+修复前：条目 532386  有层级文件 6941/7135  有层级项 345608
+```
+
+**修法**：把 `@item` 绑到**最小语义单元**上——函数名、报表名、MAIN 关键字：
+
+```scheme
+(function name: (identifier) @name @item)   ; 原来 @item 绑整个函数体
+(report   name: (identifier) @name @item)   ; 同理
+(main . "MAIN" @name @item)                ; main 无名字节点，用锚点匹配开头关键字
+```
+
+`main` 的锚点 `.` 很关键：没有它会同时匹配开头和 `END MAIN` 的 MAIN，出现两条条目。
+
+菜单同理（嵌套 MENU 时整块 item 会包含内层）：
+
+```scheme
+[
+  (menu title: (_) @name @item)
+  (menu !title) @item        ; title 可选，用否定字段避免重复匹配
+]
+```
+
+`dialog` 没有 title 字段，保持整块即可（实测无层级问题）。
+
+**结果**：
+
+```text
+修复后：条目 532386  有层级文件 0/7135  有层级项 0
+```
+
+条目总数不变（532386），只是层级全平了。
+
+**回归防护**：断言升级为**直接复刻 Zed 的 depth 算法**：
+
+- `verify-queries.mjs` 新增 `zedDepths()`，实现 Zed 的排序 + 栈算法；
+- fixture `outline.4gl` 增加"函数/报表/MAIN 内部的变量"场景；
+- 断言从"区间两两不同"扩展为"**层级必须全为 0**"；
+- 新增**语料级**检查：抽样真实文件用 depth 算法扫，有层级就失败。
+
+验证：旧 query 上断言 2 报 `16/28 个条目会被 Zed 判为子级`（复现成功）；
+新 query 下 45 项校验全通过。
 
 #### B-4 P7-B 剩余项（未做）
 
