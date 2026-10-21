@@ -95,6 +95,10 @@ make regress                   # 全量语料回归（约 2.5 分钟）
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl
 
+# 程序链接资料（P7-D）：导入 DS.GAL_FILE 导出 → <项目根>/.link/
+./artifacts/bin/bdl-lsp link import -csv artifacts/link/link.csv -root /path/to/project
+./artifacts/bin/bdl-lsp link status -root /path/to/project
+
 # 语料抽样
 bash scripts/corpus-smoke.sh 60
 
