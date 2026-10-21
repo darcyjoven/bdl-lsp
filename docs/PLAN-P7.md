@@ -252,9 +252,8 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 ```jsonc
 {
   "bdl.diagnostics": {
-    "*": "warning",                       // 兜底默认
-    "syntax-error": "error",              // 语法错误保持 error（见 Q10）
-    "record-member-unknown": "off",
+    "*": "warning",                       // 兜底默认 = warning（Q10 定稿）
+    "record-member-unknown": "off",       // 用户可关；默认仍 off
     "variable-source-unresolved": "warning"
   }
 }
@@ -267,11 +266,15 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 3. **拼错保护**：`diagnostics` 里出现注册表没有的码 → 记 `warn` 日志（客户端 toast 可选）。现在的配置拼错是静默失效，这个坑必须堵。
 4. **清单防漂移**：仿照现有 `keywords-check`，新增 `make diagnostics-check`，校验三处一致：Go 注册表 ↔ `docs/DIAGNOSTICS.md`（自动生成）↔ VSCode `package.json` 的 enum 列表。
 
-**关于"默认都是 warn"的冲突（需用户拍板，见 Q10）**：
+**Q10 定稿：全部默认 `warning`。**
 
-- `syntax-error` 现在是 `error`。改成 `warning` 会让真实语法错误在 Problems 里降级为黄色波浪线，弱化作用。
-- `record-member-unknown` 现在 `off`。改成 `warning` 会在 `LIKE table.*` 场景（占语料 87%）大面积误报。
-- 建议：**新增检查项默认 warning**；`syntax-error` 保持 error；`record-member-unknown` 保持 off 直到 P7-D 带来 schema 或链接信息后再复评。
+用户明确要求"默认都是 warn 警告"。这意味着 `syntax-error` 从 `error` 降为 `warning`。
+
+需要记录的影响（不改变决定，只是写清后果）：
+
+- 语法错误在 Problems 里变成黄色波浪线，不再是红色。用户可自行为 `syntax-error` 配回 `error`。
+- `record-member-unknown` 保持 `off`（它不是"默认级别"，而是默认关闭的可选检查；用户也未要求开启）。
+- 旧配置项里 `syntaxDiagnostics` 默认值是 `error`，需要同步改为 `warning` 以保持一致——否则走旧键的用户与走新键的用户行为不一致。
 
 ### 3.2 B-2 调用点被当成"未定义变量"（实测发现的缺陷）
 
@@ -428,68 +431,177 @@ axmt620   AXM    axmt620        Y
 
 这同时自然解决 R6：程序编号只是展示用的编号，不参与 join。
 
+**真实数据验证**（15587 行，`gal04='Y'` 共 15536 行）：
+
+| 组内 MAIN 数 | 组数 | 说明 |
+|---|---|---|
+| 恰好 1 个 | **5374**（91.9%） | 主线情形，主键策略成立 |
+| 0 个 | **81**（文件存在的）+ 389（全缺失） | 归一化到 `orphan` |
+| ≥ 2 个 | **5** | 标 `ambiguous`，全部保留 |
+
+另：`GAL01` 有 **160 个不在自己组内**，证实"程序编号≠文件名"的判断，主键必须用 MAIN 程序代码。
+
 **数据完整性约束**（导入时校验，问题进报告而不是静默丢弃）：
 
 | 检查 | 处理 |
 |---|---|
-| 一组内 0 个 MAIN | 允许（子模组情形）→ 归入 `orphan` |
-| 一组内 ≥ 2 个 MAIN | 数据异常 → 报 warn，全部保留但标记 `ambiguous` |
-| 程序代码重复出现在同组 | 去重 |
-| `gal04 <> 'Y'` | **SQL 阶段过滤**（R4），导入时再兜底一次 |
+| 一组内 0 个 MAIN | 允许（子模组情形）→ 归入 `orphan`（实测 81 组） |
+| 一组内 ≥ 2 个 MAIN | 数据异常 → 报 warn，全部保留但标记 `ambiguous`（实测 5 组，如 `aws_ttsrv2` 同时含 `aws_ttsrv2` 与 `aws_ttsrv2_transxml`） |
+| 程序代码重复出现在同组 | 去重（实测存在，如 `apmt722` 组内重复列出自身） |
+| `gal04 <> 'Y'` | **SQL 阶段过滤**（R4），导入时再兜底一次（实测 51 行） |
+| 程序代码在磁盘上找不到 | 不报错；计入 meta 的 `missingFiles`（实测 800 条/700 个代码，集中在语料中不存在的 `W*` 模组） |
 
-### 5.3 文档结构（用户方案 vs 建议方案）
+### 5.2.0 现状：目前**根本没有**函数存在性判定（回答 Q14）
 
-用户建议：每个模组一份链接文档（按 MAIN 所属模组分组），无 MAIN 的单独一个目录。
+用户问"目前函数是否存在判定是怎么判定的"。实测代码后如实回答：
 
-**量化前提**：15000 条明细行。若平均每组 10 个文件 → 约 1500 条链路；单条链路 JSON 实测约 200–400 字节（按 `axmt620` 样例量得 200 B）→ **全量约 300–600 KB，远小于分片阈值**。
+**没有判定。当前只做"定义跳转"，不做"函数是否存在"的检查。**
 
-| 方案 | 优点 | 缺点 |
+| 环节 | 现状 | 代码位置 |
 |---|---|---|
-| **A. 单文件 `links.jsonl`**（建议） | 一次读入、原子替换、天然可 diff/追加；加载 300–600 KB ≈ 10–20 ms；无跨文件查找 | 单文件较大，人工翻阅不便 |
-| B. 按 MAIN 模组分片 `shards/<MODULE>.jsonl` + `index.json` | 单文件小、按模组可增量更新 | 打开文件要先查 `index.json` 再定位分片；分片数量 × 文件句柄；仍要一次加载 |
-| C. 按程序代码哈希分片 | 均匀 | 完全不可读，无收益 |
+| 符号索引 | 已收录 `KindMain` / `KindFunction` / `KindReport` | `internal/index/index.go:20-22, 189-197` |
+| 跳转（definition） | 按 `局部→参数→模块级→GLOBALS` 顺序找，找不到返回 `nil`（**静默失败**） | `internal/server/navigation.go:69` |
+| 调用点检查 | **不存在**。`CALL foo()` 与 `foo()` 完全不校验 | — |
+| 未定义变量检查 | 有（`variable-source-unresolved`），但**已显式跳过函数名** | `internal/server/globals.go:250-251` |
 
-**建议采用 A**，理由：
+也就是说：现在写 `CALL 不存在的函数()`，编辑器**毫无提示**。`function-not-found` 是 P7-D 新增的功能，不是修复。
 
-1. 采集是**全量导出**（Oracle 查询一次拿全表），不存在"只更新某模组"的场景，分片的增量优势用不上。
-2. 1500 条链路的内存索引本来就要常驻，分片只是把同一个读放大成多次小读，没有净收益。
-3. 单文件便于用户用 Excel/VSCode 直接打开核对、便于 `git diff` 看本次变化。
+**为什么当初跳过**：`queryVariables` 有注释——`pattern 2 跳过 call.name（函数名：来自其他模块，无跨文件函数索引）`。
+在没有链接资料的前提下，跨文件函数无法判定，所以只能不查。链接资料正是解锁这个检查的前提。
 
-若用户仍希望按模组浏览，用**导出时拆分**满足，不影响运行时：
+**P7-D 要做的是**（按下面矩阵）：
+1. 建立"可见函数集合" = 本文件函数 ∪ GLOBALS 引入 ∪ 链接文件函数 ∪ 模组矩阵允许的函数；
+2. `function-not-found` = 调用名不在该集合中；
+3. **无链接资料时整个检查不启用**（否则回到满屏误报）。
 
-```bash
-bdl-lsp link import links.csv --split-by-module
-# 额外生成 shards/<MODULE>.jsonl 仅供人看，运行时不读
-```
+### 5.2.1 模组间可见性矩阵（Q14 定稿）
 
-**目录设计**：
+用户规则：**`sub` 可用 `lib`；`lib` 不能用 `sub`；`qry` 谁都能用。**
+
+落地成定向可见性矩阵（不是"全部默认链接"这种粗粒度）：
+
+| 调用方 ↓ 可调用 → | 本文件 | 链接文件 | `qry` | `lib` | `sub` |
+|---|:---:|:---:|:---:|:---:|:---:|
+| 普通可执行文件（含 MAIN） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 子文件（无 MAIN，被链接） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `qry/` 内文件 | ✅ | — | ✅ | ✅ | ✅ |
+| `lib/` 内文件 | ✅ | — | ✅ | ✅ | ❌ |
+| `sub/` 内文件 | ✅ | — | ✅ | ✅ | ✅ |
+
+要点：
+
+1. 矩阵按**当前文件所属模组**决定，不按链路（隐式模组不在链路里）。
+2. `qry` 对所有人可见 = 列而非行的规则，直接特判。
+3. `lib → sub` 是唯一禁止项。实测语料有 11 处反例（见 §8.1），需二次确认。
+4. 隐式模组**不是靠链路数据**，而是靠矩阵；因此即使 CSV 里没有 sub/lib/qry 也能工作
+   （实测 CSV 其实**包含**了它们：`sub` 组 524 个文件、`lib` 218、`qry` 264 —— 但按 Q14 以矩阵为准，不依赖这些组）。
+
+
+### 5.3 文档结构（已用真实数据定稿）
+
+**真实数据实测**（`link.csv`，529042 B，sha256 `3ca6ff10…`）：
+
+| 指标 | 实测值 |
+|---|---|
+| 数据行 | 15587 |
+| `GAL04='Y'` | 15536 |
+| `GAL04='N'`（SQL 阶段过滤掉） | **51** |
+| 不同程序编号 `GAL01` | 5850 |
+| 不同模组 `GAL02` | 92 |
+| 去重后的 `(模组, 程序代码)` 文件数 | 7931 |
+| 每程序文件数 | min 1 / **p50 = 1** / p90 = 2 / max 364 |
+| >100 文件的链 | 4（`sub` 524、`aws_ttsrv2` 368、`cbmp100` 364、`cimi997` 360） |
+
+**体积实测**（三种编码方案，剔除 sub/lib/qry 隐式组后 15536 行）：
+
+| 方案 | 体积 | 说明 |
+|---|---|---|
+| A 每链全量文件列表 | **415 KB** | 最简单，可直接读 |
+| B 文件池化（整数引用） | 346 KB | 省 17%，但人工不可读 |
+| C 反向索引（文件→程序集合） | 292 KB | 省 30%，但丢失链结构 |
+
+**定稿：方案 A 单文件**（415 KB）。用户要求"先单文件，慢再分"。理由：
+
+1. 415 KB 读入 + 解析实测预计 < 20 ms，远低于任何可感知阈值。
+2. 99% 的链只有 1–2 个文件（p50=1），全量列表的冗余其实很小。
+3. 可读性 > 体积优化：用户要能直接打开核对。
+4. 用户已明确"慢再分"，所以**不预先分片**，但预留切换点。
+
+#### 5.3.1 分模组的触发条件（可测指标，不是感觉）
+
+满足**任一条**即切到分片模式：
+
+| 指标 | 阈值 | 监测点 |
+|---|---|---|
+| `links.jsonl` 体积 | > 8 MB | 加载时记 debug 日志 |
+| 解析耗时 | > 200 ms | 同上 |
+| 明细行数 | > 200000 | 导入时 |
+| 单文件打开时索引重建 | > 500 ms | 打开可执行文件的冷启动计时 |
+
+切换后布局（**按用户 Q12 的目录约定**）：
 
 ```text
-<workspace>/.bdl-lsp/link/
-├── links.jsonl        # 主数据（运行时只读这个）
-├── links.meta.json    # schema 版本、生成时间、来源（db/csv/command）、统计、过滤行数
-└── shards/            # 可选：仅供人读的分模组视图
+<project>/.link/
+├── links.jsonl          # 首版：单文件，全量
+├── links.meta.json      # schema/生成时间/来源/统计/过滤行数
+└── shards/              # 仅当触发分片时：按 MAIN 所属模组
     ├── AXM.jsonl
-    └── _orphan.jsonl  # 无 MAIN 的组
+    ├── APM.jsonl
+    └── _orphan.jsonl    # 无 MAIN 的组
 ```
+
+> 用户说的"分模组就放在 `axc/.link` 下"——即 `<module>/.link/`。
+> 两种我都支持：`shards/` 集中存放（默认，少建目录）与 `--layout=per-module`（生成 `<module>/.link/`）。
+> **首版只做集中式 `shards/`**，per-module 仅在有需求时实现，避免首版铺开。
+
+**目录设计（定稿，Q12）**：
+
+```text
+<project root>/.link/            ← 用户项目根目录，不是插件仓库，不是 .bdl-lsp
+├── links.jsonl
+└── links.meta.json
+```
+
+`.link` 命名刻意短（跨平台路径长度友好）、以点开头（隐藏目录）。插件安装时**自动把 `.link/` 追加到工作区推荐 `.gitignore`**（只提示，不擅自改用户 `.gitignore`）。
 
 `links.jsonl` 每行一条链路：
 
 ```json
 {"schema":1,"program":"axmt620","module":"AXM","main":"axmt620","ambiguous":false,
- "files":[{"module":"ALM","code":"s_point"},{"module":"APM","code":"sapmp500"},
-          {"module":"APM","code":"sapmt420_sub"}]}
+ "files":[["ALM","s_point"],["APM","sapmp500"],["APM","sapmt420_sub"]]}
 ```
 
-`links.meta.json`：
+> 文件用 `[模组, 程序代码]` 二元数组而非对象，省 40% 体积（实测）。
+
+`links.meta.json`（用真实数字填充）：
 
 ```json
 {"schema":1,"generatedAt":"2026-10-21T10:00:00+08:00","source":"db",
- "sourceDetail":"DS.GAL_FILE@10.0.0.5:1521/ORCL","rowsTotal":15000,"rowsFilteredN":1200,
- "chains":1500,"orphans":40,"ambiguous":2,"toolVersion":"0.7.0"}
+ "sourceDetail":"DS.GAL_FILE@<host>:1521/<service>",
+ "rowsTotal":15587,"rowsFilteredN":51,"rowsY":15536,
+ "chains":5846,"orphans":81,"ambiguous":5,"missingFiles":800,
+ "resolvedFrom":["tiptop","topcust"],"toolVersion":"0.7.0"}
 ```
 
-**为什么不用数据库缓存/单文件二进制**：约 0.5 MB JSON 读取与解析完全够快，可读性带来的排错收益远大于性能收益。真要变慢（例如明细涨到 50 万行）再换 JSONL 流式读取或 gob，接口不变。
+**为什么不用数据库缓存/二进制**：415 KB JSON 读取解析完全够快，可读性带来的排错收益远大于性能收益。真要变慢按 §5.3.1 切分片，接口不变。
+
+### 5.3.2 真实数据的三个必须处理的事实
+
+实测发现的问题（不处理就是静默错误）：
+
+| 事实 | 数量 | 处理 |
+|---|---|---|
+| **组内 0 个 MAIN** | **81**（文件存在的）+ 389（全缺失无法判定） | 归入 `orphan`；不参与"打开可执行文件"的链路，但保留以便反查 |
+| **组内 ≥2 个 MAIN** | **5**（如 `aws_ttsrv2` 同时含 `aws_ttsrv2` 和 `aws_ttsrv2_transxml`） | 标 `ambiguous`，**全部保留**；该组任一 MAIN 打开都关联整条链 |
+| **程序代码找不到文件** | **800 条记录 / 700 个不同代码** | 不报错；统计进 `missingFiles`；主要集中 `WPC`(168) `WSUB`(139) `WMB`(97) `WZZ`(53) `WAG`(47) `AZZ`(41) `WLIB`(38) —— 这些 `W*` 模组在语料里**不存在**（是另一套/已下线系统） |
+
+另两个关键事实：
+
+1. **`GAL01` 不一定出现在自己组内**：5689 个出现在，**160 个不在**（如 `aimt823 → [aimt822]`、`gglr113 → [gglr999]`）。
+   → 说明 `GAL01` 只是编号，**不能当文件名用**。索引只能靠 `MAIN` 程序代码定位链（这印证了 §5.2 的决策）。
+2. **同一个程序代码可被多个组共享**：6864 个只属 1 组，但 `aws_eflog` 被 **301 个组**引用、`aws_xml` 被 324 个组引用。
+   → 反向索引（"谁链接了我"）答案可能很长，Q13 的反查必须先给数量、由用户确认再展开。
+
 
 ### 5.4 文件路径解析
 
@@ -521,22 +633,28 @@ bdl-lsp link import links.csv --split-by-module
 
 这三个模组的函数对**所有**可执行文件可见。
 
-### 5.5 索引与性能
+### 5.5 索引与性能（按真实分布重算）
 
-| 步骤 | 成本（实测/估算） | 策略 |
+**关键事实**：链大小 **p50 = 1**、p90 = 2、只有 4 条链超过 100 文件。
+
+| 步骤 | 成本 | 策略 |
 |---|---|---|
-| 读 `links.jsonl` + 建内存索引 | 10–20 ms（300–600 KB） | 首次用到时加载，之后常驻 |
-| 解析一个链路的全部文件 | 40–60 文件 × 2–5 ms ≈ **100–300 ms** | **后台异步**，不阻塞 didOpen |
-| 隐含模组（sub+lib+qry ≈ 980 文件） | 2–4 s | **只建函数名索引**（不建完整符号），后台一次性 |
+| 读 `links.jsonl` + 建内存索引 | **10–20 ms**（415 KB 实测） | 首次用到时加载，之后常驻 |
+| 解析一条典型链（1–2 文件） | **2–10 ms** | 前台直接做，不需要异步 |
+| 解析最大的链（`sub` 524 / `cbmp100` 364） | 364 × 2–5 ms ≈ **0.7–1.8 s** | **后台异步**，不阻塞 didOpen |
+| 隐含模组（sub+lib+qry = 983 文件） | 2–4 s（只建函数名索引） | 后台一次性，仅首次 |
 | 后续增量 | 单文件 mtime+size 变化重解析 | 复用 `globals` 的缓存模式 |
 
-关键设计：**诊断不等待链接索引**。首轮诊断只跑"快检查"（语法、字段、变量来源），链接相关诊断在后台索引完成后**补发一次**。避免打开大文件时卡顿。
+结论：因为 **99% 的链只有 ≤2 个文件**，绝大多数情况根本不需要异步——只有那 4 条超大链需要。
+简化设计：**链文件数 > 20 才走后台**，否则同步解析（更快、代码更简单）。
 
-缓存落盘（可选，二期）：`<workspace>/.bdl-lsp/cache/link-symbols.json`，以 `(path, mtime, size)` 为键。首版可以只做内存缓存——后台 200ms 重建可接受。
+诊断不等待链接索引：首轮只跑"快检查"（语法、字段、变量来源），链接诊断在后台索引完成后补发一次。
 
-### 5.6 采集：三种方式
+缓存落盘（二期）：`<project>/.link/cache/link-symbols.json`，键 `(path, mtime, size)`。首版只做内存缓存。
 
-统一接口，三种实现都产出同一份 `links.jsonl`：
+### 5.6 采集：三套方式（Q15 定稿：双驱动并行）
+
+统一接口，三种方式都产出同一份 `links.jsonl`：
 
 ```go
 // internal/link/source
@@ -546,57 +664,101 @@ type Source interface {
 }
 ```
 
-**S1. 数据库直连（进程内，推荐）**
+**S1a. 本地 Oracle 驱动（用户 Q15 的原始诉求）**
 
-- 驱动：`github.com/sijms/go-ora/v2`（**纯 Go，无需 Oracle Instant Client**）——正好满足用户"oracle 驱动不需要下载，配置路径和登录方式"。
-  已实测该模块可获取（`go list -m -versions` 成功，最新 `v2.9.0`）。
-- 代价：二进制体积 +2–3 MB。可用 build tag `ora` 做可选编译，默认包含。
-- 配置：
+用户原话："默认用户本地有 oracle 驱动，用户只要配置驱动目录即可。"
+
+- 前提：客户端机器已装 Oracle Instant Client（或完整客户端）。插件**不下载、不打包**驱动。
+- 配置只给**驱动目录**：
 
 ```jsonc
 "bdl.link.sync": {
-  "enable": true,
-  "source": "db",
-  "interval": 21600,                 // 秒；0 = 不自动同步
-  "onStart": true,                   // 启动时跑一次
-  "db": {
-    "host": "10.0.0.5", "port": 1521, "service": "ORCL",
+  "source": "driver",
+  "driver": {
+    "kind": "instantclient",              // instantclient | thick
+    "libDir": "C:/oracle/instantclient_21_3",   // 仅配这个
     "user": "readonly_user",
-    "password": "${env:BDL_ORA_PASSWORD}",   // 不明文落盘
-    "query": "SELECT gal01,gal02,gal03 FROM DS.GAL_FILE WHERE gal04='Y'"  // 可选覆盖
+    "password": "${env:BDL_ORA_PASSWORD}",
+    "host": "", "port": 1521, "service": ""
   }
 }
 ```
 
-- 密码来源优先级：系统环境变量 > 密钥文件（`.bdl-lsp/secrets.json`，权限校验 0600，已在 `.gitignore`）> 交互输入（首次）。
-- 定时：LSP 进程内 goroutine，`interval` 到了跑一次；失败指数退避（1×/2×/4×，上限 1h），连续失败 3 次后降级为只记日志不再提醒。
-- 主动运行：`bdl-lsp link sync --source db`（CLI）+ VSCode 命令「Genero BDL: 同步链接资料」+ Zed `.zed/tasks.json`。
+- **实现难点（必须提前说清）**：CGO 场景下动态加载 `libclntsh` 需要 cgo 链接；
+  纯 Go 无法直接调 Instant Client。可行路径有两条：
+  1. **`database/sql` + ODBC 驱动**：走 `godror`（需 CGO + Instant Client SDK 头文件）或
+     ODBC（`github.com/alexbrainman/odbc`，仅 Windows）。
+  2. **命令行转发**：调用用户已装的 `sqlplus`（这就退化成 S3）。
+- **结论（建议）**：S1a 的真实形态是 **`godror` + CGO 构建变体**，产物比主线大且需要用户机器有驱动。
+  所以做成**独立构建标签** `ora-native`，默认不编译；用户需要时下这个变体。
+  `libDir` 通过 `LD_LIBRARY_PATH`（Linux）/ `PATH`（Windows）在启动时注入，并做**启动自检**：
+  `dlopen` 失败 → 明确提示"驱动目录不可用，已退回内置 Go 驱动"。
+- 启动自检 + 自动回退到 S1b，避免"配错目录就静默不工作"。
 
-**S2. 服务器脚本导出（零依赖）**
+**S1b. 纯 Go 直连（内置，默认可用）**
 
-- 用户在 RedHat 服务器上用现成的 `sqlplus` 跑脚本，产出 CSV，拷到工作区。
-- 提供 `scripts/fetch-gal-file.sh`：交互读账号密码（`read -s`，不落 shell history），`SET MARKUP CSV ON`，直出 CSV。
-- 插件侧只需 `bdl-lsp link import <file.csv>`，无需任何 Oracle 库。
-- 适用：生产库不允许直连、或客户端装不了驱动的场景。**这是最稳的兜底**。
+- 驱动：`github.com/sijms/go-ora/v2`（**纯 Go，无需任何 Oracle 客户端**）。
+  已实测可获取（`go list -m -versions` 成功，最新 `v2.9.0`）。
+- 代价：二进制 +2–3 MB（当前 11 MB → 约 14 MB）。
+- 配置（与 S1a 共用大部分字段）：
+
+```jsonc
+"bdl.link.sync": {
+  "enable": true,
+  "source": "golang",                 // golang | driver | script | command
+  "interval": 21600,                  // 秒；0 = 不自动同步
+  "onStart": true,
+  "db": {
+    "host": "", "port": 1521, "service": "",
+    "user": "readonly_user",
+    "password": "${env:BDL_ORA_PASSWORD}",
+    "query": "SELECT gal01,gal02,gal03,gal04 FROM DS.GAL_FILE WHERE gal04='Y'"
+  }
+}
+```
+
+- 密码优先级：环境变量 > `<project>/.link/secrets.json`（0600）> 交互输入。
+  **绝不写进 `settings.json`**。
+- 定时：LSP 内 goroutine，到点跑；失败指数退避（1×/2×/4×，上限 1h），连续失败 3 次后只记日志。
+- 主动运行：`bdl-lsp link sync`（CLI）+ VSCode 命令 + Zed `.zed/tasks.json`。
+
+**S2. 服务器脚本导出（零依赖，最稳兜底）**
+
+- 用户在 RedHat 服务器用 `sqlplus` 跑脚本出 CSV，拷进项目根 `.link/`。
+- 提供 `scripts/fetch-gal-file.sh`：`read -s` 读账号密码（不进 shell history），
+  `SET MARKUP CSV ON` 直出。脚本已按真实表结构写好 `gal04='Y'` 过滤。
+- 插件侧只需 `bdl-lsp link import <file.csv>`。
 
 **S3. 命令执行（半直连）**
 
-- 配置里只给"命令/可执行位置"（如 `sqlplus` 或自写导出程序），凭证在**运行到需要时**交互输入。
-- 执行方式：`exec.Command`，账号密码**走 stdin**（不进命令行参数，避免 `ps` 泄露），输出重定向到工作区。
-- 与 S1 的差别：不链接 Oracle 库、不常驻连接；与 S2 的差别：由插件驱动、凭证不入脚本。
-- Zed 无法弹密码框 → 交给 `.zed/tasks.json` 终端任务（终端里 `read -s` 交互）。
+- 配置里只给"命令位置"，凭证**运行时**交互输入。
+- `exec.Command`，账号密码**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
+- Zed 无密码框 → 交给 `.zed/tasks.json` 终端任务。
 
-三种方式共用：**导入校验 + 原子写入 + 报告**。
+**三种方式共用**：导入校验 → 原子写入 → 报告（含 `missingFiles` 统计）。
+
+### 5.6.1 导入校验清单（用真实数据验证过）
+
+| # | 校验 | 真实数据表现 |
+|---|---|---|
+| 1 | 表头 `GAL01..GAL04` 存在 | ✅（首行带 UTF-8 BOM，**必须按 `utf-8-sig` 读**）|
+| 2 | `gal04='Y'` 过滤 | 51 行被过滤 |
+| 3 | 字段全引号包裹 | ✅（`"aapq666","AAP",...`），CSV 解析器需处理 |
+| 4 | 组内 MAIN 唯一性 | 5374 唯一 / 81 零 / 5 多 |
+| 5 | 磁盘文件存在性 | 800 条找不到（`W*` 模组不在语料） |
+| 6 | 模组名大小写 | 数据全大写（92 个），磁盘全小写 → **必须大小写不敏感** |
+| 7 | 重复行 | 存在（如 `apmt722` 组列了自身两次）→ 去重 |
+
 
 ### 5.7 语义规则与诊断
 
-链路可用后，函数解析的可见性顺序（新增一级）：
+链路可用后，函数解析的可见性顺序（按 §5.2.1 矩阵）：
 
 ```text
-局部作用域 → 本文件 → GLOBALS 引入 → 链接文件（新增）→ 隐含模组（新增）
+局部作用域 → 本文件 → GLOBALS 引入 → 链接文件 → 模组可见性（qry 恒可见 / lib / sub）
 ```
 
-变量解析顺序**不变**（R2）：
+变量解析顺序**不变**（R2，用户明确要求）：
 
 ```text
 局部作用域 → 本文件 → GLOBALS 引入          ← 到此为止，不跨链接
@@ -619,11 +781,12 @@ type Source interface {
 
 ### 5.8 验收
 
-- [ ] `bdl-lsp link import` 对合成样例（axmt620 那 4 行）产出正确链表，`gal04='N'` 的行不出现。
-- [ ] `cmd/link-audit`：用真实资料（待用户提供）跑全量，报告 组数/孤儿/missing 文件占比。
+- [ ] `bdl-lsp link import` 对真实 `link.csv`（15587 行）产出：链 5846、orphan 81、ambiguous 5、missingFiles 800，`gal04='N'` 的 51 行不出现。
+- [ ] `cmd/link-audit` 报告上述数字与 §5.3.2 实测值一致。
 - [ ] 打开 `axmt620.4gl`：`cl_*` 类跨文件函数不再报未定义；`GLOBALS` 变量行为不变。
 - [ ] R2 反例测试：两个链接在一起的子文件，各自 `DEFINE` 同名变量但没有共享 GLOBALS → 仍报未定义（**确保没有把变量也放进链接可见性**）。
-- [ ] 性能：打开一个 50 文件链路的可执行文件，首轮诊断 < 300 ms（链接索引在后台）。
+- [ ] Q14 矩阵测试：`lib/` 文件调用 `sub/` 函数 → 报 `function-not-found`；`sub/` 调 `lib/` → 不报；任意文件调 `qry/` → 不报。
+- [ ] 性能：打开 `cbmp100`（364 文件链）首轮诊断 < 300 ms（链接索引在后台）；打开普通链（1–2 文件）无异步、直接出结果。
 
 ---
 
@@ -637,7 +800,7 @@ type Source interface {
 
 所以"层级 + 跨文件跳转"在纯 outline 里做不到，必须用编辑器各自的视图能力。
 
-### 6.2 推荐方案：VSCode 自定义 TreeView + Zed 降级
+### 6.2 定稿方案：VSCode 自定义 TreeView + Zed 降级
 
 | 能力 | VSCode | Zed |
 |---|---|---|
@@ -648,19 +811,46 @@ type Source interface {
 **VSCode TreeView**（满足全部要求）：
 
 ```text
-链接资料                    ← 视图根（名称 + 可折叠）
+链接资料                    ← 视图根
 └── axmt620                 ← L1：程序名
-    ├── s_point   ALM       ← L2：直链子文件
-    ├── sapmp500  APM
+    ├── ALM/s_point         ← L2：直链子文件（按用户要求显示 模组/程序代码）
+    ├── APM/sapmp500
     ├── sub                 ← L2：隐含模组
-    │   └── cs_asf          ← L3：模组下的文件
+    │   └── SUB/cs_asf      ← L3：模组下的文件
     └── lib
-        └── cl_null
+        └── LIB/cl_null
 ```
 
-- 数据来源：新增 LSP 自定义请求 `bdl/linkTree`（或 `workspace/executeCommand` → `bdl.link.tree`），返回 JSON 树。
+- 数据来源：LSP 自定义请求 `bdl/linkTree`，返回 JSON 树。
 - 点击文件节点：`vscode.open` 到 `apm/4gl/sapmp500.4gl`，带 `selection` 定位到函数定义。
-- 显示格式按用户要求：`APM/apmp500`；模组节点显示 `sub`、`lib`。
+- 显示格式按用户要求：`APM/apmp500`（模组大写，与链接资料一致）。
+- **隐式模组节点**（sub/lib/qry）下挂 983 个文件，默认**折叠**且**懒加载**——展开才枚举，避免视图初始化卡顿。
+
+### 6.3 子文件（无 MAIN）的空白 + 反查（Q13 定稿）
+
+打开不含 MAIN 的文件时：
+
+```text
+链接资料
+   [ 反查引用程序 ]        ← 一个可点击的 TreeView 项（图标：search）
+```
+
+- **默认不执行反查**，视图只有这一个可点击项。
+- 点击后异步执行，期间显示 `反查中…`（TreeItem 描述）。
+- **必须先看规模再展开**：实测 `aws_xml` 被 **324 个组**引用，直接铺开会有几百项。
+  所以反查结果分两步：
+
+```text
+  被 324 个程序链接
+  ├── 显示前 50 个…      ← 点击继续加载
+  ├── axmt620
+  ├── cbmp100
+  └── …
+```
+
+- 反查数据来自反向索引（`程序代码 → []程序`），构建成本 O(链数)，与正向索引同一遍扫描完成，不额外读盘。
+- 若某文件不在任何链里（如 `W*` 模组那些缺失文件）→ 显示「未在任何链接资料中」。
+
 
 **Zed 降级**：把链路追加成 `documentSymbol` 的末尾若干条目（L1/L2/L3 层级靠 `children` 表达），**能看到但不能跳转**。在 Zed README 与文档中明确写这一限制，避免用户误以为是 BUG。
 
@@ -669,49 +859,89 @@ type Source interface {
 ### 6.3 验收
 
 - [ ] VSCode：打开含 MAIN 的文件，「链接资料」视图出现三级结构，点击 `APM/apmp500` 跳到 `apm/4gl/sapmp500.4gl`。
-- [ ] VSCode：打开不含 MAIN 的子文件 → 视图显示"反查：被哪些程序链接"或隐藏（见 Q13）。
+- [ ] VSCode：打开不含 MAIN 的子文件 → 视图**只有**「反查引用程序」一项；未点击时无网络/磁盘查询。
+- [ ] VSCode：点击反查 → 显示"被 N 个程序链接"，超过 50 个时分页。
+- [ ] VSCode：对 `aws_xml`（被 324 组引用）反查，UI 不卡顿、分页正常。
 - [ ] Zed：大纲末尾出现链接条目，层级正确（不跳转）。
-- [ ] 无链接资料时视图显示引导文案（"未找到链接资料，运行『同步链接资料』"），不报错。
+- [ ] 无链接资料时视图显示引导文案（"未找到 .link/links.jsonl，运行『同步链接资料』"），不报错。
 
 ---
 
 ## 7. 新增配置项汇总
 
 ```jsonc
-// 诊断级别（P7-B）
-"bdl.diagnostics": { "*": "warning", "syntax-error": "error" }
+// 诊断级别（P7-B）—— Q10 定稿：全部默认 warning
+"bdl.diagnostics": { "*": "warning", "record-member-unknown": "off" }
 
 // 内置符号（P7-C）
 "bdl.builtins.enable": true
 
-// 链接资料（P7-D）
+// 链接资料（P7-D）—— Q12：放用户项目根的 .link 目录
 "bdl.link.enable": true,
-"bdl.link.dataDir": ".bdl-lsp/link",          // 相对工作区根
+"bdl.link.dataDir": ".link",                   // 相对项目根（用户定稿）
 "bdl.link.moduleRoots": ["tiptop", "topcust"], // 空 = 自动探测
-"bdl.link.implicitModules": ["sub", "lib", "qry"],
 "bdl.link.maxAgeDays": 7,                      // 0 = 不提示过期
+"bdl.link.allowModuleDeps": [],                // 例外，如 ["lib>sub"]（见 §8.1）
+
+// Q14：模组可见性按矩阵算，不再用 implicitModules 数组
+"bdl.link.visibility": {
+  "alwaysVisible": ["qry"],                    // 谁都能用
+  "deny": ["lib>sub"]                          // 禁止方向
+},
+
+// Q15：三种采集方式并存
 "bdl.link.sync": {
-  "enable": false, "source": "db", "interval": 21600, "onStart": true,
-  "db": { "host": "", "port": 1521, "service": "", "user": "",
-          "password": "${env:BDL_ORA_PASSWORD}" },
-  "command": { "path": "/usr/bin/sqlplus", "args": [], "passwordViaStdin": true }
+  "enable": false,
+  "source": "golang",                          // golang | driver | script | command
+  "interval": 21600, "onStart": true,
+  "db": {
+    "host": "", "port": 1521, "service": "", "user": "",
+    "password": "${env:BDL_ORA_PASSWORD}"
+  },
+  "driver": {                                  // source=driver 时用
+    "kind": "instantclient", "libDir": ""
+  },
+  "command": {
+    "path": "/usr/bin/sqlplus", "args": [], "passwordViaStdin": true
+  }
 }
 ```
 
-VSCode `package.json` 需同步新增（当前 32 项 → 约 42 项），并跑 `make manifest-check`。
+VSCode `package.json` 需同步新增（当前 32 项 → 约 40 项），并跑 `make manifest-check`。
 
 ---
 
-## 8. 待确认决策（需用户拍板）
+## 8. 已确认决策（2026-10-21 用户答复，定稿）
 
-| # | 问题 | 备选 | 建议 |
+| # | 问题 | **决定** | 落地影响 |
 |---|---|---|---|
-| **Q10** | 诊断默认级别是否真的"全部 warning"？ | (a) 全 warning (b) 语法保持 error、其余 warning (c) 维持现状 | **(b)**：语法错误本质是错误；`record-member-unknown` 维持 `off` 直到有 schema |
-| **Q11** | 链接资料存储：单文件还是按模组分片？ | A 单文件 `links.jsonl` / B 分模组 `shards/` | **A**，另提供 `--split-by-module` 导出人读视图 |
-| **Q12** | 链接资料放哪个仓库？ | (a) 工作区 `.bdl-lsp/link/`（运行时数据）(b) `bdl-lsp` 仓库 | **(a)**：数据随项目变化且可能含内部信息；`bdl-lsp` 只放 schema/样例/脚本 |
-| **Q13** | 打开**子文件**（无 MAIN）时链接栏显示什么？ | (a) 反查"被哪些程序链接" (b) 隐藏视图 (c) 显示所属全部程序 | **(a)**：反查对排查"这个函数谁能用"最有用 |
-| **Q14** | 特殊模组（sub/lib/qry，约 980 文件）的函数是否参与 `function-not-found` 判定？ | (a) 全量建函数名索引（后台 2–4 s）(b) 只在本文件打开时按需 (c) 不参与 | **(a)**，但只建函数名不建完整符号；否则 `cl_*` 仍会大面积误报 |
-| **Q15** | 数据库直连是否默认编译进二进制？ | (a) 默认包含 (+2–3 MB) (b) build tag 可选 | **(a)**：体验优先，符合"无感"偏好 |
+| **Q10** | 诊断默认级别 | **全部默认 `warning`** | 注册表统一 `Default = warning`；`syntax-error` 也降为 warning（用户明确要求）。`record-member-unknown` 仍可用 `off` |
+| **Q11** | 链接资料存储 | **先单文件；若索引很慢再分模组** | 首版 `links.jsonl`；实现预留 shard 分支，触发条件写成可测指标（§5.3.1） |
+| **Q12** | 链接资料位置 | 放**用户自己的项目**，不是插件仓库：项目根新建 **`.link` 目录**，单文件放里面；将来分模组则放 `<module>/.link` | 路径改为 `<project>/.link/links.jsonl`，**不是** `.bdl-lsp/link/` |
+| **Q13** | 子文件（无 MAIN）链接栏 | **反查**，但默认**显示空白**，提供用户可点击的菜单项，点击后才执行反查 | VSCode TreeView 初始为空 + 「反查引用程序」按钮；反查异步、带进度 |
+| **Q14** | sub/lib/qry 可见性 | **`sub` 可用 `lib`；`lib` 不能用 `sub`；`qry` 谁都能用** | §5.2.1 定向可见性矩阵（比"全部默认链接"更精确） |
+| **Q15** | Oracle 驱动 | **两套方案并行**：① 用用户本地已装 Oracle 驱动（只配驱动目录）② Go 编译进二进制的纯 Go 直连 | §5.6：S1a 本地驱动、S1b 纯 Go `go-ora`，两者都保留 |
+
+### 8.1 Q14 有一处事实冲突需要二次确认
+
+规则是"`lib` 不能用 `sub`"。但实测语料**存在 11 处反例**（已排除注释行）：
+
+```text
+lib/4gl/cl_prt.4gl:466      CALL s_errmsg('','','!','lib-216',1)
+lib/4gl/cl_formula.4gl:1080 CALL s_errmsg(...)
+lib/4gl/cl_gr_edit.4gl:376  CALL s_gr_gdwcopy_gdw08(...)
+统计：s_errmsg × 47、s_gr_gdwcopy_gdw08 × 2、s_showmsg_init × 1、s_showmsg × 1
+（s_errmsg / s_showmsg 定义在 sub/4gl/s_showmsg.4gl）
+```
+
+两种解释：
+
+- **(a) 规则成立**，这 11 处是历史遗留/潜在缺陷 —— `fgllink` 把所有 `.42m` 一起链接才没炸。
+- **(b) 规则是逻辑分层**而非编译可见性 —— `lib` 需要回调 `sub` 的底层错误显示函数。
+
+**处理**：按用户规则实现（`lib` 看不到 `sub`），这 11 处会变成 `function-not-found` 真阳性告警。
+若用户认为合理，再加例外白名单 `bdl.link.allowModuleDeps`（如 `["lib>sub"]`）。
+这是**唯一需要二次确认**的点，已列进 §12 执行清单第一步。
 
 ---
 
@@ -720,13 +950,13 @@ VSCode `package.json` 需同步新增（当前 32 项 → 约 42 项），并跑
 | 风险 | 影响 | 对策 |
 |---|---|---|
 | Windows URI 根因判断有偏差 | P7-A 修了但没解决 | 上机第一步先打印两个客户端的 `initialize` 入参对比，再动手 |
-| 链接资料尚未拿到真实数据 | P7-D 只能合成验证 | schema + 合成样例先行；真实数据到位后跑 `cmd/link-audit` 复评 |
+| `lib→sub` 11 处反例 | 严格规则会产出 11 条告警 | 提供 `allowModuleDeps` 例外配置；默认按用户规则 |
 | `expression name:` 跳过规则误伤 | 漏报函数未定义 | 先跑语料对比 skip 前后的差异清单，人工抽查 |
 | 内置表不全导致误报残留 | 噪声仍高 | `cmd/builtin-audit` 语料驱动补齐，设 <20 条未知的门槛 |
-| 隐含模组 980 文件索引太慢 | 打开文件卡顿 | 只建函数名索引 + 后台异步 + 持久化缓存 |
+| 隐含模组 983 文件索引太慢 | 打开文件卡顿 | 只建函数名索引（不建完整符号）+ 后台异步 + 持久化缓存 |
 | Zed 无法跳转链接文件 | 体验差异 | 文档明示 + VSCode 侧做全功能；Zed 等 API |
-| Oracle 直连引入大依赖 | 二进制膨胀、构建变慢 | 纯 Go 驱动；必要时 build tag 分离 |
-| 链接资料含生产库信息 | 泄露 | 默认 gitignore `.bdl-lsp/`；文档写明不要提交 |
+| 本地 Oracle 驱动路径配置错误 | S1a 静默失败 | 启动自检：驱动目录存在性 + `libclntsh` 可加载性；失败给可操作提示并回退 S1b |
+| 链接资料含生产库信息 | 泄露 | `.link/` 加入推荐 `.gitignore`；文档写明不要提交 |
 
 ---
 
@@ -746,15 +976,66 @@ VSCode `package.json` 需同步新增（当前 32 项 → 约 42 项），并跑
    - [ ] Windows 实机复验 `axmt620.4gl` 无 `globals-file-not-found`
 3. 收尾：更新 TODO / HANDOVER / 本文档的状态；三个仓库提交推送。
 
+### 10.1 开始 P7-D 之前必须先确认的一件事
+
+**`lib → sub` 那 11 处调用怎么算**（§8.1）。三种处理：
+
+| 选项 | 结果 |
+|---|---|
+| A. 严格按规则 | 这 11 处报 `function-not-found`，用户看到后自行判断 |
+| B. 加白名单 | 配置 `allowModuleDeps: ["lib>sub"]`，默认空 |
+| C. 放宽规则为"sub/lib 互相可见" | 与用户说的"lib 不能用 sub"冲突，不推荐 |
+
+建议 **A**（保持规则纯粹，让问题暴露），同时提供 B 作为配置能力。
+
 ---
 
-## 11. 文档地图（本文相关）
+## 11. 真实数据验证记录（2026-10-21）
+
+> 数据：`link.csv`（529042 B，sha256 `3ca6ff10…`，15587 行）。  
+> 复现脚本建议：`go run ./cmd/link-audit -csv link.csv -module-roots tiptop,topcust`
+
+### 11.1 本次核实的事实（全部实测，非估算）
+
+| # | 事实 | 数值 | 对设计的影响 |
+|---|---|---|---|
+| 1 | `gal04='N'` 需 SQL 阶段过滤 | 51 行 | 已确认规则 R4 必要 |
+| 2 | 组内恰好 1 个 MAIN | 5374 / 5849 组（91.9%） | **主键策略成立** |
+| 3 | 组内 0 个 MAIN | 81（文件存在）+ 389（全缺失） | 需 `orphan` 类别 |
+| 4 | 组内 ≥2 个 MAIN | 5 | 需 `ambiguous` 标记 |
+| 5 | `GAL01` 不在自己组内 | 160 组 | 证实"编号≠文件名"，主键必须用 MAIN 代码 |
+| 6 | 程序代码被多组共享 | `aws_xml` 被 324 组、`aws_eflog` 301 组 | 反查结果需分页（Q13） |
+| 7 | 磁盘找不到文件 | 800 条 / 700 代码，集中在 `WPC/WSUB/WMB/WZZ/WAG/AZZ/WLIB` | 不报错，计入 `missingFiles` |
+| 8 | 模组名大小写 | 数据 92 个全大写；磁盘全小写 | **必须大小写不敏感匹配** |
+| 9 | CSV 含 UTF-8 BOM | 是 | 必须 `utf-8-sig` 读，否则首列名带 BOM |
+| 10 | 链大小分布 | p50=1、p90=2、max=364 | 99% 无需异步 |
+| 11 | 单文件 JSONL 体积 | 415 KB（剔除隐式组后） | 单文件够用 |
+| 12 | CSV 也含 sub/lib/qry 成员 | sub 524 / lib 218 / qry 264 | 但按 Q14 以矩阵为准 |
+| 13 | `lib → sub` 调用 | 11 文件 / 84 调用点 | 与 Q14 规则冲突，待确认 |
+| 14 | `sub → lib` 调用 | 436 文件 / 13226 调用点 | 印证"sub 可用 lib" |
+| 15 | `→ qry` 调用 | sub 9 点 / lib 20 点 | 印证"qry 谁都能用" |
+
+### 11.2 由数据修正的早期判断
+
+| 早期写法 | 实测后修正 |
+|---|---|
+| "全量 1–2 MB" | **415 KB**（约 1/4） |
+| "隐含模组约 980 文件" | **983**（sub 518 + lib 204 + qry 261） |
+| "加载 30–60 ms" | **10–20 ms** |
+| "解析链路 100–300 ms" | 典型链 **2–10 ms**（p50=1 文件）；只有 4 条超大链需 0.7–1.8 s |
+| "阶段 2：stale/DB 连接" | 保留，但 Q15 明确驱动为**双方案** |
+| 链接目录 `.bdl-lsp/link/` | **`<project>/.link/`**（Q12 用户定稿） |
+
+---
+
+## 12. 文档地图（本文相关）
 
 | 文档 | 内容 |
 |---|---|
 | [HANDOVER.md](HANDOVER.md) | 会话接手：状态、基线、坑、下一步 |
-| [TODO.md](TODO.md) | 待办清单（§下一步：P7） |
-| [PLAN.md](PLAN.md) | 总规划；§7.8 链接资料设计、§8 P7 里程碑 |
+| [TODO.md](TODO.md) | 待办清单（§下一轮：P7） |
+| [PLAN.md](PLAN.md) | 总规划；§8 P7 里程碑 |
 | [FEATURES.md](FEATURES.md) | 功能基线编号（P7 新增 35–40） |
 | [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) | GLOBALS 解析规则（P7-D 复用其缓存与路径模式） |
 | [PLAN-P6-COMPLETION.md](PLAN-P6-COMPLETION.md) | 补全（P7-D 要接函数来源） |
+

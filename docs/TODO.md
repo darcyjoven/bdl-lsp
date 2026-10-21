@@ -506,8 +506,9 @@ Block P2 已完成：
       query 增加 `(expression name: (variable (identifier) @skip))`；语料对比 skip 前后差异。
 - [ ] 新增 `function-not-found`（无链接资料时不报）。
 - [ ] 复测：24 文件诊断 1717 → 新基线（预期 < 400）。
-- [ ] Q10 待确认：诊断是否真的"全部默认 warning"（建议语法保持 error、
-      `record-member-unknown` 保持 off）。
+- [x] ~~Q10 待确认~~ → **已定稿：全部默认 `warning`**（用户 2026-10-21）。
+      `syntax-error` 也从 `error` 降为 `warning`；旧键 `syntaxDiagnostics` 默认值同步改，
+      避免新旧配置行为不一致。`record-member-unknown` 仍默认 `off`。
 
 ### P7-C 内置函数与变量（用户提问已答复：分两类）
 
@@ -528,31 +529,50 @@ Block P2 已完成：
 
 > 用户核心澄清：**链接只放大"函数"可见性，不放大"变量"可见性**。
 > GLOBALS 变量只认当前文件定义/引入，不跨链接 —— `internal/globals` 逻辑一行不改。
+>
+> **真实数据已到位**：`link.csv`，529042 B，sha256 `3ca6ff10…`，**15587 行**。
+> 全部设计已按实测值定稿，见 [PLAN-P7.md](PLAN-P7.md) §5.3 / §11。
 
-- [ ] 数据模型：**索引主键 = MAIN 程序代码**（不是程序编号，因程序编号不一定是可执行文件名）；
-      程序编号只作元数据。
-- [ ] 文档结构：`.bdl-lsp/link/links.jsonl`（单文件，实测约 300–600 KB）+ `links.meta.json`；
-      `--split-by-module` 额外产出 `shards/` 仅供人读（Q11 建议 A）。
-- [ ] 导入校验：`gal04='Y'` SQL 阶段过滤 + 导入兜底；0 MAIN → orphan；
-      ≥2 MAIN → ambiguous；重复代码去重；问题进报告不静默丢。
+- [ ] 数据模型：**索引主键 = MAIN 程序代码**（不是程序编号）。
+      实测：组内恰好 1 个 MAIN = 5374/5849（91.9%）；0 个 = 81；≥2 个 = 5；
+      另外 **160 个组的 `GAL01` 不在自己组内**，证实"编号≠文件名"。
+- [ ] 文档结构（**Q12 定稿**）：`<项目根>/.link/links.jsonl`（**不是** `.bdl-lsp/link/`）
+      + `links.meta.json`。实测单文件 **415 KB**（剔除隐式组后），读取 10–20 ms。
+- [ ] 分片触发条件（Q11）：体积 > 8 MB / 解析 > 200 ms / 明细 > 200k / 索引重建 > 500 ms，
+      任一满足才切 `shards/`；首版不预先分片。
+- [ ] 导入校验：`gal04='Y'` 过滤（实测 51 行被过滤）；0 MAIN → orphan（81 组）；
+      ≥2 MAIN → ambiguous（5 组）；重复代码去重；**CSV 必须按 `utf-8-sig` 读**（带 BOM）。
 - [ ] 路径解析：`bdl.link.moduleRoots`（默认 `["tiptop","topcust"]`，自动探测）；
-      模组目录**大小写不敏感**匹配（数据 `APM` vs 目录 `apm`）。
-- [ ] 默认链接模组 `bdl.link.implicitModules = ["sub","lib","qry"]`（用户规则 R3）。
-- [ ] 采集 S1 **数据库直连**：`github.com/sijms/go-ora/v2`（纯 Go，无需 Instant Client，
-      已实测模块可获取）；密码走环境变量/`secrets.json`(0600)/交互输入，不明文落盘；
-      进程内定时（`interval`）+ `onStart` + 指数退避；主动运行三条入口（CLI/VSCode 命令/Zed task）。
-- [ ] 采集 S2 **服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
-      `SET MARKUP CSV ON` 直出 CSV）+ `bdl-lsp link import`。
-- [ ] 采集 S3 **命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
-- [ ] 函数可见性新增两级：`局部 → 本文件 → GLOBALS → 链接文件 → 隐含模组`；
-      变量可见性**不变**。
+      模组目录**大小写不敏感**匹配（实测数据 92 个模组全大写，磁盘全小写）。
+- [ ] 缺失文件不报错：实测 **800 条 / 700 个代码**找不到（集中在语料中不存在的
+      `WPC`/`WSUB`/`WMB`/`WZZ`/`WAG`/`AZZ`/`WLIB`），计入 meta `missingFiles`。
+- [ ] 可见性矩阵（**Q14 定稿**，替代 `implicitModules` 数组）：
+      `qry` 谁都能用；`sub` 可用 `lib`；**`lib` 不能用 `sub`**。
+      实测印证：`sub→lib` 436 文件/13226 点、`qry→lib` 261 文件/6734 点。
+- [ ] **待确认**：`lib→sub` 实测有 11 处反例（`s_errmsg`×47、`s_gr_gdwcopy_gdw08`×2 等）。
+      按用户规则会报 `function-not-found`。需用户确认是"历史遗留"还是"应放行"；
+      若放行则加 `bdl.link.allowModuleDeps: ["lib>sub"]`。见 PLAN-P7 §8.1。
+- [ ] 采集 **S1b 纯 Go 直连**（默认）：`github.com/sijms/go-ora/v2`（已实测模块可获取）；
+      密码走环境变量/`.link/secrets.json`(0600)/交互输入，不明文落盘；
+      进程内定时（`interval`）+ `onStart` + 指数退避；主动运行三入口（CLI/VSCode 命令/Zed task）。
+- [ ] 采集 **S1a 本地 Oracle 驱动**（Q15 第二方案）：只配驱动目录 `libDir`，
+      走 `godror` + CGO（构建标签 `ora-native`，默认不编译）；
+      启动自检 `libclntsh` 可加载性，失败给提示并**自动回退 S1b**。
+- [ ] 采集 **S2 服务器脚本导出**：`scripts/fetch-gal-file.sh`（`read -s` 不走 history，
+      `SET MARKUP CSV ON` 直出 CSV，已按真实表结构写好 `gal04='Y'` 过滤）+ `bdl-lsp link import`。
+- [ ] 采集 **S3 命令执行**：只配驱动位置，凭证**走 stdin**（不进命令行参数，避免 `ps` 泄露）。
+- [ ] 函数可见性：`局部 → 本文件 → GLOBALS → 链接文件 → 模组矩阵`；变量可见性**不变**。
 - [ ] 诊断：`function-not-found` / `link-file-missing` / `link-data-invalid` / `link-data-stale`。
-- [ ] 性能：链接索引**后台异步**，诊断不等待；隐含模组（约 980 文件）只建函数名索引，
-      后台一次性 2–4 s；首版仅内存缓存。
-- [ ] `cmd/link-audit`：真实资料全量评估（组数/孤儿/missing 占比）。
+- [ ] 性能（按实测分布）：链 p50=1 文件、p90=2 → 典型链 2–10 ms **同步**即可；
+      **仅当链文件数 > 20** 才走后台（最大链 `cbmp100` 364 文件约 0.7–1.8 s）。
+      模组矩阵涉及 983 文件（sub 518 + lib 204 + qry 261），只建函数名索引，后台一次性 2–4 s。
+      首版仅内存缓存。
+- [ ] `cmd/link-audit`：用真实 `link.csv` 复跑，核对 §11 的数字
+      （链 5846 / orphan 81 / ambiguous 5 / missingFiles 800 / 过滤 51）。
 - [ ] **R2 反例测试**：两个链接在一起的子文件各自 `DEFINE` 同名变量但无共享 GLOBALS
       → 仍报未定义（防止把变量也放进链接可见性）。
-- [ ] Q14 待确认：隐含模组是否参与 `function-not-found` 判定（建议参与）。
+- [x] ~~Q14 待确认~~ → **已定稿：矩阵制**（qry 恒可见、sub→lib 可、lib→sub 禁止）。
+      隐含模组**参与** `function-not-found` 判定（否则 `cl_*` 仍大面积误报）。
 
 ### P7-E 链接资料 UI
 
@@ -565,25 +585,42 @@ Block P2 已完成：
 - [ ] LSP 自定义请求 `bdl/linkTree` 供视图取数。
 - [ ] Zed 降级：`documentSymbol` 末尾追加链接条目（**可见不可跳**），文档明示限制。
 - [ ] 无链接资料时显示引导文案，不报错。
-- [ ] Q13 待确认：打开子文件（无 MAIN）时显示反查「被哪些程序链接」（建议）还是隐藏。
+- [x] ~~Q13 待确认~~ → **已定稿：默认空白 + 可点击「反查引用程序」**（用户 2026-10-21）。
+      反查异步、**先显示数量再分页展开**（实测 `aws_xml` 被 324 组引用，不能一次铺开）。
 
-### P7 新增配置项（共约 10 项）
+### P7 新增配置项（约 12 项）
 
 ```jsonc
-"bdl.diagnostics": { "*": "warning" }
+"bdl.diagnostics": { "*": "warning", "record-member-unknown": "off" }
 "bdl.builtins.enable": true
-"bdl.link.enable" / "dataDir" / "moduleRoots" / "implicitModules" / "maxAgeDays"
-"bdl.link.sync"    // enable/source/interval/onStart/db{...}/command{...}
+"bdl.link.enable" / "dataDir"(".link") / "moduleRoots" / "maxAgeDays"
+"bdl.link.visibility": { "alwaysVisible": ["qry"], "deny": ["lib>sub"] }
+"bdl.link.allowModuleDeps": []                  // 例外白名单
+"bdl.link.sync": { enable / source / interval / onStart
+                   db{...} / driver{kind,libDir} / command{...} }
 ```
 
-- [ ] VSCode `package.json` 32 项 → 约 42 项，`make manifest-check` 通过。
+- [ ] VSCode `package.json` 32 项 → 约 40 项，`make manifest-check` 通过。
+- [ ] 安装时**提示**把 `.link/` 加入 `.gitignore`（不擅自改用户文件）。
 
 ### P7 专项风险
 
 - [ ] Windows URI 根因判断可能偏差 → 上机先打印两个客户端 `initialize` 入参再动手。
 - [ ] `expression name:` 跳过规则可能误伤 → 先跑语料差异清单人工抽查。
-- [ ] 链接资料含生产库信息 → 默认 gitignore `.bdl-lsp/`，文档写明不要提交。
-- [ ] Oracle 直连依赖 +2–3 MB 二进制 → 必要时 build tag 分离（Q15 建议默认包含）。
+- [ ] 链接资料含生产库信息 → `.link/` 建议 gitignore，文档写明不要提交。
+- [ ] 纯 Go 驱动 `go-ora` 依赖 +2–3 MB 二进制（当前 11 MB）；
+      本地驱动方案走 build tag `ora-native`，默认不编译。
+- [ ] 本地 Oracle 驱动路径配错会静默失败 → 启动自检 + 自动回退 S1b。
+
+### P7 真实数据验证（2026-10-21 已完成）
+
+- [x] 分析 `link.csv`（529042 B / sha256 `3ca6ff10…` / 15587 行）。
+- [x] 结论已回写 [PLAN-P7.md](PLAN-P7.md) §5.3 / §5.3.2 / §5.6.1 / §11。
+- [x] 关键修正：体积 1–2 MB → **415 KB**；隐含模组 980 → **983**；
+      典型链解析 100–300 ms → **2–10 ms**（p50=1 文件）。
+- [x] 发现待确认项：`lib→sub` 11 处反例（PLAN-P7 §8.1）。
+- [ ] 待做：`cmd/link-audit` 落地后，用同一份 CSV 复跑并核对数字一致。
+
 
 ---
 
