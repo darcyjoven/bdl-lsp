@@ -516,3 +516,188 @@ func TestUnresolvedSourceDisabledByConfig(t *testing.T) {
 		t.Errorf("配置 off 后不应出现，实际 %d 条", len(u))
 	}
 }
+
+// --- P7-B 诊断降噪：query 覆盖面回归 ---
+//
+// 下面每条都是语料里实测踩到的误报，改动 queryVariables 时不能回退。
+
+// sendDiagnosticsConfig 下发 bdl.diagnostics 逐码配置。
+func (h *harness) sendDiagnosticsConfig(t *testing.T, diagnostics map[string]string) {
+	t.Helper()
+	cfg := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "workspace/didChangeConfiguration",
+		"params": map[string]any{
+			"settings": map[string]any{
+				"bdl": map[string]any{"diagnostics": diagnostics},
+			},
+		},
+	}
+	raw, _ := json.Marshal(cfg)
+	h.send(string(raw))
+	time.Sleep(120 * time.Millisecond)
+}
+
+func TestUnresolvedSkipsFunctionNameInWhenever(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// WHENEVER ERROR CALL f：f 是函数名；GOTO lbl：lbl 是标号。
+	// 语法树里都是 (whenever (variable (identifier)))，不是 call 节点。
+	src := "MAIN\n    WHENEVER ERROR CALL cl_err_msg_log\n    WHENEVER ERROR GOTO lbl\nEND MAIN\n"
+	h.sendDidOpen(mainURI, "bdl", src, 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if u := findUnresolvedDiags(diags); len(u) != 0 {
+		t.Errorf("WHENEVER 的函数名/标号不应报未定义，实际 %d 条", len(u))
+	}
+}
+
+func TestUnresolvedSkipsFunctionNameInExpression(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// IF fn() THEN 的 fn 是 (expression name: (variable ...)) 而非 call 节点。
+	src := "MAIN\n    IF fn_check() THEN\n        DISPLAY 1\n    END IF\nEND MAIN\n"
+	h.sendDidOpen(mainURI, "bdl", src, 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if u := findUnresolvedDiags(diags); len(u) != 0 {
+		t.Errorf("表达式里的函数名不应报未定义，实际 %d 条", len(u))
+	}
+}
+
+func TestUnresolvedSkipsFormFieldWithDot(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// DISPLAY ... TO FORMONLY.cn2：field 是
+	// (variable (object object: (variable ...) property: ...))，直接子节点
+	// 不是 identifier——query 必须捕获外层 variable 才能跳过。
+	src := "MAIN\n    DEFINE r RECORD\n        cn2 VARCHAR(10)\n    END RECORD\n" +
+		"    DISPLAY r.cn2 TO FORMONLY.cn2\nEND MAIN\n"
+	h.sendDidOpen(mainURI, "bdl", src, 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if u := findUnresolvedDiags(diags); len(u) != 0 {
+		t.Errorf("表单字段 FORMONLY.cn2 不应报未定义，实际 %d 条", len(u))
+	}
+}
+
+// --- P7-B：逐码配置 ---
+
+func TestDiagnosticsPerCodeDisablesSingleCode(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// 先确认默认会报，再用 bdl.diagnostics 单独关掉它。
+	h.sendDiagnosticsConfig(t, map[string]string{"variable-source-unresolved": "off"})
+	h.sendDidOpen(mainURI, "bdl", "MAIN\n    DISPLAY g_undefined\nEND MAIN\n", 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if u := findUnresolvedDiags(diags); len(u) != 0 {
+		t.Errorf("逐码 off 后不应出现，实际 %d 条", len(u))
+	}
+}
+
+func TestDiagnosticsPerCodeOverridesLegacyKey(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// 新键 error 应压过旧键 warning。
+	cfg := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "workspace/didChangeConfiguration",
+		"params": map[string]any{
+			"settings": map[string]any{
+				"bdl": map[string]any{
+					"globals":     map[string]any{"unresolvedSourceDiagnostics": "warning"},
+					"diagnostics": map[string]any{"variable-source-unresolved": "error"},
+				},
+			},
+		},
+	}
+	raw, _ := json.Marshal(cfg)
+	h.send(string(raw))
+	time.Sleep(120 * time.Millisecond)
+
+	h.sendDidOpen(mainURI, "bdl", "MAIN\n    DISPLAY g_undefined\nEND MAIN\n", 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	u := findUnresolvedDiags(diags)
+	if len(u) != 1 {
+		t.Fatalf("期望 1 条，实际 %d 条", len(u))
+	}
+	// LSP severity：1=Error 2=Warning
+	if sev, _ := u[0]["severity"].(float64); sev != 1 {
+		t.Errorf("severity = %v，期望 1（error）", u[0]["severity"])
+	}
+}
+
+// findFunctionNotFoundDiags 过滤出 function-not-found 诊断。
+func findFunctionNotFoundDiags(diags []any) []map[string]any {
+	var out []map[string]any
+	for _, d := range diags {
+		m, _ := d.(map[string]any)
+		if m == nil {
+			continue
+		}
+		if m["code"] == "function-not-found" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func TestFunctionNotFoundOffByDefault(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	// 未定义的函数调用：默认 off（实测 24 个真实文件报 3660 条，
+	// 内置函数与跨模块函数还没有符号表，不能默认开）。
+	h.sendDidOpen(mainURI, "bdl", "MAIN\n    CALL no_such_fn()\nEND MAIN\n", 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if f := findFunctionNotFoundDiags(diags); len(f) != 0 {
+		t.Errorf("默认应关闭，实际 %d 条", len(f))
+	}
+}
+
+func TestFunctionNotFoundReportsWhenEnabled(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	h.sendDiagnosticsConfig(t, map[string]string{"function-not-found": "warning"})
+	h.sendDidOpen(mainURI, "bdl", "MAIN\n    CALL no_such_fn()\nEND MAIN\n", 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	f := findFunctionNotFoundDiags(diags)
+	if len(f) != 1 {
+		t.Fatalf("期望 1 条 function-not-found，实际 %d 条", len(f))
+	}
+	if msg, _ := f[0]["message"].(string); !stringsContains(msg, "no_such_fn") {
+		t.Errorf("消息应含函数名：%q", msg)
+	}
+}
+
+func TestFunctionNotFoundAcceptsLocalDefinition(t *testing.T) {
+	dir := t.TempDir()
+	h := initializeGlobals(t, dir)
+	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+
+	h.sendDiagnosticsConfig(t, map[string]string{"function-not-found": "warning"})
+	src := "MAIN\n    CALL helper()\nEND MAIN\n\nFUNCTION helper()\n    DISPLAY 1\nEND FUNCTION\n"
+	h.sendDidOpen(mainURI, "bdl", src, 1)
+	diags := h.drainDiagnostics(mainURI, 5*time.Second)
+
+	if f := findFunctionNotFoundDiags(diags); len(f) != 0 {
+		t.Errorf("本模块内定义的函数不应报，实际 %d 条", len(f))
+	}
+}

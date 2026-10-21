@@ -147,6 +147,12 @@ type FileIndex struct {
 	// 定义在 ATTRIBUTES，这里只是引用——供“布局引用了未定义 item”
 	// 的内部校验用（P3b）。仅 per 语言有内容。
 	LayoutRefs []LayoutRef
+	// FormFieldNames 是 ATTRIBUTES 里每个 item 的**字段名**（`=` 后面的
+	// `formonly.more` / `alh_file.alh01` 的列部分）。SCREEN RECORD 引用的是
+	// 字段名而不是 item tag，两者在 `Edit mor=formonly.more` 这种写法里
+	// 并不相同——不收集这一项会把合法引用报成未定义。
+	// 仅 per 语言有内容。
+	FormFieldNames []LayoutRef
 }
 
 // LayoutRef 是 LAYOUT 里的一个 item tag 引用。

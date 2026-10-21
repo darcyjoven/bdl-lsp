@@ -13,8 +13,9 @@ func TestDefaultValues(t *testing.T) {
 	if s.GeneroVersion != Genero25 {
 		t.Errorf("GeneroVersion = %q，期望 2.50", s.GeneroVersion)
 	}
-	if s.SyntaxDiagnostics != LevelError {
-		t.Errorf("SyntaxDiagnostics = %q，期望 error", s.SyntaxDiagnostics)
+	// Q10 定稿：语法错误默认 warning，与 bdl.diagnostics 新键保持一致。
+	if s.SyntaxDiagnostics != LevelWarning {
+		t.Errorf("SyntaxDiagnostics = %q，期望 warning", s.SyntaxDiagnostics)
 	}
 	if s.MissingDiagnostics != LevelWarning {
 		t.Errorf("MissingDiagnostics = %q，期望 warning", s.MissingDiagnostics)
@@ -40,8 +41,8 @@ func TestApplyPartial(t *testing.T) {
 		t.Errorf("MissingDiagnostics = %q", s.MissingDiagnostics)
 	}
 	// 未指定的项保持默认
-	if s.SyntaxDiagnostics != LevelError {
-		t.Errorf("SyntaxDiagnostics 应保持默认，实际 %q", s.SyntaxDiagnostics)
+	if s.SyntaxDiagnostics != LevelWarning {
+		t.Errorf("SyntaxDiagnostics 应保持默认 warning，实际 %q", s.SyntaxDiagnostics)
 	}
 	if s.Limits.MaxIssues != 200 {
 		t.Errorf("MaxIssues 应保持默认，实际 %d", s.Limits.MaxIssues)
@@ -145,4 +146,73 @@ func TestURIToPath(t *testing.T) {
 	if _, err := uriToPath("http://x"); err == nil {
 		t.Error("非 file URI 应报错")
 	}
+}
+
+func TestDiagnosticsMergeByCode(t *testing.T) {
+	m := NewManager("")
+	// 首次下发：条目写入。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"variable-source-unresolved":"off"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["variable-source-unresolved"]; got != LevelOff {
+		t.Fatalf("首次下发未生效：%q", got)
+	}
+
+	// 再次下发另一个码：前一个不被清掉（增量合并）。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"function-not-found":"hint"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	s := m.Get()
+	if s.Diagnostics["variable-source-unresolved"] != LevelOff {
+		t.Error("增量合并丢了已有条目")
+	}
+	if s.Diagnostics["function-not-found"] != LevelHint {
+		t.Errorf("新条目未生效：%q", s.Diagnostics["function-not-found"])
+	}
+
+	// 覆盖同一个码。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"variable-source-unresolved":"error"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["variable-source-unresolved"]; got != LevelError {
+		t.Errorf("覆盖未生效：%q", got)
+	}
+}
+
+func TestDiagnosticsAbsentKeepsValues(t *testing.T) {
+	m := NewManager("")
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"file-too-large":"off"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	// 不下发 diagnostics 的配置不应清空它。
+	if err := m.Apply(json.RawMessage(`{"missingDiagnostics":"error"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["file-too-large"]; got != LevelOff {
+		t.Errorf("未下发 diagnostics 时不应清空：%q", got)
+	}
+}
+
+func TestValidateDiagnosticsLevel(t *testing.T) {
+	s := Default()
+	s.Diagnostics = map[string]DiagnosticLevel{"some-code": "verbose"}
+	problems := s.Validate()
+	found := false
+	for _, p := range problems {
+		if stringsContains(p, "diagnostics[") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("非法级别应被 Validate 报出，实际 %v", problems)
+	}
+}
+
+func stringsContains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
@@ -61,7 +62,7 @@ func (s *Server) globalsChecks(ctx context.Context, doc *document.Document, fi *
 	s.globalsMu.Unlock()
 
 	level := settings.Globals.FileNotFoundDiagnostics
-	severity, enabled := toSeverity(level)
+	severity, enabled := diag.SeverityFor(diag.CodeGlobalsFileNotFound, settings, level)
 	if !enabled {
 		return nil
 	}
@@ -77,7 +78,7 @@ func (s *Server) globalsChecks(ctx context.Context, doc *document.Document, fi *
 			Severity: severity,
 			Source:   "bdl-lsp",
 			Message:  fmt.Sprintf("GLOBALS 文件未找到：%q（相对当前文件目录解析）", e.Import.Literal),
-			Code:     "globals-file-not-found",
+			Code:     string(diag.CodeGlobalsFileNotFound),
 		})
 	}
 	return diags
@@ -225,13 +226,20 @@ type variableUse struct {
 	start, end uint
 }
 
-// 变量使用收集 query：两个 pattern 合一个，一次扫描全树。
+// 变量使用收集 query：多个 pattern 合一个，一次扫描全树。
 //
 //	pattern 1 `(variable (identifier) @use)` 只捕获 variable 的直接
 //	identifier（首标识符）——rec.field 的字段侧是 object 的 property，
 //	不在捕获范围（保守规则：字段来自记录结构或 schema）；
-//	pattern 2 跳过 call.name（函数名：来自其他模块，无跨文件函数索引）；
-//	pattern 3-6 跳过表单字段上下文（P3b 联动修正）：INPUT ... FROM f、
+//	pattern 2 跳过 call.name（`CALL foo()` 的函数名）；
+//	pattern 3 跳过 expression.name（`IF fn() THEN` / `LET x = fn()` 中的函数名，
+//		grammar 把 `_function_expression` 解析为 expression name: 字段，不是 call 节点）；
+//	pattern 4 跳过 whenever 下的 variable（`WHENEVER ERROR CALL f` /
+//		`... GOTO lbl` 的目标是函数名或标号，不是变量）。**这里不能写
+//		`(whenever name: ...)`**：name 字段来自隐藏规则 `_names` 的别名，
+//		node-types.json 里 whenever 没有这个字段，query 会编译失败并报
+//		"Impossible pattern"——而失败是静默的（整个 T5 被禁用，零诊断）；
+//	pattern 5-10 跳过表单字段上下文（P3b 联动修正）：INPUT ... FROM f、
 //	CONSTRUCT ... ON f、DISPLAY ... TO f、NEXT FIELD f、INFIELD(f) 里的
 //	名字是**表单字段**不是程序变量——T5 把它们当变量查会全部误报
 //	（实测：INPUT x FROM f01 的 f01 被 variable-source-unresolved 命中）。
@@ -249,12 +257,83 @@ type variableUse struct {
 const queryVariables = `
 (variable (identifier) @use)
 (call name: (variable (identifier) @skip))
-(input field: (variable (identifier) @skip))
-(construct field: (variable (identifier) @skip))
-(display field: (variable (identifier) @skip))
-(hook field: (variable (identifier) @skip))
+(expression name: (variable (identifier) @skip))
+(whenever (variable (identifier) @skip))
+(input field: (variable) @skip)
+(construct field: (variable) @skip)
+(display field: (variable) @skip)
+(hook field: (variable) @skip)
 (infield_function params: (expression (variable (identifier) @skip)))
 `
+
+// queryFunctionCalls 专门收集函数调用点，用于 function-not-found 诊断。
+//
+//	(call name: (variable (identifier) @fn))   // CALL foo() / foo() 作为 call 节点
+//	(expression name: (variable (identifier) @fn))  // IF fn() / LET x = fn() 中的函数名
+//
+// 注意：这里不跳过任何内容，只收集。误报由调用方按符号表过滤（内置函数、
+// 跨模块函数等）。
+const queryFunctionCalls = `
+(call name: (variable (identifier) @fn))
+(expression name: (variable (identifier) @fn))
+`
+
+// functionCallQueries 是函数调用收集的复用 query。
+type functionCallQueries struct {
+	query *ts.Query
+	fnIdx uint // @fn 的 capture 索引
+}
+
+// compileFunctionCallQueries 按 BDL 语言编译函数调用 query。
+func compileFunctionCallQueries(pool *parser.Pool) *functionCallQueries {
+	lang, err := pool.Language(parser.LangBDL)
+	if err != nil {
+		return nil
+	}
+	q, qerr := ts.NewQuery(lang, queryFunctionCalls)
+	if qerr != nil {
+		return nil
+	}
+	fnIdx, ok := q.CaptureIndexForName("fn")
+	if !ok {
+		q.Close()
+		return nil
+	}
+	return &functionCallQueries{query: q, fnIdx: fnIdx}
+}
+
+// collectFunctionCalls 收集文件里的函数调用点（名字 + 位置）。
+func collectFunctionCalls(tree *ts.Tree, src []byte, qs *functionCallQueries) []variableUse {
+	if tree == nil || qs == nil {
+		return nil
+	}
+	root := tree.RootNode()
+	if root == nil {
+		return nil
+	}
+
+	var out []variableUse
+	qc := ts.NewQueryCursor()
+	defer qc.Close()
+	matches := qc.Matches(qs.query, root, src)
+	for m := matches.Next(); m != nil; m = matches.Next() {
+		for _, c := range m.Captures {
+			if c.Index != uint32(qs.fnIdx) {
+				continue
+			}
+			node := c.Node
+			if word := parser.TextOf(&node, src); word != "" {
+				out = append(out, variableUse{
+					word:  word,
+					lower: strings.ToLower(word),
+					start: node.StartByte(),
+					end:   node.EndByte(),
+				})
+			}
+		}
+	}
+	return out
+}
 
 // variableQueries 是惰性编译并复用的 query（Query 只读可共享）。
 type variableQueries struct {
@@ -263,11 +342,15 @@ type variableQueries struct {
 	skipIndex uint // @skip 的 capture 索引
 }
 
-// compileVariableQueries 按 BDL 语言编译 query（失败返回 nil）。
-func compileVariableQueries(pool *parser.Pool) *variableQueries {
+// compileVariableQueries 按 BDL 语言编译 query；失败时返回 nil 与错误。
+//
+// 返回错误而不是静默 nil 是必要的：query 里一个 "Impossible pattern"
+// 就会让整个 T5 失效（零诊断），而“没有诊断”和“诊断关掉了”在编辑器里
+// 长得一模一样。调用方必须把 err 记进日志。
+func compileVariableQueries(pool *parser.Pool) (*variableQueries, error) {
 	lang, err := pool.Language(parser.LangBDL)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("取 BDL 语言: %w", err)
 	}
 	// 注意 err 与下面的 qerr 必须分开声明：
 	// err 是 error 接口，而 ts.NewQuery 返回 *QueryError（具体类型）。
@@ -276,15 +359,15 @@ func compileVariableQueries(pool *parser.Pool) *variableQueries {
 	// （实测踩过：单独测试全绿、集成后静默失效，极难定位）。
 	q, qerr := ts.NewQuery(lang, queryVariables)
 	if qerr != nil {
-		return nil
+		return nil, fmt.Errorf("编译变量使用 query: %w", qerr)
 	}
 	useIdx, ok1 := q.CaptureIndexForName("use")
 	skipIdx, ok2 := q.CaptureIndexForName("skip")
 	if !ok1 || !ok2 {
 		q.Close()
-		return nil
+		return nil, fmt.Errorf("变量使用 query 缺少 @use/@skip 捕获")
 	}
-	return &variableQueries{query: q, useIndex: useIdx, skipIndex: skipIdx}
+	return &variableQueries{query: q, useIndex: useIdx, skipIndex: skipIdx}, nil
 }
 
 // Close 释放 query。
@@ -377,9 +460,14 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 		return nil
 	}
 
-	// query 惰性编译（首次使用时；编译失败则本功能静默禁用）
+	// query 惰性编译（首次使用时）。编译失败必须记日志：静默失败会让
+	// T5 从此零诊断，与“用户关掉了”无法区分（踩坑 #22）。
 	s.varQueriesOnce.Do(func() {
-		s.varQueries = compileVariableQueries(s.pool)
+		var qerr error
+		s.varQueries, qerr = compileVariableQueries(s.pool)
+		if qerr != nil {
+			s.logger.Error("变量使用 query 编译失败，变量来源诊断已禁用", "error", qerr)
+		}
 	})
 	if s.varQueries == nil {
 		return nil
@@ -426,8 +514,9 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 		return nil
 	}
 
-	level := s.settings().Globals.UnresolvedSourceDiagnostics
-	severity, enabled := toSeverity(level)
+	settings := s.settings()
+	level := settings.Globals.UnresolvedSourceDiagnostics
+	severity, enabled := diag.SeverityFor(diag.CodeVariableSourceUnresolved, settings, level)
 	if !enabled {
 		s.storeSourceDiags(doc.URI, nil) // off：缓存也清掉
 		return nil
@@ -448,10 +537,101 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 			Severity: severity,
 			Source:   "bdl-lsp",
 			Message:  msg,
-			Code:     "variable-source-unresolved",
+			Code:     string(diag.CodeVariableSourceUnresolved),
 		})
 	}
 	s.storeSourceDiags(doc.URI, diags)
+	return diags
+}
+
+// functionNotFoundChecks 检查函数调用处的函数名是否在当前模块及可用模组
+// 中有定义，找不到时报告 function-not-found。
+//
+// 设计取舍：
+//   - 只检查本文档符号表里的 Function/Report/Main 定义（粗化处理，避免
+//     作用域精确判定带来的复杂性）；
+//   - 跨模块函数若不在本文档符号表中也会被报告，用户可通过
+//     `bdl.diagnostics.function-not-found: off` 关闭，或待链接资料（P7-D）
+//     实现后扩展到跨文件索引；
+//   - 内置函数（LENGTH/TRIM 等）目前不特殊处理，优先宁可误报不可漏报。
+func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
+	if fi == nil {
+		return nil
+	}
+	// 级别先判：默认 off，关掉时连 query 都不该编译（全树扫描很贵）。
+	severity, enabled := diag.SeverityFor(diag.CodeFunctionNotFound, s.settings(), "")
+	if !enabled {
+		return nil
+	}
+
+	_, tree, _ := doc.Snapshot()
+	if tree == nil {
+		return nil
+	}
+
+	// 惰性编译函数调用 query
+	s.fnCallQueriesOnce.Do(func() {
+		s.fnCallQueries = compileFunctionCallQueries(s.pool)
+	})
+	if s.fnCallQueries == nil {
+		return nil
+	}
+
+	calls := collectFunctionCalls(tree, doc.Text(), s.fnCallQueries)
+	if len(calls) == 0 {
+		return nil
+	}
+
+	// 已知函数定义：本文档的 Function/Report/Main
+	knownFn := map[string]bool{}
+	for _, sym := range fi.Symbols {
+		switch sym.Kind {
+		case index.KindFunction, index.KindReport, index.KindMain:
+			knownFn[sym.Lower] = true
+		}
+	}
+	// GLOBALS 引入的符号里的函数定义也算已知
+	s.globalsMu.RLock()
+	entries := s.globalsEntries
+	s.globalsMu.RUnlock()
+	for _, docEntries := range entries {
+		for _, e := range docEntries {
+			if e.Status != globals.StatusResolved || e.Index == nil {
+				continue
+			}
+			for _, sym := range e.Index.Symbols {
+				switch sym.Kind {
+				case index.KindFunction, index.KindReport:
+					knownFn[sym.Lower] = true
+				}
+			}
+		}
+	}
+
+	idx := doc.Index()
+	if idx == nil {
+		return nil
+	}
+
+	var diags []protocol.Diagnostic
+	seen := map[string]bool{} // 同一函数名同一位置只报一次
+	for _, c := range calls {
+		key := fmt.Sprintf("%s@%d", c.lower, c.start)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if knownFn[c.lower] {
+			continue
+		}
+		diags = append(diags, protocol.Diagnostic{
+			Range:    byteRange(idx, c.start, c.end),
+			Severity: severity,
+			Source:   "bdl-lsp",
+			Message:  fmt.Sprintf("函数 %q 在当前模块及可用模组中找不到定义", c.word),
+			Code:     string(diag.CodeFunctionNotFound),
+		})
+	}
 	return diags
 }
 

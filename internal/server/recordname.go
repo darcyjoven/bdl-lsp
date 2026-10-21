@@ -36,14 +36,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	"go.lsp.dev/protocol"
 )
-
-// codeRecordMemberUnknown 是记录成员不存在的诊断码。
-const codeRecordMemberUnknown = "record-member-unknown"
 
 // recordMemberIssue 是一条记录成员问题。
 type recordMemberIssue struct {
@@ -420,8 +418,9 @@ func (s *Server) recordMemberChecks(doc *document.Document, issues *[]protocol.D
 	if doc == nil || doc.Lang != "bdl" {
 		return
 	}
-	level := s.settings().RecordMemberDiagnostics
-	severity, enabled := toSeverity(level)
+	settings := s.settings()
+	level := settings.RecordMemberDiagnostics
+	severity, enabled := diag.SeverityFor(diag.CodeRecordMemberUnknown, settings, level)
 	if !enabled {
 		return
 	}
@@ -431,7 +430,7 @@ func (s *Server) recordMemberChecks(doc *document.Document, issues *[]protocol.D
 			Range:    byteRange(idx, iss.Start, iss.End),
 			Severity: severity,
 			Source:   "bdl-lsp",
-			Code:     codeRecordMemberUnknown,
+			Code:     string(diag.CodeRecordMemberUnknown),
 			Message: fmt.Sprintf("记录 %q（%s）没有成员 %q（已检查 RECORD 声明的字段）",
 				iss.Record, iss.RecordType, iss.Member),
 		})

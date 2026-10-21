@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
@@ -37,6 +38,12 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	settings := s.cfg.Get()
 	for _, problem := range settings.Validate() {
 		s.logger.Warn("配置问题", "detail", problem)
+	}
+	// 拼错的诊断码是最常见的配置错误（多一个字母就永久不生效），
+	// 必须显式告警而不是静默忽略。
+	for _, code := range diag.ValidateSettings(settings) {
+		s.logger.Warn("未知诊断码（配置不生效）", "code", code,
+			"hint", "已注册的码见 bdl-lsp diagnostics 或文档")
 	}
 	s.logger.Info("配置已更新", "generoVersion", settings.GeneroVersion)
 

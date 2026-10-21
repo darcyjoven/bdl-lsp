@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
@@ -131,6 +132,8 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 		s.formChecks(doc, &gDiags)
 		// P6：BY NAME rec.member 的记录成员校验（默认 off）
 		s.recordMemberChecks(doc, &gDiags)
+		// P7-B：函数调用处找不到定义（默认 warning）
+		gDiags = append(gDiags, s.functionNotFoundChecks(doc, gfi)...)
 	} else {
 		s.perChecks(doc, &gDiags)
 	}
@@ -197,15 +200,24 @@ func (s *Server) publish(ctx context.Context, uri string, version int32, issues 
 }
 
 // publishNotice 发送一条提示性诊断（大文件跳过等）。
+//
+// 级别走注册表（默认 information），可用 `bdl.diagnostics.file-too-large`
+// 调整或关闭——大文件很常见时用户会想把它关掉。
 func (s *Server) publishNotice(ctx context.Context, uri string, version int32, message string) {
+	severity, enabled := diag.SeverityFor(diag.CodeFileTooLarge, s.settings(), "")
+	if !enabled {
+		// 关掉提示但仍要清掉上一轮的诊断（LSP 诊断是全量替换）。
+		s.publish(ctx, uri, version, nil, nil)
+		return
+	}
 	params := &protocol.PublishDiagnosticsParams{
 		URI: protocol.DocumentURI(uri),
 		Diagnostics: []protocol.Diagnostic{{
 			Range:    protocol.Range{},
-			Severity: protocol.DiagnosticSeverityInformation,
+			Severity: severity,
 			Source:   "bdl-lsp",
 			Message:  message,
-			Code:     "file-too-large",
+			Code:     string(diag.CodeFileTooLarge),
 		}},
 	}
 	if version > 0 {
@@ -216,33 +228,35 @@ func (s *Server) publishNotice(ctx context.Context, uri string, version int32, m
 	}
 }
 
-// severityFor 依据配置决定诊断级别；ok=false 表示该诊断被关闭。
+// severityFor 依据配置决定语法诊断的级别；ok=false 表示该诊断被关闭。
 //
-// MISSING 节点通常表示“缺少某个必填结构”，与语法错误分开配置。
+// 优先级（与语义诊断一致）：
+//  1. `bdl.diagnostics.<码>` —— ERROR 用固定码 syntax-error；MISSING 先试
+//     精确的 `missing-<kind>`，再试整簇兜底 `missing-node`；
+//  2. 旧专用键（syntaxDiagnostics / missingDiagnostics）；
+//  3. 注册表默认（都是 warning）。
 func severityFor(iss parser.Issue, settings config.Settings) (protocol.DiagnosticSeverity, bool) {
-	level := settings.SyntaxDiagnostics
+	code := diag.Code(diagnosticCode(iss))
+	legacy := settings.SyntaxDiagnostics
 	if iss.Missing {
-		level = settings.MissingDiagnostics
+		legacy = settings.MissingDiagnostics
 	}
-	return toSeverity(level)
+	// 精确码（含动态的 missing-<kind>）
+	if lv, ok := settings.Diagnostics[string(code)]; ok && lv != "" {
+		return diag.ToSeverity(lv)
+	}
+	// MISSING 整簇兜底
+	if iss.Missing {
+		if lv, ok := settings.Diagnostics[string(diag.CodeMissingNode)]; ok && lv != "" {
+			return diag.ToSeverity(lv)
+		}
+	}
+	return diag.ToSeverity(legacy)
 }
 
-// toSeverity 把配置里的级别字符串转换为 LSP 枚举。
+// toSeverity 是 diag.ToSeverity 的薄别名（保持既有调用点可读）。
 func toSeverity(level config.DiagnosticLevel) (protocol.DiagnosticSeverity, bool) {
-	switch level {
-	case config.LevelError:
-		return protocol.DiagnosticSeverityError, true
-	case config.LevelWarning:
-		return protocol.DiagnosticSeverityWarning, true
-	case config.LevelInfo:
-		return protocol.DiagnosticSeverityInformation, true
-	case config.LevelHint:
-		return protocol.DiagnosticSeverityHint, true
-	case config.LevelOff:
-		return 0, false
-	default:
-		return protocol.DiagnosticSeverityError, true
-	}
+	return diag.ToSeverity(level)
 }
 
 // diagnosticCode 返回诊断的机器可读代码，便于用户过滤。

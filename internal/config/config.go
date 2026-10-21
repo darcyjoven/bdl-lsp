@@ -69,6 +69,10 @@ type Settings struct {
 	// FieldDiagnostics 是 4GL 字段存在性校验（P3b）的诊断级别，
 	// 默认 warning（Q3 决策：只在表单唯一解析成功时报告）。
 	FieldDiagnostics DiagnosticLevel `json:"fieldDiagnostics"`
+	// Diagnostics 是按诊断码单独覆盖级别的配置，键为诊断码（如
+	// "variable-source-unresolved"）、值为级别（off/warning/error/...）。
+	// 优先级：bdl.diagnostics.<code> > 旧专用配置键 > 注册表默认。
+	Diagnostics map[string]DiagnosticLevel `json:"diagnostics"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -114,8 +118,10 @@ type GlobalsSettings struct {
 // Default 返回默认配置。
 func Default() Settings {
 	return Settings{
-		GeneroVersion:      Genero25,
-		SyntaxDiagnostics:  LevelError,
+		GeneroVersion: Genero25,
+		// Q10 定稿：语法错误默认 warning（旧键默认值同步，否则走旧键与走
+		// 新键的用户行为不一致）。想要红波浪线可用 bdl.diagnostics.syntax-error。
+		SyntaxDiagnostics:  LevelWarning,
 		MissingDiagnostics: LevelWarning,
 		LogLevel:           "info",
 		Globals: GlobalsSettings{
@@ -264,6 +270,16 @@ func (m *Manager) merge(s *Settings) {
 		m.cur.PerRoots = s.PerRoots
 	}
 
+	// Diagnostics 按诊断码单独覆盖级别（nil 表示未下发，保留现有值）。
+	if s.Diagnostics != nil {
+		if m.cur.Diagnostics == nil {
+			m.cur.Diagnostics = make(map[string]DiagnosticLevel)
+		}
+		for code, lv := range s.Diagnostics {
+			m.cur.Diagnostics[code] = lv
+		}
+	}
+
 	// P4：格式化
 	if s.Format.Keywords != "" {
 		m.cur.Format.Keywords = s.Format.Keywords
@@ -298,6 +314,16 @@ func (s Settings) Validate() []string {
 	case Genero25, Genero30, Genero40:
 	default:
 		problems = append(problems, fmt.Sprintf("未知 generoVersion %q（支持 2.50/3.00/4.00）", s.GeneroVersion))
+	}
+
+	// 逐码覆盖：只校验级别取值。码是否已注册由 internal/diag 校验
+	// （config 不能反过来 import diag，会形成循环依赖）。
+	for code, lvl := range s.Diagnostics {
+		switch lvl {
+		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:
+		default:
+			problems = append(problems, fmt.Sprintf("未知 diagnostics[%q] 级别 %q（支持 off/error/warning/information/hint）", code, lvl))
+		}
 	}
 
 	for name, lvl := range map[string]DiagnosticLevel{

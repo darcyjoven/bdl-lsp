@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
@@ -73,7 +74,7 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 	}
 
 	level := s.settings().FieldDiagnostics
-	severity, enabled := toSeverity(level)
+	severity, enabled := diag.SeverityFor(diag.CodeFieldNotInForm, s.settings(), level)
 	if !enabled {
 		return
 	}
@@ -140,16 +141,20 @@ func (s *Server) clearFieldDiags(uri string) {
 //  2. 布局 tag 未定义（LAYOUT 的 [tag] 在 ATTRIBUTES 里没有）；
 //  3. SCREEN RECORD 引用不存在的 item。
 //
-// 级别沿用 fieldDiagnostics（同一组表单质量检查）。
+// 级别：三个码各自可被 `bdl.diagnostics.<code>` 覆盖，缺省沿用旧的
+// fieldDiagnostics 键（同一组表单质量检查）。
 func (s *Server) perInternalChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
 	if doc == nil || fi == nil || doc.Lang != parser.LangPer {
 		return nil
 	}
 
-	level := s.settings().FieldDiagnostics
-	severity, enabled := toSeverity(level)
-	if !enabled {
-		return nil
+	settings := s.settings()
+	legacy := settings.FieldDiagnostics
+	dupSev, dupOn := diag.SeverityFor(diag.CodeFormDuplicateItem, settings, legacy)
+	tagSev, tagOn := diag.SeverityFor(diag.CodeFormLayoutTagUndefined, settings, legacy)
+	scrSev, scrOn := diag.SeverityFor(diag.CodeFormScreenRecordUndefined, settings, legacy)
+	if !dupOn && !tagOn && !scrOn {
+		return nil // 三条全关：连索引都省了
 	}
 
 	idx := doc.Index()
@@ -164,10 +169,10 @@ func (s *Server) perInternalChecks(doc *document.Document, fi *index.FileIndex) 
 		if seen[sym.Lower] {
 			diags = append(diags, protocol.Diagnostic{
 				Range:    byteRange(idx, sym.StartByte, sym.EndByte),
-				Severity: severity,
+				Severity: dupSev,
 				Source:   "bdl-lsp",
 				Message:  fmt.Sprintf("重复的表单字段 %q（ATTRIBUTES 中已定义）", sym.Name),
-				Code:     "form-duplicate-item",
+				Code:     string(diag.CodeFormDuplicateItem),
 			})
 		}
 		seen[sym.Lower] = true
@@ -184,44 +189,53 @@ func (s *Server) perInternalChecks(doc *document.Document, fi *index.FileIndex) 
 			defined[sym.Lower] = true
 		}
 	}
-	for _, ref := range fi.LayoutRefs {
-		if defined[ref.Lower] {
-			continue
+	// 字段名也算“已定义”：SCREEN RECORD 引用的是 `= formonly.more` 的列名，
+	// 不是 item tag（`Edit mor=formonly.more` 里两者不同）。
+	for _, f := range fi.FormFieldNames {
+		defined[f.Lower] = true
+	}
+	if tagOn {
+		for _, ref := range fi.LayoutRefs {
+			if defined[ref.Lower] {
+				continue
+			}
+			// 含点号的 tag（如 table.column 形式）跳过：列来自数据库，
+			// 静态无法判定（宁可不报不误报）
+			if strings.ContainsAny(ref.Tag, ".") {
+				continue
+			}
+			diags = append(diags, protocol.Diagnostic{
+				Range:    byteRange(idx, ref.StartByte, ref.EndByte),
+				Severity: tagSev,
+				Source:   "bdl-lsp",
+				Message:  fmt.Sprintf("布局 tag %q 未在 ATTRIBUTES 中定义", ref.Tag),
+				Code:     string(diag.CodeFormLayoutTagUndefined),
+			})
 		}
-		// 含点号的 tag（如 table.column 形式）跳过：列来自数据库，
-		// 静态无法判定（宁可不报不误报）
-		if strings.ContainsAny(ref.Tag, ".") {
-			continue
-		}
-		diags = append(diags, protocol.Diagnostic{
-			Range:    byteRange(idx, ref.StartByte, ref.EndByte),
-			Severity: severity,
-			Source:   "bdl-lsp",
-			Message:  fmt.Sprintf("布局 tag %q 未在 ATTRIBUTES 中定义", ref.Tag),
-			Code:     "form-layout-tag-undefined",
-		})
 	}
 
 	// 3) SCREEN RECORD 引用不存在的 item
-	for _, sym := range fi.Symbols {
-		if sym.Kind != index.KindScreenRec {
-			continue
-		}
-		for _, child := range sym.Children {
-			if defined[child.Lower] {
+	if scrOn {
+		for _, sym := range fi.Symbols {
+			if sym.Kind != index.KindScreenRec {
 				continue
 			}
-			if strings.ContainsAny(child.Name, ".") {
-				continue // table.column 形式：列来自数据库，跳过
+			for _, child := range sym.Children {
+				if defined[child.Lower] {
+					continue
+				}
+				if strings.ContainsAny(child.Name, ".") {
+					continue // table.column 形式：列来自数据库，跳过
+				}
+				diags = append(diags, protocol.Diagnostic{
+					Range:    byteRange(idx, child.StartByte, child.EndByte),
+					Severity: scrSev,
+					Source:   "bdl-lsp",
+					Message: fmt.Sprintf("SCREEN RECORD %q 引用的字段 %q 未在 ATTRIBUTES 中定义",
+						sym.Name, child.Name),
+					Code: string(diag.CodeFormScreenRecordUndefined),
+				})
 			}
-			diags = append(diags, protocol.Diagnostic{
-				Range:    byteRange(idx, child.StartByte, child.EndByte),
-				Severity: severity,
-				Source:   "bdl-lsp",
-				Message: fmt.Sprintf("SCREEN RECORD %q 引用的字段 %q 未在 ATTRIBUTES 中定义",
-					sym.Name, child.Name),
-				Code: "form-screen-record-undefined",
-			})
 		}
 	}
 

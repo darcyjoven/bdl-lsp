@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"go.lsp.dev/protocol"
 )
 
 // pipeStream 在测试里充当 LSP 的双向流。
@@ -1033,19 +1035,20 @@ func TestDiagnosticsSeverityConfigurable(t *testing.T) {
 		t.Fatal("应有诊断")
 	}
 	d, _ := diags[0].(map[string]any)
-	if sev, _ := d["severity"].(float64); sev != 1 {
-		t.Errorf("默认应为 error(1)，实际 %v", d["severity"])
+	// Q10 定稿：语法错误默认 warning，不再是 error。
+	if sev, _ := d["severity"].(float64); sev != 2 {
+		t.Errorf("默认应为 warning(2)，实际 %v", d["severity"])
 	}
 
-	// 改成 warning 后应重新诊断
-	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"warning"}}}`)
+	// 旧键改成 error 后应重新诊断（红波浪线仍可要回来）
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"error"}}}`)
 	diags = h.drainDiagnostics(uri, 5*time.Second)
 	if len(diags) == 0 {
 		t.Fatal("配置变更后仍应有诊断")
 	}
 	d, _ = diags[0].(map[string]any)
-	if sev, _ := d["severity"].(float64); sev != 2 {
-		t.Errorf("应为 warning(2)，实际 %v", d["severity"])
+	if sev, _ := d["severity"].(float64); sev != 1 {
+		t.Errorf("应为 error(1)，实际 %v", d["severity"])
 	}
 }
 
@@ -1128,5 +1131,73 @@ func TestDiagnosticsHaveCode(t *testing.T) {
 	}
 	if !strings.HasPrefix(code, "syntax-error") && !strings.HasPrefix(code, "missing-") {
 		t.Errorf("code = %q，格式不符", code)
+	}
+}
+
+// P7-B：语法诊断也吃 bdl.diagnostics 逐码配置。
+func TestSyntaxErrorPerCodeOverride(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	h.init()
+
+	const uri = "file:///tmp/sev2.4gl"
+	// 新键把语法错误配成 error（默认已经是 warning）。
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"bdl":{"diagnostics":{"syntax-error":"error"}}}}}`)
+	time.Sleep(120 * time.Millisecond)
+
+	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
+	diags := h.drainDiagnostics(uri, 5*time.Second)
+	if len(diags) == 0 {
+		t.Fatal("应有诊断")
+	}
+	d, _ := diags[0].(map[string]any)
+	if sev, _ := d["severity"].(float64); sev != 1 {
+		t.Errorf("bdl.diagnostics.syntax-error=error 应生效，实际 %v", d["severity"])
+	}
+}
+
+// P7-B：MISSING 节点的两级逐码配置（精确 missing-<kind> > 整簇 missing-node > 旧键）。
+func TestMissingNodeSeverityPriority(t *testing.T) {
+	iss := parser.Issue{Missing: true, Kind: "end_if"}
+
+	// 1) 旧键兜底
+	got, on := severityFor(iss, config.Settings{MissingDiagnostics: config.LevelWarning})
+	if !on || got != protocol.DiagnosticSeverityWarning {
+		t.Errorf("旧键 warning 应生效，得到 (%v,%v)", got, on)
+	}
+
+	// 2) 整簇 missing-node 压过旧键
+	got, on = severityFor(iss, config.Settings{
+		MissingDiagnostics: config.LevelWarning,
+		Diagnostics:        map[string]config.DiagnosticLevel{"missing-node": config.LevelHint},
+	})
+	if !on || got != protocol.DiagnosticSeverityHint {
+		t.Errorf("missing-node 应压过旧键，得到 (%v,%v)", got, on)
+	}
+
+	// 3) 精确 missing-<kind> 压过整簇
+	got, on = severityFor(iss, config.Settings{
+		Diagnostics: map[string]config.DiagnosticLevel{
+			"missing-node":   config.LevelHint,
+			"missing-end_if": config.LevelError,
+		},
+	})
+	if !on || got != protocol.DiagnosticSeverityError {
+		t.Errorf("missing-end_if 应压过 missing-node，得到 (%v,%v)", got, on)
+	}
+
+	// 4) 关掉整簇
+	if _, on = severityFor(iss, config.Settings{
+		Diagnostics: map[string]config.DiagnosticLevel{"missing-node": config.LevelOff},
+	}); on {
+		t.Error("missing-node=off 应关闭")
+	}
+
+	// 5) 语法错误走固定码 syntax-error
+	got, on = severityFor(parser.Issue{Kind: "ERROR"}, config.Settings{
+		Diagnostics: map[string]config.DiagnosticLevel{"syntax-error": config.LevelHint},
+	})
+	if !on || got != protocol.DiagnosticSeverityHint {
+		t.Errorf("syntax-error 逐码配置应生效，得到 (%v,%v)", got, on)
 	}
 }

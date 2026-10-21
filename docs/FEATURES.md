@@ -107,11 +107,14 @@
 |---|---|---|---|
 | 35 | Zed 大纲层级修复 | **容器/叶子模型**：容器（函数/报表/MAIN/菜单）`@item` 绑整块 → 内部变量归属函数可折叠；叶子（DEFINE/TYPE/常量）`@item` 绑名字 → 同语句多变量平级 | P7-A / P7-B-3 |
 | 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
-| 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表；拼错保护；清单防漂移 | P7-B |
+| 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（11 个码）；优先级 新键 > 旧键 > 注册表默认；拼错记 warn；`syntaxDiagnostics` 默认已改 warning | P7-B（✅ 0.1.2） |
 | 38 | 内置函数/变量符号表 | 插件侧符号表（非 grammar）；`cmd/builtin-audit` 语料驱动补齐 | P7-C |
 | 39 | 程序链接资料索引 | 三种采集（DB 直连/服务器脚本/命令）+ 函数可见性 + `function-not-found` | P7-D |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
 | 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
+| 42 | 诊断降噪 | 变量使用 query 补 4 类跳过（表达式函数名 / `WHENEVER` 目标 / 表单字段含点号）；`.per` 布局单元格多 tag 与 SCREEN RECORD 字段名修正；全量诊断 33.4 万 → 28.9 万 | P7-B-4/6（✅ 0.1.2） |
+| 43 | 诊断度量工具 | `cmd/diag-audit` + `make diag-audit`：逐码计数、高频标识符、噪声最高文件（降噪基线，可 CI 化） | P7-B（✅ 0.1.2） |
+| 44 | `function-not-found` | 函数调用点找不到定义。**默认 off**：实测 24 个真实文件报 3660 条（内置/跨模块函数尚无符号表），待 P7-C/D 后打开 | P7-B（✅ 已实现，默认关） |
 
 ---
 
@@ -164,4 +167,4 @@
 | 部署 | dry-run + 真实上传 + 编译诊断映射 |
 | 内置符号（P7-C） | 语料 `cmd/builtin-audit` 后"未知未分类"< 20 条；`STATUS`/`SQLCA`/`ARG_VAL` 不再误报 |
 | 链接资料（P7-D） | 真实 GAL_FILE 全量导入后，跨文件函数可见；**R2 反例测试**：链接的子文件间变量仍不可见 |
-| 诊断级别（P7-B） | 每个诊断码可配 warn/error/info/hint/off；拼错有告警；`make diagnostics-check` 通过 |
+| 诊断级别（P7-B） | 每个诊断码可配 warn/error/info/hint/off；拼错有告警；`make diag-audit` 给出逐码基线 |

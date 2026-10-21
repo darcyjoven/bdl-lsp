@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/darcyjoven/bdl-lsp/internal/diag"
 )
 
 // setRecordMemberLevel 把 recordMemberDiagnostics 设为指定级别。
@@ -25,7 +27,7 @@ func recordMemberDiags(diags []any) []map[string]any {
 		if m == nil {
 			continue
 		}
-		if s, _ := m["code"].(string); s == codeRecordMemberUnknown {
+		if s, _ := m["code"].(string); s == string(diag.CodeRecordMemberUnknown) {
 			out = append(out, m)
 		}
 	}

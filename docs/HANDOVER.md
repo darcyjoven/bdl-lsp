@@ -1,31 +1,61 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第七轮：**游标 / prepare statement 支持完成**）  
+> 更新时间：2026-10-21（第八轮：**P7-B 完成——诊断级别统一 + 降噪**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.1** / `vscode-extension` 0.1.0 / `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.2** / `vscode-extension` 0.1.0 / `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
 ---
 
-## 0. 下一步就做这个（P7-B 剩余：诊断降噪）
+## 0. 下一步就做这个（P7-C：内置符号表）
 
-> **下一轮就做这个**：诊断码集中注册 + 调用点误报修正。
-> 待办见 [TODO.md](TODO.md) §B-4。
+> **下一轮就做这个**：`internal/builtin` 内置函数/变量符号表 + `cmd/builtin-audit`。
+> 待办见 [TODO.md](TODO.md) §P7-C。
 >
-> 1. `internal/diag/registry.go`：诊断码集中注册，级别统一解析。
-> 2. 新增 `bdl.diagnostics.<code>` 配置，优先级 `新键 > 旧键 > 注册表默认`。
-> 3. 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn。
-> 4. **修调用点误报**：`IF fn() THEN` 的函数名被当变量检查
->    （query 只跳过了 `(call name:)`，漏了 `(expression name:)`）。
-> 5. 新增 `function-not-found`。
-> 6. 语料复测：24 文件 `variable-source-unresolved` 从 1717 降到新基线
->    （预期 < 400，剩余主要是 `cl_*` 跨文件函数）。
+> **为什么一定是它**：P7-B 收工时全量语料还剩 **28.9 万条**诊断，
+> 其中 `variable-source-unresolved` 占 99.4%，而它的前 12 个名字合计
+> **28.4 万条（98%）全是内置全局**：
 >
-> 详细见 [PLAN-P7.md](PLAN-P7.md) §3 与 §10.3 的 B-4。
+> ```
+> SQLCA 148641 · INT_FLAG 61382 · STATUS 42508 · UI 9832 · BASE 6342
+> XML 2977 · COM 2636 · OS 2023 · SUM 2007 · TIME 1542 · DIALOG 557 · PAGENO 514
+> ```
+>
+> 也就是说：**噪声只剩"没有内置符号表"这一件事**，做完它诊断总数会掉一个量级。
+> 顺带把 `function-not-found` 从默认 off 打开（内置函数名进表后误报就消了）。
+>
+> 步骤：
+> 1. `internal/builtin`：内置变量 / 内置函数 / 内置类与方法（Genero 2.50 基线）。
+> 2. `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，驱动补齐（门槛 <20 条）。
+> 3. 接入：`variable-source-unresolved` 白名单 / 补全 / 悬停签名。
+> 4. `make diag-audit` 复测：目标从 287448 降到 1 万量级。
+> 5. 再打开 `function-not-found` 复测。
+>
+> 详细背景见 [PLAN-P7.md](PLAN-P7.md) §4。
 
-### ✅ 刚完成：P7-B-5 游标 / prepare statement（第七轮）
+### ✅ 刚完成：P7-B 诊断降噪（第八轮，`0.1.2`）
+
+| 项 | 结果 |
+|---|---|
+| `internal/diag/registry.go` | 11 个诊断码集中注册；`SeverityFor` 优先级 = `bdl.diagnostics.<code>` > 旧专用键 > 注册表默认；`ToSeverity` 成为全仓库唯一转换点 |
+| 新配置 `bdl.diagnostics` | `config.Settings.Diagnostics`（增量合并）；`didChangeConfiguration` 对未注册的码记 warn（拼错保护） |
+| Q10 落地 | `syntaxDiagnostics` 默认 `error` → **`warning`**（旧键与新键一致）；`syntax-error` / `missing-node` 也进注册表 |
+| MISSING 两级覆盖 | `missing-<kind>` 精确 → `missing-node` 整簇 → 旧键（动态码按前缀放行） |
+| query 误报修正 | 新增 `(expression name:)`（`IF fn() THEN`）、`(whenever (variable))`；表单 4 条改为捕获整个 variable 节点（`DISPLAY … TO FORMONLY.cn2`） |
+| `function-not-found` | 已实现但**默认 off**——实测 24 个真实文件报 3660 条（内置 + 跨模块函数都还没符号表） |
+| 顺带修 `.per` 两处 | 布局单元格含多 tag（`[label1 \|alh01]`）→ 40167 → **17**；SCREEN RECORD 引用字段名而非 tag → 4850 → **5** |
+| `cmd/diag-audit` | 不起 LSP 连接直跑语义诊断流水线；逐码计数 + 高频标识符 + 噪声最高文件；`make diag-audit` |
+| 语料基线 | 全量 15108 文件 **334299 → 289304（−13.5%）**；`.per` 侧 45019 → **24** |
+| 测试 | diag +8、config +4、index +2、server +9；`go test -race ./...` 21 包全绿；`make lint` 通过 |
+
+**本轮最重要的一条判断**：新加的 `function-not-found` **不能默认开**。
+写它的时候我以为"没有链接资料就先别报跨模块"，实测一开就是 3660 条/24 文件
+——内置函数（`ARG_VAL`/`LENGTH`）和跨模块函数都在里面。
+**新诊断上线前必须先在真实语料上量一遍**，`cmd/diag-audit` 就是为此而生。
+
+### ✅ 上一轮完成：P7-B-5 游标 / prepare statement（第七轮）
 
 | 项 | 结果 |
 |---|---|
@@ -189,7 +219,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.1`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.2`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -387,6 +417,22 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     另外 `Node.Kind()` 每次 `C.GoString` 分配字符串，
     类型比较要用 `KindId()`（uint16，零分配）。
 
+22. **query 里的"Impossible pattern"会让整个 query 静默失效**（P7-B 踩）：
+    隐藏规则别名产生的 field 在 `node-types.json` 里不存在于父节点上，
+    写成 `(whenever name: (variable …))` 就编译不过——而**失败没有任何输出**，
+    表现是"这个功能一条诊断都不产生"，和"用户把它关掉了"完全一样。
+    两个动作都要做：
+      - 写法退到结构匹配 `(whenever (variable …))`（先 `tree-sitter query` 验一遍）；
+      - `compileXxxQueries` **返回 error 并 `logger.Error`**，不要再静默 return nil。
+
+23. **"节点文本 = 一个名字"的假设一律要在真实语料上验一遍**（P7-B 踩，两个 4 万级误报）：
+      - `item_tag` 节点可含**多个** tag：布局单元格 `[label1 |alh01 ]` 是一个节点
+        两个 tag，按整段去查 ATTRIBUTES 永远查不到 → 40167 条误报；
+      - `DISPLAY … TO x.y` 的 field 是 `(variable (object object: (variable …) property: …))`，
+        直接子节点**不是** identifier，`(variable (identifier) @skip)` 匹配不到。
+    推论：**query 里"跳过某处"的 pattern 要捕获整棵子树**（skip 是按 StartByte 比对的，
+    内外层同起点，捕获外层一样准）。
+
 ## 8. 下一步候选（按建议顺序）
 
 ### ★ P7（已立项，下一轮直接做）
@@ -396,10 +442,9 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
-| P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ **游标/prepare（B-5）** | ✅ 完成 |
-| P7-B（剩余） | 诊断级别统一 + 调用点误报修正 | 🔜 **下一轮**（§0） |
-| P7-C | 内置符号表 + grammar 缺口清单 | 待 P7-B |
-| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 待 P7-B、P7-C |
+| P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
+| P7-C | 内置符号表 + grammar 缺口清单 | 🔜 **下一轮**（§0） |
+| P7-D | 链接资料：三种采集 + 索引 + 函数可见性 | 待 P7-C |
 | P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）

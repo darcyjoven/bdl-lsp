@@ -1,8 +1,9 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7-A 已完成**）  
-> 当前阶段：**P1–P6 全部功能已完成**；**P7-A 已完成**（Zed 大纲层级 + Windows GLOBALS 路径）。  
-> **下一步：P7-B**（诊断级别统一 + 调用点误报修正），随后 C 内置符号 / D 链接索引 / E 链接 UI。
+> 更新：2026-10-21（**P7-B 已完成**，`bdl-lsp 0.1.2`）  
+> 当前阶段：**P1–P6 全部功能已完成**；**P7-A / P7-B 已完成**
+> （Zed 大纲层级、Windows GLOBALS 路径、诊断级别统一与降噪）。  
+> **下一步：P7-C**（内置函数/变量符号表 + `cmd/builtin-audit`），随后 D 链接索引 / E 链接 UI。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 
@@ -161,15 +162,38 @@
       真实写法都是 `FETCH [NEXT|ABSOLUTE|FIRST|LAST|...] <cursor>`。
       grammar 的 `fetch` 规则是对的。
 
-### B-4 后续待办（原有 P7-B 内容）
+### B-4 后续待办（原有 P7-B 内容）—— ✅ 全部完成（详见 PLAN-P7 §10.5）
 
-- [ ] `internal/diag/registry.go`：诊断码集中注册，级别统一解析。
-- [ ] 新增 `bdl.diagnostics.<code>` 配置，优先级 `新键 > 旧键 > 注册表默认`。
-- [ ] 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn。
-- [ ] **修调用点误报**：`IF fn() THEN` 的函数名被当变量检查
-      （query 只跳过了 `(call name:)`，漏了 `(expression name:)`）。
-- [ ] 新增 `function-not-found`（无链接资料时不报）。
-- [ ] 语料复测：24 文件 `variable-source-unresolved` 从 1717 降到新基线。
+- [x] `internal/diag/registry.go`：11 个诊断码集中注册，级别统一解析
+      （`SeverityFor` 优先级：`bdl.diagnostics.<code>` > 旧专用键 > 注册表默认）。
+- [x] 新增 `bdl.diagnostics.<code>` 配置（`config.Settings.Diagnostics`，
+      增量合并；`syntaxDiagnostics` 默认同步改为 `warning`）。
+- [x] 拼错保护：`didChangeConfiguration` 里对未注册的码记 warn；
+      MISSING 的 `missing-<kind>` 是动态码，按前缀放行。
+- [x] **修调用点误报**：补 `(expression name:)`（`IF fn() THEN`）；
+      另补 `(whenever (variable))`（`WHENEVER ERROR CALL f` 的 `f`）；
+      表单 4 条 pattern 改为捕获整个 variable 节点（`DISPLAY … TO FORMONLY.cn2`）。
+- [x] `function-not-found`：已实现，**默认 off**——实测 24 个真实文件报 3660 条
+      （内置函数与跨模块函数都还没有符号表），P7-C/D 之后重新度量再打开。
+- [x] 语料复测：24 文件 `variable-source-unresolved` **1717 → 889**；
+      全量 15108 文件诊断 **334299 → 289304**（−13.5%），剩余 98% 是内置全局。
+
+### B-6 P7-B 收尾：新增的度量工具与已知遗留
+
+- [x] `cmd/diag-audit`：不起 LSP 连接直跑语义诊断流水线，输出逐码计数、
+      高频标识符、噪声最高的文件；`make diag-audit`（`LIMIT=` / `CODES=` 可调）。
+- [x] 顺带修掉两个 `.per` 误报（合计占全部诊断 13%）：
+      - `form-layout-tag-undefined` 40167 → **17**（一个 `item_tag` 常含多个
+        tag：`[label1 |alh01]`，旧实现把整段当一个 tag）；
+      - `form-screen-record-undefined` 4850 → **5**（SCREEN RECORD 引用的是
+        **字段名** `= formonly.more` 的 `more`，不是 item tag `mor`）。
+
+- [ ] **`field-not-in-form` 1725 条待查**：抽样全是
+      `CONSTRUCT BY NAME l_wc ON apa01, apa02, …`（aapr106.4gl）。
+      需要确认这些字段来自哪个表单——是 `BY NAME` 的语义差异，还是表单
+      解析没命中。量级不大（0.6%），排 P7-C 之后。
+- [ ] `make diagnostics-check` 防漂移（Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔
+      VSCode `package.json` 的 enum）：留到 P7-C，那时码表会明显变大。
 
 ## 0. 已确认决策
 
@@ -617,21 +641,25 @@ Block P2 已完成：
 
 > 完整设计：[PLAN-P7.md](PLAN-P7.md)。执行顺序 P7-A → B → C → D → E。  
 > 立项依据（实测 24 个 `.4gl`）：诊断 1733 条，其中 `variable-source-unresolved`
-> **1717 条（99.1%）**。噪声已高到不可用，P7 是**可用性修复期**而非增值期。
+> **1717 条（99.1%）**。噪声已高到不可用，P7 是**可用性修复期**而非增值期。  
+> **收工状态（0.1.2）**：全量 15108 文件 334299 → **289304** 条；
+> 剩余 98% 是内置全局，正是 P7-C 的目标。
 
-### P7-B 诊断级别统一 + 调用点误报修正
+### P7-B 诊断级别统一 + 调用点误报修正 —— ✅ 已完成（0.1.2）
 
-- [ ] `internal/diag/registry.go`：诊断码集中注册（Code/Default/Description/Category），
-      级别解析统一走 `registry.Severity(code)`，删除散落的 level 判断。
-- [ ] 新增统一配置 `bdl.diagnostics.<code>`，优先级
+- [x] `internal/diag/registry.go`：诊断码集中注册（Code/Default/Description/Category），
+      级别解析统一走 `diag.SeverityFor(code, settings, legacy)`。
+- [x] 新增统一配置 `bdl.diagnostics.<code>`，优先级
       `diagnostics.<code>` > 旧键（`syntaxDiagnostics` 等）> 注册表默认。
-- [ ] 旧配置键保留并标注 deprecated（至少两个版本不删）。
-- [ ] 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn（现在静默失效）。
+- [x] 旧配置键保留并标注 deprecated（至少两个版本不删）。
+- [x] 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn。
 - [ ] `make diagnostics-check`：Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode enum 三处一致。
-- [ ] **修调用点误报**：`IF fn() THEN` / `LET x = fn(1)` 的函数名被当成变量检查。
-      query 增加 `(expression name: (variable (identifier) @skip))`；语料对比 skip 前后差异。
-- [ ] 新增 `function-not-found`（无链接资料时不报）。
-- [ ] 复测：24 文件诊断 1717 → 新基线（预期 < 400）。
+      （留到 P7-C，码表变大时一起做）
+- [x] **修调用点误报**：`IF fn() THEN` / `LET x = fn(1)` 的函数名被当成变量检查。
+      query 增加 `(expression name: (variable (identifier) @skip))`。
+- [x] 新增 `function-not-found`（默认 off；实测开着会报 3660 条，等 P7-C/D）。
+- [x] 复测：24 文件 `variable-source-unresolved` 1717 → **889**；
+      全量见 §B-6 与 [PLAN-P7.md](PLAN-P7.md) §10.5。
 - [x] ~~Q10 待确认~~ → **已定稿：全部默认 `warning`**（用户 2026-10-21）。
       `syntax-error` 也从 `error` 降为 `warning`；旧键 `syntaxDiagnostics` 默认值同步改，
       避免新旧配置行为不一致。`record-member-unknown` 仍默认 `off`。
@@ -642,10 +670,22 @@ Block P2 已完成：
 > 无 ERROR 但语义未知 → **插件侧符号表**。实测 `STATUS`/`SQLCA`/`ARG_VAL`/
 > `fgl_getenv`/`SET_COUNT` 都能正常解析（语义类）；`STARTLOG` 报 3 个 ERROR（语法类）。
 
+> **P7-B 已把目标量化**（`make diag-audit`，全量 15108 文件）：
+> `variable-source-unresolved` 287448 条里，前 12 个名字占了 28.4 万条（98%）：
+>
+> ```
+> SQLCA 148641 · INT_FLAG 61382 · STATUS 42508 · UI 9832 · BASE 6342
+> XML 2977 · COM 2636 · OS 2023 · SUM 2007 · TIME 1542 · DIALOG 557 · PAGENO 514
+> ```
+>
+> 只要内置表覆盖这十来个名字，全量诊断立刻从 28.9 万掉到 1 万量级。
+> 长尾（`WORKSERVICEIMPL…` 之类）是用户的跨模组全局，归 P7-D 或保持不报。
+
 - [ ] `internal/builtin`：内置变量 / 内置函数 / 内置类与方法 三类符号表（Genero 2.50 基线）。
 - [ ] `cmd/builtin-audit`：扫语料提取"未定义且不在表里"的标识符，语料驱动补齐，门槛 <20 条未知。
 - [ ] 接入三处：① `variable-source-unresolved` 白名单 ② 补全 ③ 悬停显示签名。
-- [ ] 复测：24 文件 `variable-source-unresolved` 再降（预期 < 150）。
+- [ ] 复测：`make diag-audit` 全量 `variable-source-unresolved`
+      从 287448 降到 1 万量级；再打开 `function-not-found` 复测内置函数误报。
 - [ ] **grammar 缺口清单**（`tree-sitter-bdl`）：`cmd/grammar-audit` 收集 ERROR 上下文按频次排序；
       已知 `STARTLOG`（2 个文件）`fgl_report_configure`。低频项只留档不排期。
 - [ ] 注意：`cl_null` / `cl_user` / `cl_gr_numfmt` **不是内置函数**，是 `lib/`/`sub/` 的用户函数

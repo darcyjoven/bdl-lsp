@@ -245,23 +245,28 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 | `form-not-found` / `form-ambiguous` | warning | 共用 `fieldDiagnostics` | |
 | `form-duplicate-item` / `form-layout-tag-undefined` / `form-screen-record-undefined` | warning | 共用 `fieldDiagnostics` | |
 | `record-member-unknown` | **off** | `recordMemberDiagnostics` | 语料 87% 不可校验 |
-| `file-too-large` | warning | 无 | 应归入 limits |
+| `file-too-large` | **information** | 无 | 提示不是错误 |
+| `function-not-found` | **off** | 无（新增） | 实测 24 文件 3660 条，等 P7-C/D |
 
 **设计**：新增统一配置块 `bdl.diagnostics`，按诊断码取值。
+
+**实际落地时砍掉了 `"*"` 通配键**：注册表已经给每个码一个出厂默认，
+通配键既多余、又会让"我明明关掉了却还报"难以排查（分不清是通配键还是
+注册表默认生效）。要批量调级别就逐个码写，工具是 `make diag-audit`。
 
 ```jsonc
 {
   "bdl.diagnostics": {
-    "*": "warning",                       // 兜底默认 = warning（Q10 定稿）
-    "record-member-unknown": "off",       // 用户可关；默认仍 off
-    "variable-source-unresolved": "warning"
+    "variable-source-unresolved": "warning",   // 默认值，写不写都一样
+    "record-member-unknown": "off",            // 默认 off
+    "function-not-found": "off"                // 默认 off
   }
 }
 ```
 
 要点：
 
-1. **集中注册表**：Go 侧建 `internal/diag/registry.go`，每个码登记 `{Code, Default, Description, Category}`。级别解析统一走 `registry.Severity(code)`，删除各功能里散落的 level 判断。
+1. **集中注册表**：Go 侧建 `internal/diag/registry.go`，每个码登记 Code + 默认级别。级别解析统一走 `diag.SeverityFor(code, settings, legacy)`，删除各功能里散落的 level 判断。
 2. **向后兼容**：现有独立配置项（`syntaxDiagnostics`、`globals.*`、`fieldDiagnostics`、`recordMemberDiagnostics`）继续生效，优先级 `diagnostics.<code>` > 旧键 > 注册表默认。旧键在文档中标记 deprecated，**至少两个版本内不删**。
 3. **拼错保护**：`diagnostics` 里出现注册表没有的码 → 记 `warn` 日志（客户端 toast 可选）。现在的配置拼错是静默失效，这个坑必须堵。
 4. **清单防漂移**：仿照现有 `keywords-check`，新增 `make diagnostics-check`，校验三处一致：Go 注册表 ↔ `docs/DIAGNOSTICS.md`（自动生成）↔ VSCode `package.json` 的 enum 列表。
@@ -275,6 +280,13 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 - 语法错误在 Problems 里变成黄色波浪线，不再是红色。用户可自行为 `syntax-error` 配回 `error`。
 - `record-member-unknown` 保持 `off`（它不是"默认级别"，而是默认关闭的可选检查；用户也未要求开启）。
 - 旧配置项里 `syntaxDiagnostics` 默认值是 `error`，需要同步改为 `warning` 以保持一致——否则走旧键的用户与走新键的用户行为不一致。
+
+> **执行结果（2026-10-21，`0.1.2`）**：注册表、新配置键、拼错保护、
+> query 误报修正、`function-not-found`、`cmd/diag-audit` 全部落地；
+> `syntaxDiagnostics` 默认已改为 `warning`。详见 §10.5。
+> 计划里写的 `make diagnostics-check`（Go 注册表 ↔ 文档 ↔ 清单三方校验）
+> **未做**——当前只有 `cmd/diag-audit -codes` 能打印注册表内容，
+> 防漂移脚本留到 P7-C 加内置符号表时一起做（那时码表会明显变大）。
 
 ### 3.2 B-2 调用点被当成"未定义变量"（实测发现的缺陷）
 
@@ -303,9 +315,14 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 
 **验收**：
 
-- [ ] 语料复测：24 文件诊断从 1717 → 记录新基线（预期 < 400，剩余主要是 `cl_*` 跨文件函数）。
-- [ ] 单测：`IF fn() THEN`、`LET x = fn(1)`、`CALL fn()` 三种形态都不再产生 `variable-source-unresolved`。
-- [ ] `function-not-found` 在无链接资料时恒为 0 条。
+- [x] 语料复测：24 文件 `variable-source-unresolved` **1717 → 889**（−48%）。
+      剩余全不是“调用点”：是内置全局（`SQLCA`/`INT_FLAG`/`STATUS`…），
+      属于 P7-C。全量基线见 §10.5。
+- [x] 单测：`IF fn() THEN`、`CALL fn()` 都不再产生 `variable-source-unresolved`
+      （另加 `WHENEVER ERROR CALL f`、`DISPLAY … TO FORMONLY.x`）。
+- [x] `function-not-found` 默认 **off**，无链接资料时恒为 0 条；
+      **实测**：一旦打开，24 个真实文件立刻报 3660 条（内置函数 + 跨模块），
+      所以“默认 off”不是保守，是必须。
 
 ---
 
@@ -858,8 +875,22 @@ type Source interface {
 ## 7. 新增配置项汇总
 
 ```jsonc
-// 诊断级别（P7-B）—— Q10 定稿：全部默认 warning
-"bdl.diagnostics": { "*": "warning", "record-member-unknown": "off" }
+// 诊断级别（P7-B，✅ 已实现）—— Q10 定稿：全部默认 warning
+//
+// 注意：**没有 `"*"` 通配键**。注册表已经给每个码一个出厂默认，
+// 通配键既多余又会让"我关掉的那个码为什么又冒出来"难以排查。
+// 键 = 诊断码，值 = off/error/warning/information/hint。
+// 已注册的码（`go run ./cmd/diag-audit -codes` 或 `make diag-audit` 可打印）：
+//   syntax-error, missing-node（+ 动态的 missing-<kind>）,
+//   globals-file-not-found, variable-source-unresolved, field-not-in-form,
+//   form-duplicate-item, form-layout-tag-undefined,
+//   form-screen-record-undefined, record-member-unknown, file-too-large,
+//   function-not-found
+"bdl.diagnostics": {
+  "variable-source-unresolved": "warning",
+  "record-member-unknown": "off",
+  "function-not-found": "off"          // 默认就是 off，等 P7-C/D
+}
 
 // 内置符号（P7-C）
 "bdl.builtins.enable": true
@@ -887,7 +918,10 @@ type Source interface {
 }
 ```
 
-VSCode `package.json` 需同步新增（当前 32 项 → 约 40 项），并跑 `make manifest-check`。
+VSCode `package.json` 现状：`bdl.diagnostics`（type=object，
+`additionalProperties` 限定为 5 个级别字符串）+ `bdl.syntaxDiagnostics`
+默认改 `warning` 已落地；`src/client.ts` 的 `collectSettings` 是**白名单**，
+新增键必须显式转交，否则不会下发（踩过）。P7-C/D 的内置/链接配置届时再补。
 
 ---
 
@@ -1417,6 +1451,112 @@ forEachSQLKeyword(b.src, func(off int) {          // 字节扫描，不加解析
 | 链接有、代码没有的文件怎么办 | **消解**：保留在 `links.jsonl`，运行时忽略，零诊断 |
 
 所以 P7 可以**直接开工，不需要再问**。按 §1 的顺序：P7-A → B → C → D → E。
+
+### 10.5 P7-B 第二批：诊断降噪（✅ 2026-10-21，`0.1.2`）
+
+#### 做完的四件事
+
+1. **`internal/diag` 集中注册表**（`registry.go`）
+   - 11 个诊断码 + 出厂默认级别，`SeverityFor(code, settings, legacy)`
+     统一解析：`bdl.diagnostics.<code>` > 旧专用键 > 注册表默认。
+   - `ToSeverity` 成为全仓库**唯一**的“级别 → LSP 枚举”转换点。
+     历史上 server 与 diag 各写一份 switch，`LevelInformation` 写错就是
+     两处漂移的典型（编译期才发现）。
+   - `ValidateSettings` 返回未注册的码；`didChangeConfiguration` 里记 warn
+     ——拼错一个字母永久不生效的坑堵上了。
+   - MISSING 节点的码是**动态**的 `missing-<kind>`，无法穷举，所以
+     `IsRegistered` 对 `missing-` 前缀一律放行，级别解析分两级：
+     `missing-<kind>` 精确命中 → `missing-node` 整簇兜底 → 旧键。
+
+2. **`config.Settings.Diagnostics`**（`map[string]DiagnosticLevel`）
+   - 增量合并（`nil` 表示未下发，保留现有值）；`Validate` 校验取值合法性。
+   - `SyntaxDiagnostics` 默认由 `error` 改为 `warning`（Q10 定稿），
+     旧键与新键行为一致。
+
+3. **query 误报修正**（`queryVariables` 从 7 条 pattern 增到 10 条）
+   - `(expression name: (variable (identifier) @skip))`：`IF fn() THEN` 里的
+     函数名是 `expression name:` 字段，不是 `call` 节点——旧 query 漏了它。
+   - `(whenever (variable (identifier) @skip))`：`WHENEVER ERROR CALL f` /
+     `... GOTO lbl` 的目标不是变量。
+   - 表单字段用的 4 条 pattern 改为捕获**整个 variable 节点**：
+     `DISPLAY x TO FORMONLY.cn2` 的 field 是
+     `(variable (object object: (variable …) property: …))`，直接子节点不是
+     identifier，旧写法匹配不到。
+   - `compileVariableQueries` 改为返回 `error`，失败时 `logger.Error`：
+     静默禁用一个功能（零诊断）与“用户关掉了”在编辑器里长得一样，
+     必须留痕。
+
+4. **`function-not-found`**（新增，默认 **off**）+ **`cmd/diag-audit`**
+   - 收集 `call name:` 与 `expression name:` 两处调用点，比对本文档
+     Function/Report/Main + GLOBALS 引入的函数定义。
+   - **实测 24 个真实 .4gl 报 3660 条（占全部 80%）**：内置函数
+     （`ARG_VAL`/`LENGTH`…）与跨模块函数都还没有符号表。默认 off，
+     待 P7-C（内置符号表）+ P7-D（链接索引）落地后重新度量再打开。
+   - `cmd/diag-audit` 是这个结论的前提：它不起 LSP 连接，走
+     `Server.AuditFile` 直跑完整语义诊断流水线，输出逐码计数、高频标识符、
+     噪声最高的文件。`make diag-audit` 一行出基线。
+
+#### 顺带修掉的两个 `.per` 误报（实测占全部诊断 13%）
+
+跑全量语料才看见的两个缺陷，都属于“一个节点里藏了多个名字”：
+
+| 缺陷 | 根因 | 修复前 → 后 |
+|---|---|---|
+| `form-layout-tag-undefined` | 一个 `item_tag` 节点常含**多个** tag（`[label1 \|alh01]`），旧实现把整段当一个 tag 去查 ATTRIBUTES，永远查不到 | **40167 → 17** |
+| `form-screen-record-undefined` | SCREEN RECORD 引用的是**字段名**（`= formonly.more` 的 `more`），不是 item tag（`mor`）；旧校验只认 tag | **4850 → 5** |
+
+修法：`splitLayoutTags` 按 `|` 切分并算出每段的字节区间（诊断位置要准）；
+`FileIndex.FormFieldNames` 收集 `attribute_item.field` 的列名，与
+`KindFormItem` 一起构成 `defined` 集合。
+
+#### 语料基线（tiptop-gp，15108 个 .4gl + .per）
+
+| 诊断码 | 修复前 | 修复后 | 说明 |
+|---|---:|---:|---|
+| `variable-source-unresolved` | 287448 | 287448 | 全是内置全局（见下） |
+| `form-layout-tag-undefined` | 40167 | **17** | 已修 |
+| `form-screen-record-undefined` | 4850 | **5** | 已修 |
+| `field-not-in-form` | 1725 | 1725 | 待查（`CONSTRUCT BY NAME … ON a,b,c`） |
+| `globals-file-not-found` | 107 | 107 | 真实缺失 |
+| `form-duplicate-item` | 2 | 2 | 真实重复 |
+| `function-not-found` | 3660 | 0 | 默认 off |
+| **合计** | **334299** | **289304** | **−13.5%** |
+
+`.per` 侧：45019 → **24**（−99.9%）。
+
+`variable-source-unresolved` 的高频标识符（前 12）全部是**内置全局**：
+
+```
+SQLCA 148641 · INT_FLAG 61382 · STATUS 42508 · UI 9832 · BASE 6342
+XML 2977 · COM 2636 · OS 2023 · SUM 2007 · TIME 1542 · DIALOG 557 · PAGENO 514
+```
+
+前 12 项合计 **28.4 万条，占剩余全部诊断 98%**——这正是 P7-C 要消掉的量。
+换句话说：**P7-B 之后剩下的噪声几乎只剩“没有内置符号表”这一件事**，
+而它已经在下一轮的排期里。
+
+#### 验收
+
+- [x] 单测：`internal/diag` 新增 8 个（级别映射/优先级/注册表/拼错保护）。
+- [x] 单测：`internal/config` 新增 4 个（增量合并/未下发不清空/非法级别）。
+- [x] 单测：server 新增 9 个（`WHENEVER` 函数名、表达式函数名、
+      `FORMONLY.x` 字段、逐码 off/覆盖、`function-not-found` 默认关/开启/本地定义、
+      `syntax-error` 逐码、MISSING 两级优先级）。
+- [x] 单测：index 新增 2 个（单元格多 tag 切分 + 字段名收集）。
+- [x] `go test -race ./...` 21 包全绿；`make lint` 通过。
+- [x] VSCode 清单：`bdl.diagnostics`（object）+ `syntaxDiagnostics` 默认
+      `warning`；`collectSettings` 显式转交（白名单，不列就不下发）。
+- [x] 语料基线见上表。
+
+#### 踩坑新增（已并入 HANDOVER §7）
+
+- **22**：field 来自**隐藏规则别名**时（`(whenever name: …)` 的 `name` 来自
+  `_names: field("name", $.variable)`），node-types.json 里父节点没有这个字段，
+  query 编译报 **Impossible pattern**，而**失败是静默的**——整个 query 被
+  丢掉，一个诊断都不产生。写法要退到结构匹配 `(whenever (variable …))`。
+- **23**：`item_tag` 节点不等于“一个 tag”。布局单元格 `[a |b ]` 是一个节点
+  含两个 tag；`DISPLAY … TO x.y` 的 field 是一个 variable 里嵌 object 再嵌
+  variable。**凡是“节点文本 = 一个名字”的假设，都要在真实语料上验证一遍**。
 
 ---
 

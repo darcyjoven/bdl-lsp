@@ -52,6 +52,9 @@ type Server struct {
 	// varQueries 是变量使用检查的复用 query（T5；惰性编译）。
 	varQueries     *variableQueries
 	varQueriesOnce sync.Once
+	// fnCallQueries 是函数调用收集的复用 query（function-not-found；惰性编译）。
+	fnCallQueries     *functionCallQueries
+	fnCallQueriesOnce sync.Once
 	// sourceDiags 缓存每文档的 T5（变量来源）诊断（debounceMu 保护）。
 	// didChange 时清空并防抖重算：来源检查要全树 query（大文件 ~27ms），
 	// 不能挂在每次按键上；编辑停顿 400ms 后恢复完整诊断。

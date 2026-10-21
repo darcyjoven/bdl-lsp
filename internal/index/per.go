@@ -58,16 +58,7 @@ func (b *builder) collectLayoutRefs(layout *ts.Node) {
 	for {
 		node := cursor.Node()
 		if node.Kind() == "item_tag" {
-			text := b.text(node)
-			tag := strings.TrimSpace(stripBrackets(text))
-			if tag != "" {
-				b.fi.LayoutRefs = append(b.fi.LayoutRefs, LayoutRef{
-					Tag:       tag,
-					Lower:     strings.ToLower(tag),
-					StartByte: node.StartByte(),
-					EndByte:   node.EndByte(),
-				})
-			}
+			b.addLayoutCell(node)
 		}
 		if cursor.GotoFirstChild() {
 			continue
@@ -93,6 +84,72 @@ func stripBrackets(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
+}
+
+// addLayoutCell 把一个 item_tag 节点拆成若干 tag 引用。
+//
+// **一个 item_tag 里可能有多个 tag**：布局单元格的写法是 `[a |b ]`，
+// 一个方括号里并排放多个 item（语料里非常常见：
+// `[label1     |alh01                ]`）。旧实现把整段内容当成一个 tag
+// 去查 ATTRIBUTES，永远查不到，于是每个单元格都报 form-layout-tag-undefined
+// ——实测 tiptop 语料 40167 条，占全部诊断 12%。
+func (b *builder) addLayoutCell(node *ts.Node) {
+	text := b.text(node)
+	// splitLayoutTags 的相对偏移已含方括号的 +1，这里直接加上节点起点
+	for _, seg := range splitLayoutTags(stripBrackets(text), hasBrackets(text)) {
+		tag := seg.text
+		if tag == "" {
+			continue
+		}
+		start := node.StartByte() + seg.start
+		b.fi.LayoutRefs = append(b.fi.LayoutRefs, LayoutRef{
+			Tag:       tag,
+			Lower:     strings.ToLower(tag),
+			StartByte: start,
+			EndByte:   start + uint(len(tag)),
+		})
+	}
+}
+
+// hasBrackets 报告文本是否被方括号包住。
+func hasBrackets(s string) bool {
+	return len(s) >= 2 && s[0] == '[' && s[len(s)-1] == ']'
+}
+
+// layoutTagSpan 是一个 tag 在单元格内容里的相对位置。
+type layoutTagSpan struct {
+	text       string
+	start, end uint
+}
+
+// splitLayoutTags 按 `|` 切分单元格内容，去两侧空白，返回每段的文本与
+// 相对字节区间（相对 inner 起点）。
+func splitLayoutTags(inner string, bracketed bool) []layoutTagSpan {
+	base := uint(0)
+	if bracketed {
+		base = 1 // 跳过 '['
+	}
+	var out []layoutTagSpan
+	start := 0
+	for i := 0; i <= len(inner); i++ {
+		if i < len(inner) && inner[i] != '|' {
+			continue
+		}
+		seg := inner[start:i]
+		rel := start
+		for len(seg) > 0 && (seg[0] == ' ' || seg[0] == '\t') {
+			seg = seg[1:]
+			rel++
+		}
+		for len(seg) > 0 && (seg[len(seg)-1] == ' ' || seg[len(seg)-1] == '\t') {
+			seg = seg[:len(seg)-1]
+		}
+		if seg != "" {
+			out = append(out, layoutTagSpan{text: seg, start: base + uint(rel), end: base + uint(rel+len(seg))})
+		}
+		start = i + 1
+	}
+	return out
 }
 
 // collectPerItems 遍历 ATTRIBUTES 小节。
@@ -137,6 +194,22 @@ func (b *builder) addPerItem(item *ts.Node) {
 	}
 	if it := findChild(item, "item_type"); it != nil {
 		sym.TypeText = b.text(it)
+	}
+
+	// 记录字段名：SCREEN RECORD 引用的是 `= formonly.more` / `= alh_file.alh01`
+	// 的**列部分**，不是 item tag。`Edit mor=formonly.more` 里两者不同，
+	// 只认 tag 会把合法的 SCREEN RECORD 报成未定义（实测 4850 条）。
+	if fr := item.ChildByFieldName("field"); fr != nil {
+		if col := fr.ChildByFieldName("column"); col != nil {
+			if fieldName := b.text(col); fieldName != "" {
+				b.fi.FormFieldNames = append(b.fi.FormFieldNames, LayoutRef{
+					Tag:       fieldName,
+					Lower:     strings.ToLower(fieldName),
+					StartByte: col.StartByte(),
+					EndByte:   col.EndByte(),
+				})
+			}
+		}
 	}
 
 	b.fi.Symbols = append(b.fi.Symbols, sym)

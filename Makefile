@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress bench clean help grammars grammars-check keywords keywords-check manifest-check e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit bench clean help grammars grammars-check keywords keywords-check manifest-check e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -72,6 +72,10 @@ corpus: build
 ## regress: 全量语料回归（较慢，发布前/大改后运行）
 regress: build
 	@bash scripts/corpus-regress.sh
+
+## diag-audit: 统计语义诊断逐码分布（降噪基线；可用 CODES=code=level 覆盖）
+diag-audit: build
+	@$(GO) run ./cmd/diag-audit $(if $(CODES),-diagnostics $(CODES),) $(if $(LIMIT),-limit $(LIMIT),) -names 20
 
 ## grammars: 从 grammar 源码重新生成 VSCode 的 TextMate 语法
 grammars:

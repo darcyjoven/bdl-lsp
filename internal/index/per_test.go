@@ -153,3 +153,77 @@ func TestRealPerFileSymbols(t *testing.T) {
 		t.Error("未找到 more")
 	}
 }
+
+// 真实语料的单元格写法：一个 item_tag 里并排放多个 tag。
+const multiTagPer = `SCHEMA ds
+
+LAYOUT (text=%"Form")
+GRID
+{
+   [label1     |alh01                ]
+   [mor|label4                   ]
+}
+END
+END
+
+ATTRIBUTES
+Group group1:Group1, text=%"QBE";
+Label label1:Label1, text=%"alh01";
+Edit alh01=alh_file.alh01, tabIndex=1;
+CheckBox mor=formonly.more type VARCHAR, tabIndex=4;
+Label label4:Label4, text=%"";
+END
+
+INSTRUCTIONS
+SCREEN RECORD Rec1(alh_file.alh01, formonly.more)
+END
+`
+
+func TestPerLayoutCellSplitsOnPipe(t *testing.T) {
+	fi := buildPerIndex(t, multiTagPer)
+
+	got := map[string]bool{}
+	for _, ref := range fi.LayoutRefs {
+		got[ref.Lower] = true
+	}
+	// 旧实现把整个单元格当一个 tag（"label1     |alh01"），一个都匹配不上。
+	for _, want := range []string{"label1", "alh01", "mor", "label4"} {
+		if !got[want] {
+			t.Errorf("布局 tag %q 未收集到，实际 %v", want, got)
+		}
+	}
+	if len(fi.LayoutRefs) != 4 {
+		t.Errorf("期望 4 个 tag，实际 %d：%+v", len(fi.LayoutRefs), fi.LayoutRefs)
+	}
+
+	// 区间必须落在各自的 tag 上（诊断位置靠它）。
+	for _, ref := range fi.LayoutRefs {
+		if ref.EndByte <= ref.StartByte {
+			t.Errorf("tag %q 区间非法：%d..%d", ref.Tag, ref.StartByte, ref.EndByte)
+			continue
+		}
+		if slice := multiTagPer[ref.StartByte:ref.EndByte]; slice != ref.Tag {
+			t.Errorf("tag %q 的区间指向 %q", ref.Tag, slice)
+		}
+	}
+}
+
+func TestPerFormFieldNamesCollected(t *testing.T) {
+	fi := buildPerIndex(t, multiTagPer)
+
+	got := map[string]bool{}
+	for _, f := range fi.FormFieldNames {
+		got[f.Lower] = true
+	}
+	// SCREEN RECORD 引用的是字段名：alh_file.alh01 的 alh01、formonly.more 的 more。
+	if !got["alh01"] {
+		t.Errorf("未收集字段名 alh01：%v", got)
+	}
+	if !got["more"] {
+		t.Errorf("未收集字段名 more（Edit mor=formonly.more）：%v", got)
+	}
+	// item tag 不是字段名，不该混进来（mor 只在 tag 位置出现）。
+	if got["mor"] {
+		t.Errorf("item tag mor 不应被当成字段名")
+	}
+}
