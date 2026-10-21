@@ -6,28 +6,60 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 )
 
-// MainFinder 报告 (模组, 程序代码) 对应的源文件里有没有 MAIN。
+// FileScan 是一个链接文件的扫描结果。
+type FileScan struct {
+	// Found=false 表示磁盘上找不到这个文件——**这是常态**，不是错误：
+	// 实测 800 条记录落在语料里不存在的 W* 模组（另一套/已下线系统）。
+	Found bool
+	// HasMain 表示文件里有 MAIN（入口程序）。
+	HasMain bool
+	// Defines 是本文件定义的函数名（小写）。
+	//
+	// 只用来**缩小**外部函数的候选集（定义过的名字不可能是外部函数），
+	// 与全语料粗扫的 Defines 取并集。
+	Defines []string
+	// Calls 是本文件里被调用的函数名（小写、去重）。
+	Calls []string
+	// callCount 是每个名字在本文件里的调用次数（小写 → 次数）。
+	callCount map[string]int
+	// callSeen 是 Calls 的去重集合。
+	callSeen map[string]bool
+}
+
+// Scanner 扫描 (模组, 程序代码) 对应的源文件。
 //
 // 为什么要外部注入：判断"这一组里哪一条是 MAIN"必须读文件，而本包
 // 不想依赖 tree-sitter（那会让纯数据逻辑也要 cgo）。真实实现由
-// server/CLI 提供（解析 + 查 KindMain），测试用假实现。
+// server/CLI 提供（解析 + 查语法树），测试用假实现。
 //
-// found=false 表示磁盘上找不到这个文件——**这是常态**，不是错误：
-// 实测 800 条记录落在语料里不存在的 W* 模组（另一套/已下线系统）。
-type MainFinder interface {
-	Lookup(module, code string) (hasMain bool, found bool)
+// P7-D-2 起它还要带出 Defines/Calls：导入时**已经**要把每个文件解析一遍，
+// 顺手统计"被调用但从无定义"的外部函数，边际成本≈0。
+type Scanner interface {
+	Scan(module, code string) FileScan
 }
 
 // ImportOptions 控制导入行为。
 type ImportOptions struct {
-	// MainFinder 用于判定 MAIN。为 nil 时所有组都按 orphan 处理
+	// Scanner 用于判定 MAIN 并统计函数名。为 nil 时所有组都按 orphan 处理
 	// （只用于"没有源码"的离线校验场景）。
-	MainFinder MainFinder
+	Scanner Scanner
+	// Ignore 里的名字不记入外部函数表（内置符号：ARG_VAL/fgl_* 之类
+	// 本来就没有定义，记进去只会污染名单）。
+	Ignore map[string]bool
+	// ExternalsMinFiles / ExternalsMinCalls 是"外部函数"的判定阈值
+	// （调用它的文件数 / 调用总次数），满足任一即算。0 表示用默认值。
+	ExternalsMinFiles int
+	ExternalsMinCalls int
+	// Corpus 是整份语料的函数名画像（由 RunImport 粗扫全项目得到）。
+	// 链接资料只覆盖被链接到的文件，不用它补齐的话，"语料里存在但没被
+	// 链接"的函数会被误判成"不存在"而放过。
+	Corpus *CorpusIndex
 	// Source / SourceDetail 记进 meta，例如 "db" / "DS.GAL_FILE@host:1521/svc"。
 	Source       string
 	SourceDetail string
@@ -119,7 +151,7 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 	// ---- 第二遍：并行判定每个 (模组,代码) 是否有 MAIN ----
 	// 7765 个不同代码 × 单文件解析 ≈ 实测 8.7 ms/文件，串行要 1 分钟以上，
 	// 并行到 8 核约 10 s。这是批量工具，一次几秒可接受。
-	mains := lookupMains(groups, order, opts)
+	scans := scanFiles(groups, order, opts)
 
 	// ---- 第三遍：成链 ----
 	for _, program := range order {
@@ -130,12 +162,12 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 		c := &Chain{Schema: SchemaVersion, Program: program, Files: g.files}
 		var mainRefs []FileRef
 		for _, f := range g.files {
-			info := mains.mainLookup[f.Key()]
-			if !info.found {
+			info := scans.scanOf[f.Key()]
+			if !info.Found {
 				// 缺失文件原样保留（用户明确要求），统计由 lookupMains 统一做。
 				continue
 			}
-			if info.hasMain {
+			if info.HasMain {
 				mainRefs = append(mainRefs, f)
 			}
 		}
@@ -164,7 +196,8 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 		res.Chains = append(res.Chains, c)
 	}
 
-	res.Meta.MissingFiles = mains.missingTotal
+	res.Meta.MissingFiles = scans.missingTotal
+	buildExternals(res, scans, opts)
 	SortChains(res.Chains)
 	return res, nil
 }
@@ -176,24 +209,20 @@ type importGroup struct {
 	seen    map[string]bool
 }
 
-// mainLookup 是并行判定 MAIN 的结果集合。
-type mainLookup map[string]mainInfo
-
-type mainInfo struct {
-	hasMain bool
-	found   bool
-}
-
-// mainLookupResult 同时带回统计（missingTotal 按记录计，不按去重计）。
-type mainLookupResult struct {
-	mainLookup
+// scanSet 是并行扫描的结果集合。
+type scanSet struct {
+	scanOf map[string]FileScan
+	// scanOf 按去重后的 key 存；missingTotal 按**记录**计
+	// （同一代码在多个组里缺失要分别计，与 §11 实测的 800 条口径一致）。
 	missingTotal int
+	// defines / callers 只用于外部函数统计。
+	defines map[string]bool
 }
 
-func lookupMains(groups map[string]*importGroup, order []string, opts ImportOptions) *mainLookupResult {
-	out := &mainLookupResult{mainLookup: mainLookup{}}
-	if opts.MainFinder == nil {
-		// 没有 finder：全部视为"文件存在但无 MAIN"，即全 orphan。
+func scanFiles(groups map[string]*importGroup, order []string, opts ImportOptions) *scanSet {
+	out := &scanSet{scanOf: map[string]FileScan{}, defines: map[string]bool{}}
+	if opts.Scanner == nil {
+		// 没有 scanner：全部视为"文件存在但无 MAIN"，即全 orphan。
 		return out
 	}
 
@@ -234,9 +263,12 @@ func lookupMains(groups map[string]*importGroup, order []string, opts ImportOpti
 		go func() {
 			defer wg.Done()
 			for j := range ch {
-				hasMain, found := opts.MainFinder.Lookup(j.ref.Module(), j.ref.Code())
+				info := opts.Scanner.Scan(j.ref.Module(), j.ref.Code())
 				mu.Lock()
-				out.mainLookup[j.key] = mainInfo{hasMain: hasMain, found: found}
+				out.scanOf[j.key] = info
+				for _, d := range info.Defines {
+					out.defines[d] = true
+				}
 				mu.Unlock()
 			}
 		}()
@@ -247,16 +279,125 @@ func lookupMains(groups map[string]*importGroup, order []string, opts ImportOpti
 	close(ch)
 	wg.Wait()
 
-	// 缺失统计按**记录**算（同一代码在多个组里缺失要分别计），
-	// 与 §11 实测的 800 条口径一致。
 	for _, program := range order {
 		for _, f := range groups[program].files {
-			if info, ok := out.mainLookup[f.Key()]; ok && !info.found {
+			if info, ok := out.scanOf[f.Key()]; ok && !info.Found {
 				out.missingTotal++
 			}
 		}
 	}
 	return out
+}
+
+// DefaultExternalsMinFiles 是"外部函数"的默认判定阈值：被至少这么多个
+// 文件调用，却在整份语料里找不到定义。
+//
+// 取 3 而不是 2 的理由：笔误（`cl_err33`）通常只出现在 1–2 处；
+// 而"快照里缺了这个库"会成片出现（实测 `cl_err3` 27315 次 / 186 个文件）。
+const DefaultExternalsMinFiles = 3
+
+// DefaultExternalsMinCalls 是另一个维度的阈值：同一个文件里被反复调用。
+//
+// 必须双维度：Genero 的 Web Service 辅助函数（`WSHelper_*`）只在
+// 2 个生成出来的程序里出现，但每个都调用上千次——只看文件数会漏掉它们。
+const DefaultExternalsMinCalls = 5
+
+// MaxExternals 是容忍上限。超过它说明"资料或语料本身不对"（比如
+// dataDir 指到了错误的项目、导出只导了一半），此时**不启用**过滤：
+// 宁可多报，也不要让一份坏资料把所有函数都变成"存在"。
+const MaxExternals = 2000
+
+// MaxStoredExternals 是写进 meta 的名单上限（只存前 N 个，按文件数排序）。
+// 全量存也能存下（实测几百个），但资料文件要保持可读。
+const MaxStoredExternals = 500
+
+// buildExternals 统计"被调用但从无定义"的函数，写进 meta。
+//
+// 用户定的口径：这类名字大概率是**语料快照缺少的库函数**（不是用户写错），
+// 只要不是太多就忽略，但要**记录下来**——`bdl-lsp link status` 会列出来，
+// 出问题时能一眼看到"哪些函数被当成外部函数放过了"。
+func buildExternals(res *ImportResult, scans *scanSet, opts ImportOptions) {
+	minFiles := opts.ExternalsMinFiles
+	if minFiles <= 0 {
+		minFiles = DefaultExternalsMinFiles
+	}
+	minCalls := opts.ExternalsMinCalls
+	if minCalls <= 0 {
+		minCalls = DefaultExternalsMinCalls
+	}
+	res.Meta.ExternalsMinFiles = minFiles
+	res.Meta.ExternalsMinCalls = minCalls
+
+	type cand struct {
+		name  string
+		files int
+		calls int
+	}
+	var cands []cand
+	// 候选来自**整份语料**的调用统计（不是链接文件，够全），
+	// 定义集合同样来自全语料 + 已解析文件（够准）。
+	for name, st := range corpusCalls(opts) {
+		if scans.defines[name] || (opts.Corpus != nil && opts.Corpus.Defines[name]) {
+			continue
+		}
+		if opts.Ignore[name] {
+			continue
+		}
+		if st.Files < minFiles && st.Calls < minCalls {
+			continue
+		}
+		cands = append(cands, cand{name: name, files: st.Files, calls: st.Calls})
+	}
+	// 文件数降序，同数按调用次数降序，再按名字：输出稳定，便于 diff。
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].files != cands[j].files {
+			return cands[i].files > cands[j].files
+		}
+		if cands[i].calls != cands[j].calls {
+			return cands[i].calls > cands[j].calls
+		}
+		return cands[i].name < cands[j].name
+	})
+
+	res.Meta.ExternalsTotal = len(cands)
+	if len(cands) > MaxExternals {
+		res.Meta.ExternalsSkipped = true
+		res.Problems = append(res.Problems, fmt.Sprintf(
+			"外部函数候选 %d 个，超过上限 %d：资料可能不完整或项目根不对，**不启用**外部函数过滤",
+			len(cands), MaxExternals))
+		// 仍然记录（供排查），但不生效。
+	}
+	if len(cands) > MaxStoredExternals {
+		cands = cands[:MaxStoredExternals]
+	}
+	for _, c := range cands {
+		res.Meta.Externals = append(res.Meta.Externals, External{Name: c.name, Files: c.files, Calls: c.calls})
+	}
+	if res.Meta.ExternalsTotal > 0 {
+		res.Problems = append(res.Problems, fmt.Sprintf(
+			"外部函数（被 ≥%d 个文件或 ≥%d 次调用、整份语料无定义）%d 个，最多的是：%s",
+			minFiles, minCalls, res.Meta.ExternalsTotal, joinExternalNames(res.Meta.Externals, 5)))
+	}
+}
+
+// corpusCalls 返回全语料的调用统计；没有 Corpus 时退回"链接文件里的调用"。
+func corpusCalls(opts ImportOptions) map[string]*CallStat {
+	if opts.Corpus != nil {
+		return opts.Corpus.Calls
+	}
+	return nil
+}
+
+// joinExternalNames 取前 n 个名字（带文件数）拼成一行，用于报告。
+func joinExternalNames(list []External, n int) string {
+	if n > len(list) {
+		n = len(list)
+	}
+	parts := make([]string, 0, n)
+	for _, e := range list[:n] {
+		parts = append(parts, fmt.Sprintf("%s(%d 文件/%d 次)", e.Name, e.Files, e.Calls))
+	}
+	return strings.Join(parts, "、")
 }
 
 func mainNames(refs []FileRef) string {

@@ -31,44 +31,56 @@ func NewBDLParseFunc(pool *parser.Pool) ParseFunc {
 	}
 }
 
-// NewBDLMainFinder 返回"某个 (模组,代码) 文件里有没有 MAIN"的真实实现。
+// NewBDLScanner 返回"扫描某个 (模组,代码) 文件"的真实实现。
 //
 // 这是导入阶段最贵的一步：语料有 7765 个不同代码，每个都要读+解析
-// （实测 8.7 ms/文件），所以 ImportCSV 会并行调用它。
-func NewBDLMainFinder(layout *Layout, pool *parser.Pool) MainFinder {
-	return mainFinder{layout: layout, pool: pool}
+// （实测 8.7 ms/文件），所以 ImportCSV 会并行调用它。既然已经解析过，
+// 就顺手把"本文件定义的函数"带出来——它能把外部函数的候选集缩小
+// （定义过的名字不可能是"外部函数"）。
+func NewBDLScanner(layout *Layout, pool *parser.Pool) *BDLScanner {
+	return &BDLScanner{layout: layout, pool: pool}
 }
 
-type mainFinder struct {
+// BDLScanner 是 Scanner 的真实实现。
+type BDLScanner struct {
 	layout *Layout
 	pool   *parser.Pool
 }
 
-// Lookup 实现 MainFinder。
-func (m mainFinder) Lookup(module, code string) (hasMain bool, found bool) {
-	path, ok := m.layout.Path(module, code)
+// Scan 实现 Scanner。
+func (b *BDLScanner) Scan(module, code string) FileScan {
+	path, ok := b.layout.Path(module, code)
 	if !ok {
 		// 磁盘上没这个文件：实测 800 条，全在语料里不存在的 W* 模组。
-		return false, false
+		return FileScan{}
 	}
-	fi, err := parseFile(m.pool, path)
+	src, err := ReadSource(path)
 	if err != nil {
-		return false, true // 文件在但读不了：当"存在但无 MAIN"，不污染缺失统计
+		return FileScan{Found: true} // 文件在但读不了：当"存在但无 MAIN"，不污染缺失统计
 	}
-	for _, sym := range fi.Symbols {
-		if sym.Kind == index.KindMain {
-			return true, true
+	tree, err := b.pool.Parse(parser.LangBDL, src, nil)
+	if err != nil {
+		return FileScan{Found: true}
+	}
+	defer tree.Close()
+
+	out := FileScan{Found: true}
+	if fi := index.Build(parser.LangBDL, tree, src, 1); fi != nil {
+		for _, sym := range fi.Symbols {
+			switch sym.Kind {
+			case index.KindMain:
+				out.HasMain = true
+			case index.KindFunction:
+				out.Defines = append(out.Defines, sym.Lower)
+			}
 		}
 	}
-	// 语法树没看到 MAIN 时再扫一次文本：语料里存在 `{ MAIN ... }` 这种
-	// 语法树认不出的写法（aws_ttsrv2_transxml.4gl），不兜底会把 4 个组
-	// 错判成"只有一个 MAIN"。
-	if src, rerr := ReadSource(path); rerr == nil {
-		if ScanMainText(src) {
-			return true, true
-		}
+	// 语法树没看到 MAIN 时再扫一次文本兜底（`{ MAIN ... }` 之类）。
+	// 注意 `{ }` 在语法里是块注释，ScanMainText 与之一致。
+	if !out.HasMain && ScanMainText(src) {
+		out.HasMain = true
 	}
-	return false, true
+	return out
 }
 
 // parseFile 解析一个 .4gl 并建索引。

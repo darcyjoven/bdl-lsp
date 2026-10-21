@@ -7,8 +7,25 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 )
+
+// builtinNames 返回内置符号表里全部名字（小写）。
+//
+// 用途：导入时统计"外部函数"要排除内置名——`ARG_VAL`/`fgl_*` 本来就没有
+// 定义，记进外部函数名单只会让名单变得没法读。
+func builtinNames() map[string]bool {
+	set := builtin.Embedded()
+	if set == nil {
+		return nil
+	}
+	out := make(map[string]bool, set.Len())
+	for _, sym := range set.Symbols() {
+		out[strings.ToLower(sym.Name)] = true
+	}
+	return out
+}
 
 // ImportRequest 是一次"CSV → links.jsonl"的完整导入请求。
 //
@@ -78,8 +95,17 @@ func RunImport(req ImportRequest) (*ImportOutcome, error) {
 	roots := layout.RootNames()
 
 	start := time.Now()
+	// 全语料的函数名画像：用来区分"项目里根本没有这个函数"（外部函数，
+	// 忽略）与"有但链接里看不到"（真问题，照报）。
+	corpus, err := ScanCorpus(layout, req.Pool, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	res, err := ImportCSV(data, ImportOptions{
-		MainFinder:   NewBDLMainFinder(layout, req.Pool),
+		Ignore:       builtinNames(),
+		Corpus:       corpus,
+		Scanner:      corpus,
 		Source:       req.Source,
 		SourceDetail: req.SourceDetail,
 		ToolVersion:  req.ToolVersion,

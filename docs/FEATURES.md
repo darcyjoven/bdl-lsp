@@ -108,13 +108,14 @@
 | 35 | Zed 大纲层级修复 | **容器/叶子模型**：容器（函数/报表/MAIN/菜单）`@item` 绑整块 → 内部变量归属函数可折叠；叶子（DEFINE/TYPE/常量）`@item` 绑名字 → 同语句多变量平级 | P7-A / P7-B-3 |
 | 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
 | 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（11 个码）；优先级 新键 > 旧键 > 注册表默认；拼错记 warn；`syntaxDiagnostics` 默认已改 warning | P7-B（✅ 0.1.2） |
-| 38 | 内置符号表 | `internal/builtin`：96 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3） |
-| 39 | 程序链接资料索引 | 三种采集（DB 直连/服务器脚本/命令）+ 函数可见性 + `function-not-found` | P7-D |
+| 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
+| 39 | 程序链接资料索引 | `bdl-lsp link import/status`；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
+| 39a | 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义的名字 → 视为存在并记进 `links.meta.json`；候选 >2000 个则**不启用** | P7-D-2（✅ 0.1.5） |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
 | 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
 | 42 | 诊断降噪 | 变量使用 query 补 4 类跳过（表达式函数名 / `WHENEVER` 目标 / 表单字段含点号）；`.per` 布局单元格多 tag 与 SCREEN RECORD 字段名修正；全量诊断 33.4 万 → 28.9 万 | P7-B-4/6（✅ 0.1.2） |
 | 43 | 诊断度量工具 | `cmd/diag-audit` + `make diag-audit`：逐码计数、高频标识符、噪声最高文件（降噪基线，可 CI 化） | P7-B（✅ 0.1.2） |
-| 44 | `function-not-found` | 函数调用点找不到定义。P7-C 补内置侧、P7-D 补链接侧后**误报已可控**，但仍**默认 off**：语料是部分快照，`cl_err3`/`cl_qbe_*` 这类"语料里根本没有"的库函数会成片报；需要时用 `bdl.diagnostics.function-not-found: warning` 打开 | P7-B（✅ 已实现，默认关） |
+| 44 | `function-not-found` | 函数调用点找不到定义。P7-C（内置侧）+ P7-D（链接侧）+ P7-D-2（外部函数过滤）全部落地后全量语料只剩 0.09 条/文件，**0.1.5 起默认 warning**；没有链接资料时不产生任何诊断 | P7-B → P7-D-2（✅ 0.1.5，默认开） |
 | 45 | 内置符号可配置/可更新 | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.enable/paths/disable` | P7-C-1（✅ 0.1.3） |
 | 46 | 内置符号缺口审计 | `cmd/builtin-audit` + `make builtin-audit` / `make builtin-check`：按频次+文件数列出"不在表里"的名字，带内置/用户粗判；`-check` 进 `make lint` | P7-C-1（✅ 0.1.3） |
 | 47 | 程序链接资料导入 | `bdl-lsp link import -csv <导出.csv>`：CSV（UTF-8 BOM、`gal04='Y'` 过滤、组内去重）→ `<root>/.link/links.jsonl` + `links.meta.json`，原子写入；判定 MAIN 用语法树 + 文本兜底（兼容 `{ MAIN }` 写法） | P7-D（✅ 0.1.4） |

@@ -21,6 +21,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
+	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -58,9 +59,9 @@ type Server struct {
 	// varQueries 是变量使用检查的复用 query（T5；惰性编译）。
 	varQueries     *variableQueries
 	varQueriesOnce sync.Once
-	// fnCallQueries 是函数调用收集的复用 query（function-not-found；惰性编译）。
-	fnCallQueries     *functionCallQueries
-	fnCallQueriesOnce sync.Once
+	// fnCallCollector 是函数调用收集的复用 collector（function-not-found；惰性创建）。
+	fnCallOnce      sync.Once
+	fnCallCollector *index.CallCollector
 	// sourceDiags 缓存每文档的 T5（变量来源）诊断（debounceMu 保护）。
 	// didChange 时清空并防抖重算：来源检查要全树 query（大文件 ~27ms），
 	// 不能挂在每次按键上；编辑停顿 400ms 后恢复完整诊断。

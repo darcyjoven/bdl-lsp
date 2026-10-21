@@ -71,10 +71,10 @@ const (
 // 取值依据（Q10 决策：默认全部 warning，下列两项例外）：
 //   - record-member-unknown：记录类型可能来自 `LIKE table.*`，静态不可知，
 //     实测误报率高，默认 off，等 P7-D 链接资料补齐类型信息后再评估；
-//   - function-not-found：**实测无法接受**。24 个真实 .4gl 报 3660 条
-//     （占全部诊断 80%），来源是内置函数（ARG_VAL/LENGTH/…）与跨模块函数
-//     ——两者都还没有符号表。默认 off，待 P7-C（内置符号表）与 P7-D
-//     （链接资料/跨模块索引）落地后重新度量再打开；
+//   - function-not-found：P7-C 内置符号表 + P7-D 链接资料 + P7-D-2 外部
+//     函数过滤全部落地后，全量语料只剩 1358 条（0.09 条/文件，见
+//     PLAN-P7 §10.7/§11），噪声已可接受，默认改为 warning。
+//     没有链接资料时整项**不产生任何诊断**，所以对未启用的项目零影响；
 //   - file-too-large 是提示不是错误，默认 information。
 var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeGlobalsFileNotFound:       config.LevelWarning,
@@ -85,7 +85,7 @@ var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeFormScreenRecordUndefined: config.LevelWarning,
 	CodeRecordMemberUnknown:       config.LevelOff,
 	CodeFileTooLarge:              config.LevelInfo,
-	CodeFunctionNotFound:          config.LevelOff,
+	CodeFunctionNotFound:          config.LevelWarning,
 	CodeLinkDataInvalid:           config.LevelWarning,
 	// 过期只是"温和提示"，不该像错误一样占满 Problems。
 	CodeLinkDataStale: config.LevelHint,

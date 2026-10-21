@@ -16,7 +16,11 @@ type Resolver struct {
 	idx    *Index
 	layout *Layout
 	global []string // 全局可见模组（默认 sub/lib/qry）
-	sym    *SymbolIndex
+	// externals 是"外部函数"集合（P7-D-2）：被 ≥minFiles 个文件调用、
+	// 却在整份资料里找不到定义。它们算作"存在"，用于消掉
+	// "语料快照缺少某个库"造成的大片误报。
+	externals map[string]bool
+	sym       *SymbolIndex
 	// maxSync 是同步解析的文件数上限，超过就走后台（见 maxSyncDefault）。
 	maxSync int
 
@@ -32,12 +36,63 @@ func NewResolver(idx *Index, layout *Layout, globalModules []string, parse Parse
 		globalModules = DefaultGlobalModules()
 	}
 	return &Resolver{
-		idx:     idx,
-		layout:  layout,
-		global:  append([]string(nil), globalModules...),
-		sym:     NewSymbolIndex(parse),
-		maxSync: maxSyncDefault,
+		idx:       idx,
+		layout:    layout,
+		global:    append([]string(nil), globalModules...),
+		externals: externalNames(idx),
+		sym:       NewSymbolIndex(parse),
+		maxSync:   maxSyncDefault,
 	}
+}
+
+// externalNames 从资料 meta 里取出"生效的外部函数"集合。
+//
+// 资料自己已经算好了名单与阈值（导入时统计，见 buildExternals），这里只
+// 负责过滤与兜底：`externalsSkipped` 表示名单太大（资料本身可疑），
+// 此时**不启用**，宁可多报。
+func externalNames(idx *Index) map[string]bool {
+	if idx == nil {
+		return nil
+	}
+	meta := idx.Meta()
+	if meta == nil || meta.ExternalsSkipped || len(meta.Externals) == 0 {
+		return nil
+	}
+	minFiles := meta.ExternalsMinFiles
+	if minFiles <= 0 {
+		minFiles = DefaultExternalsMinFiles
+	}
+	minCalls := meta.ExternalsMinCalls
+	if minCalls <= 0 {
+		minCalls = DefaultExternalsMinCalls
+	}
+	out := make(map[string]bool, len(meta.Externals))
+	for _, e := range meta.Externals {
+		if e.Files >= minFiles || e.Calls >= minCalls {
+			out[e.Name] = true
+		}
+	}
+	return out
+}
+
+// ExternalFunctions 返回生效的外部函数集合（只读，供状态展示与诊断）。
+func (r *Resolver) ExternalFunctions() map[string]bool {
+	if r == nil || len(r.externals) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(r.externals))
+	for n := range r.externals {
+		out[n] = true
+	}
+	return out
+}
+
+// ExternalTotal 返回资料里记录的外部函数总数（含"未存进文件"的部分）。
+func (r *Resolver) ExternalTotal() int {
+	if r == nil || r.idx == nil || r.idx.Meta() == nil {
+		return 0
+	}
+	return r.idx.Meta().ExternalsTotal
 }
 
 // DefaultGlobalModules 是全局可见模组的出厂值。
@@ -115,6 +170,10 @@ func (r *Resolver) VisibleFunctions(path string, hasMain bool) (set map[string]b
 		return nil, false // 还没就绪
 	}
 	set = globals
+	// 外部函数（快照里缺失的库函数）算作"存在"。
+	for n := range r.externals {
+		set[n] = true
+	}
 
 	module, code, ok := r.layout.FileID(path)
 	if !ok {

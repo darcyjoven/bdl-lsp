@@ -32,6 +32,7 @@ func main() {
 	status := flag.Bool("status", false, "只读已落盘的资料并汇总，不导入")
 	top := flag.Int("top", 8, "列出文件数最多的前 N 条链")
 	showMissing := flag.Bool("missing", false, "统计缺失文件按模组分布")
+	showExt := flag.Bool("externals", false, "列出全部外部函数（被调用但全资料无定义）")
 	flag.Parse()
 
 	pool, err := parser.New()
@@ -98,6 +99,32 @@ func main() {
 
 	if *showMissing {
 		printMissing(out)
+	}
+	if *showExt {
+		printExternals(out)
+	}
+}
+
+// printExternals 列出被"当成存在"的外部函数。
+//
+// 用户 2026-10-21 定的口径：函数名在项目里找不到定义，多半是**语料本身缺**
+// （不是用户写错），只要不是太多就忽略，但必须记录下来——这个命令就是
+// "记录"的出口，出问题时能一眼看到哪些名字被放过了。
+func printExternals(out *link.ImportOutcome) {
+	meta := out.Result.Meta
+	fmt.Printf("\n== 外部函数（被调用但从无定义，视为存在）==\n")
+	if meta.ExternalsSkipped {
+		fmt.Printf("候选 %d 个，超过上限 %d → **未启用**\n", meta.ExternalsTotal, link.MaxExternals)
+		return
+	}
+	if meta.ExternalsTotal == 0 {
+		fmt.Printf("无\n")
+		return
+	}
+	fmt.Printf("共 %d 个（阈值：被 ≥%d 个文件或 ≥%d 次调用）；列出前 %d 个：\n",
+		meta.ExternalsTotal, meta.ExternalsMinFiles, meta.ExternalsMinCalls, len(meta.Externals))
+	for _, e := range meta.Externals {
+		fmt.Printf("  %-40s %5d 文件 / %6d 次\n", e.Name, e.Files, e.Calls)
 	}
 }
 

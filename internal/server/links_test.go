@@ -409,3 +409,41 @@ func readFileString(t *testing.T, dir, code string) string {
 	}
 	return string(data)
 }
+
+// TestLinkExternalFunctionsAreSuppressed 验证 P7-D-2：meta 里记录的外部函数
+// （被调用、全语料无定义）被当成"存在"，不再报未定义；而名单外的名字照报。
+func TestLinkExternalFunctionsAreSuppressed(t *testing.T) {
+	f := newLinkFixture(t)
+	// 调用 cl_err3（外部函数）与 cl_typo（真未知）。
+	f.write(t, "apm", "entry", "MAIN\n  CALL cl_err3(\"x\")\n  CALL cl_typo()\nEND MAIN\n")
+	f.writeLinks(t, `{"schema":1,"program":"entry","module":"apm","main":"entry",`+
+		`"files":[["apm","entry"]]}`)
+	dir := filepath.Join(f.root, ".link")
+	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
+		`"chains":1,"rowsTotal":1,"rowsY":1,` +
+		`"externals":[{"name":"cl_err3","files":186,"calls":3200}],` +
+		`"externalsTotal":1,"externalsMinFiles":3,"externalsMinCalls":5}`
+	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := f.initialize(t)
+	h.srv.EnableResolvers(f.root)
+	h.srv.WaitLinkReady(10 * time.Second)
+
+	h.send(fmt.Sprintf(
+		`{"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":{"uri":%q,"languageId":"bdl","version":1,"text":%q}}}`,
+		f.uri("apm", "entry"), "MAIN\n  CALL cl_err3(\"x\")\n  CALL cl_typo()\nEND MAIN\n"))
+
+	diags := drainUntilCode(t, h, f.uri("apm", "entry"), "function-not-found", 5*time.Second)
+	msgs := messagesOf(diags, "function-not-found")
+	if len(msgs) != 1 {
+		t.Fatalf("期望只报 cl_typo 一条，实际 %d 条：%v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0], "cl_typo") {
+		t.Errorf("应报 cl_typo，实际：%s", msgs[0])
+	}
+	if strings.Contains(msgs[0], "cl_err3") {
+		t.Errorf("cl_err3 是外部函数，不该报：%s", msgs[0])
+	}
+}

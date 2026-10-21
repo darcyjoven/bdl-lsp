@@ -168,6 +168,23 @@ func runStatus(args []string) int {
 			fmt.Printf("模组根      %s\n", strings.Join(m.ResolvedFrom, ", "))
 		}
 		fmt.Printf("导入统计    行 %d / 过滤 %d / 有效 %d\n", m.RowsTotal, m.RowsFilteredN, m.RowsY)
+		switch {
+		case m.ExternalsSkipped:
+			fmt.Printf("外部函数    候选 %d 个，**超过上限，未启用**（资料可能不完整）\n", m.ExternalsTotal)
+		case m.ExternalsTotal > 0:
+			fmt.Printf("外部函数    %d 个（被 ≥%d 个文件或 ≥%d 次调用、全语料无定义，视为存在）\n",
+				m.ExternalsTotal, m.ExternalsMinFiles, m.ExternalsMinCalls)
+			show := m.Externals
+			if len(show) > 5 {
+				show = show[:5]
+			}
+			parts := make([]string, 0, len(show))
+			for _, e := range show {
+				parts = append(parts, fmt.Sprintf("%s(%d)", e.Name, e.Files))
+			}
+			fmt.Printf("            %s%s\n", strings.Join(parts, " "),
+				map[bool]string{true: " …", false: ""}[m.ExternalsTotal > len(show)])
+		}
 	} else {
 		fmt.Printf("生成时间    未知（缺 %s）\n", link.MetaFileName)
 	}

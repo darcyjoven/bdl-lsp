@@ -129,6 +129,13 @@ func (c *Chain) HasFile(module, code string) bool {
 	return false
 }
 
+// External 是一个"外部函数"记录：被调用、但从无定义。
+type External struct {
+	Name  string `json:"name"`
+	Files int    `json:"files"`
+	Calls int    `json:"calls"`
+}
+
 // Meta 是 links.meta.json：导入统计与来源。
 //
 // 存在的理由：用户要能一眼看出"这份资料是什么时候、从哪来的、跳过了多少"。
@@ -147,7 +154,17 @@ type Meta struct {
 	MissingFiles  int      `json:"missingFiles"` // 磁盘上找不到的记录数
 	MultiMain     int      `json:"multiMain,omitempty"`
 	ResolvedFrom  []string `json:"resolvedFrom,omitempty"` // 参与解析的模组根
-	ToolVersion   string   `json:"toolVersion,omitempty"`
+	// Externals 是"被 ≥ExternalsMinFiles 个文件调用、却在整份资料里找不到
+	// 定义"的函数。它们多半是**语料快照缺少的库函数**（实测 `cl_err3`
+	// 27315 次 / 186 个文件），而不是用户写错。
+	//
+	// 只存前 MaxStoredExternals 个（按文件数降序），总数见 ExternalsTotal。
+	Externals         []External `json:"externals,omitempty"`
+	ExternalsTotal    int        `json:"externalsTotal,omitempty"`
+	ExternalsMinFiles int        `json:"externalsMinFiles,omitempty"`
+	ExternalsMinCalls int        `json:"externalsMinCalls,omitempty"`
+	ExternalsSkipped  bool       `json:"externalsSkipped,omitempty"`
+	ToolVersion       string     `json:"toolVersion,omitempty"`
 	// GeneratedAtTime 是 GeneratedAt 的解析结果（不落盘）。
 	generatedAt time.Time
 }

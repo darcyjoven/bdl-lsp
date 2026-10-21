@@ -45,6 +45,16 @@ func NewLayout(projectRoot string, roots []string) *Layout {
 	return &Layout{ProjectRoot: projectRoot, Roots: append([]string(nil), roots...)}
 }
 
+// RootDirs 返回模组根的绝对路径（自动探测后）。
+func (l *Layout) RootDirs() []string {
+	names := l.RootNames()
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		out = append(out, filepath.Join(l.ProjectRoot, n))
+	}
+	return out
+}
+
 // RootNames 返回实际使用的模组根名字（自动探测的结果会被缓存）。
 func (l *Layout) RootNames() []string {
 	if l == nil {

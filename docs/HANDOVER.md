@@ -3,43 +3,36 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.1.4** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.1.5** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*`）/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
 ---
 
-## 0. 下一步就做这个（P7-D-2：语料推导的外部函数过滤）
+## 0. 下一步就做这个（P7-D-3 采集 / P7-E UI）
 
-P7-D 核心已落地（`0.1.4`）：链接资料导入/状态/可见性/诊断全部就位，
-`function-not-found` 也能正确判定——但**仍然默认 off**，原因是实测：
+P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态、可见性、
+外部函数过滤、诊断全部就位，`function-not-found` **默认已打开**。
 
-- 全量语料打开后 **86612 条**（`variable-source-unresolved` 保持 6030 不变，R2 成立）；
-- 前 20 个名字占 **99.9%**，全是 `cl_err3` / `cl_qbe_*` / `cl_cmdrun*` /
-  `WSHelper_*`——**语料快照里根本没有这些库文件**，不是用户写错；
-- 2000 文件抽样里 8014 条只来自 **30 个名字**，只有 13 个名字出现 1 次。
+下一个是采集与 UI：
 
-**P7-D-2 的方案**（见 [PLAN-P7.md](PLAN-P7.md) §10.7 末节）：`link import` 已经
-逐个解析链接里的 7765 个文件，顺手统计"被 ≥3 个文件调用、却在整份语料里
-找不到定义"的名字，写进 `links.meta.json` 的 `externals`，解析器把它们并入
-可见集。预计消掉 99% 噪声，`function-not-found` 才有机会默认开。
+- **P7-D-3 采集**：`bdl-lsp link fetch -cmd "…"` 先做（最快、最通用），
+  DB 直连（S1，`go-ora`）与服务器脚本（S2）随后；见
+  [PLAN-P7.md](PLAN-P7.md) §10.8。
+- **P7-E UI**：VSCode TreeView（`bdl/linkTree` + 反查引用程序）+ Zed 降级；
+  见 §10.9。
 
-**这一步需要用户拍板**：它是启发式（会把高频误调用也一起放过），
-与"宁可漏报不可误报"一致，但确实会掩盖"某个库里函数被删掉"这种真实问题。
-
-不放心的替代路线：先只做 P7-D 采集（S1 go-ora / S2 服务器脚本），
-让资料能自动更新；`function-not-found` 继续按需手开。
-
-### 本轮（P7-D 核心）已交付
+### 已完成（本轮）
 
 | 交付 | 入口 |
 |---|---|
 | CSV → 链接资料 | `bdl-lsp link import -csv <导出.csv>` → `<root>/.link/links.jsonl`（753 KB / 5398 链 / 7931 文件） |
-| 状态查看 | `bdl-lsp link status` |
+| 状态查看 | `bdl-lsp link status`（含**外部函数**名单） |
 | 可见函数集 | 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平） |
-| 诊断 | `function-not-found`（需资料）· `link-data-invalid` · `link-data-stale` |
+| 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义 → 视为存在，记进 meta |
+| 诊断 | `function-not-found`（**默认 warning**）· `link-data-invalid` · `link-data-stale` |
 | 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
-| 审计 | `cmd/link-audit`、`go run ./cmd/diag-audit -link-global clib` / `-no-link` |
+| 审计 | `cmd/link-audit`（`-externals`/`-missing`）、`diag-audit -no-link` |
 
 ## 1. 一句话状态
 
@@ -53,7 +46,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.4`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.1.5`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 
@@ -119,8 +112,9 @@ workspace/didChangeConfiguration
 | 索引构建 `index.Build`（P7-B-5 后实测，600 行级真实文件） | `ammr100.4gl` 471µs、`aapi204.4gl` 398µs（比 P7-B-5 之前**快 26~31%**）；`apmi006.4gl` 490µs、`apmt721_icd.4gl` 31µs（比之前 +9~18%，为游标支持付的增量） |
 | 游标/prepare 符号规模（7699 个真实 .4gl） | prepare **37603** / cursor **36103**（其中 22787 带来源 prepare） |
 | **诊断噪声（P7 立项基线，24 个真实 `.4gl`）** | 1733 条 → P7-C-1 后 **7 条**（`variable-source-unresolved`） |
-| **全量诊断（15108 文件，P7-D 后）** | `variable-source-unresolved` **6030**、`field-not-in-form` 1725、`globals-file-not-found` 107、表单类 24；`function-not-found` 打开后 +86612（见 §0，全部是快照里没有的库函数） |
-| 链接资料（真实 CSV 导入） | 5398 链 / 451 orphan / 0 ambiguous / 7931 文件 / 缺失 800；`.link/links.jsonl` **753 KB**，加载 ~10 ms，导入 **15 s** |
+| **全量诊断（15108 文件，P7-D-2 后全开）** | 合计 **9244**：`variable-source-unresolved` 6030、`field-not-in-form` 1725、`function-not-found` **1358**、`globals-file-not-found` 107、表单类 24 |
+| 链接资料（真实 CSV 导入） | 5398 链 / 451 orphan / 0 ambiguous / 7931 文件 / 缺失 800；`.link/links.jsonl` **753 KB**，加载 ~10 ms，导入 **24 s**（含全语料 7600 文件解析） |
+| 外部函数（P7-D-2） | **62** 个名字（`cl_err3` 3340 文件、`WSHelper_*` 29 个…），fnf 86612 → **1358** |
 | ↑ 噪声归因 | `cl_null` 311（`lib/` 用户函数）、`SQLCA` 252、`ARG_VAL` 248、`INT_FLAG` 183、`cl_gr_numfmt` 150、`STATUS` 98 —— 内置符号与链接缺失各占一半 |
 
 ## 5. 配置项（VSCode `bdl.*` / Zed `settings.*` 同名）
@@ -346,8 +340,8 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 | P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
 | P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（未做，可随时插入） | ✅ / 待定 |
 | P7-D | 链接资料：核心（索引 + 可见性 + 诊断） | ✅ 0.1.4 |
-| P7-D-2 | 外部函数过滤（让 `function-not-found` 能默认开） | 🔜 **下一轮**（§0） |
-| P7-D-3 | 采集链路（S1 go-ora / S2 服务器脚本 / S3 命令） | 待定 |
+| P7-D-2 | 外部函数过滤（`function-not-found` 默认打开） | ✅ 0.1.5 |
+| P7-D-3 | 采集链路（S3 命令 / S1 go-ora / S2 服务器脚本） | 🔜 下一轮（§0） |
 | P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
 
 ### A. Windows 实测（成本低，价值高）

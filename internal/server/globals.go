@@ -273,66 +273,21 @@ const queryVariables = `
 //
 // 注意：这里不跳过任何内容，只收集。误报由调用方按符号表过滤（内置函数、
 // 跨模块函数等）。
-const queryFunctionCalls = `
-(call name: (variable (identifier) @fn))
-(expression name: (variable (identifier) @fn))
-`
-
-// functionCallQueries 是函数调用收集的复用 query。
-type functionCallQueries struct {
-	query *ts.Query
-	fnIdx uint // @fn 的 capture 索引
-}
-
-// compileFunctionCallQueries 按 BDL 语言编译函数调用 query。
-func compileFunctionCallQueries(pool *parser.Pool) *functionCallQueries {
-	lang, err := pool.Language(parser.LangBDL)
-	if err != nil {
-		return nil
-	}
-	q, qerr := ts.NewQuery(lang, queryFunctionCalls)
-	if qerr != nil {
-		return nil
-	}
-	fnIdx, ok := q.CaptureIndexForName("fn")
-	if !ok {
-		q.Close()
-		return nil
-	}
-	return &functionCallQueries{query: q, fnIdx: fnIdx}
-}
-
-// collectFunctionCalls 收集文件里的函数调用点（名字 + 位置）。
-func collectFunctionCalls(tree *ts.Tree, src []byte, qs *functionCallQueries) []variableUse {
-	if tree == nil || qs == nil {
-		return nil
-	}
-	root := tree.RootNode()
-	if root == nil {
-		return nil
-	}
-
-	var out []variableUse
-	qc := ts.NewQueryCursor()
-	defer qc.Close()
-	matches := qc.Matches(qs.query, root, src)
-	for m := matches.Next(); m != nil; m = matches.Next() {
-		for _, c := range m.Captures {
-			if c.Index != uint32(qs.fnIdx) {
-				continue
-			}
-			node := c.Node
-			if word := parser.TextOf(&node, src); word != "" {
-				out = append(out, variableUse{
-					word:  word,
-					lower: strings.ToLower(word),
-					start: node.StartByte(),
-					end:   node.EndByte(),
-				})
-			}
+// functionCalls 返回函数调用点。query 在 internal/index，与链接资料导入
+// （P7-D-2 的外部函数统计）共用同一份，避免两处 query 漂移。
+func (s *Server) functionCalls(tree *ts.Tree, src []byte) []index.Call {
+	s.fnCallOnce.Do(func() {
+		c, err := index.NewCallCollector(s.pool)
+		if err != nil {
+			s.logger.Error("编译函数调用 query 失败", "err", err)
+			return
 		}
+		s.fnCallCollector = c
+	})
+	if s.fnCallCollector == nil {
+		return nil
 	}
-	return out
+	return s.fnCallCollector.Calls(tree, src)
 }
 
 // variableQueries 是惰性编译并复用的 query（Query 只读可共享）。
@@ -582,15 +537,7 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 		return nil
 	}
 
-	// 惰性编译函数调用 query
-	s.fnCallQueriesOnce.Do(func() {
-		s.fnCallQueries = compileFunctionCallQueries(s.pool)
-	})
-	if s.fnCallQueries == nil {
-		return nil
-	}
-
-	calls := collectFunctionCalls(tree, doc.Text(), s.fnCallQueries)
+	calls := s.functionCalls(tree, doc.Text())
 	if len(calls) == 0 {
 		return nil
 	}
@@ -646,25 +593,25 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 	var diags []protocol.Diagnostic
 	seen := map[string]bool{} // 同一函数名同一位置只报一次
 	for _, c := range calls {
-		key := fmt.Sprintf("%s@%d", c.lower, c.start)
+		key := fmt.Sprintf("%s@%d", c.Lower, c.Start)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		if knownFn[c.lower] {
+		if knownFn[c.Lower] {
 			continue
 		}
 		// P7-C：内置函数（ARG_VAL/LENGTH/fgl_* …）豁免。
 		// 只认 KindFunction：类名（ui）与方法名（open）在调用点上的形态
 		// 与函数不同，交给 P7-D 的链接索引处理，这里不越权。
-		if s.isBuiltinFunction(c.word) && !s.builtinDisabled(c.word) {
+		if s.isBuiltinFunction(c.Name) && !s.builtinDisabled(c.Name) {
 			continue
 		}
 		diags = append(diags, protocol.Diagnostic{
-			Range:    byteRange(idx, c.start, c.end),
+			Range:    byteRange(idx, c.Start, c.End),
 			Severity: severity,
 			Source:   "bdl-lsp",
-			Message:  fmt.Sprintf("函数 %q 在当前模块及可用模组中找不到定义", c.word),
+			Message:  fmt.Sprintf("函数 %q 在当前模块及可用模组中找不到定义", c.Name),
 			Code:     string(diag.CodeFunctionNotFound),
 		})
 	}

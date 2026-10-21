@@ -72,9 +72,11 @@ func TestSeverityForFallsBackToLegacyThenDefault(t *testing.T) {
 func TestDefaultLevelsMatchDecisions(t *testing.T) {
 	// 这三条是明确的产品决策，改动需要同步文档与插件清单。
 	cases := map[Code]config.DiagnosticLevel{
-		CodeVariableSourceUnresolved:  config.LevelWarning,
-		CodeRecordMemberUnknown:       config.LevelOff,
-		CodeFunctionNotFound:          config.LevelOff,
+		CodeVariableSourceUnresolved: config.LevelWarning,
+		CodeRecordMemberUnknown:      config.LevelOff,
+		// P7-D-2 起默认 warning：链接资料 + 外部函数过滤把全量语料的
+		// function-not-found 压到 0.09 条/文件（见 PLAN-P7 §11）。
+		CodeFunctionNotFound:          config.LevelWarning,
 		CodeFileTooLarge:              config.LevelInfo,
 		CodeGlobalsFileNotFound:       config.LevelWarning,
 		CodeFieldNotInForm:            config.LevelWarning,

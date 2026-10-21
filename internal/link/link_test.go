@@ -1,26 +1,30 @@
 package link
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/darcyjoven/bdl-lsp/internal/parser"
 )
 
-// fakeFinder 让导入逻辑不依赖磁盘：名字里带 "main" 的算 MAIN，
-// 在 missing 集合里的算"文件不存在"。
-type fakeFinder struct {
+// fakeScanner 让导入逻辑不依赖磁盘：在 mains 集合里的算 MAIN，
+// 在 missing 集合里的算"文件不存在"；defines/calls 用于外部函数统计。
+type fakeScanner struct {
 	mains   map[string]bool
 	missing map[string]bool
+	defines map[string][]string
 }
 
-func (f fakeFinder) Lookup(module, code string) (bool, bool) {
+func (f fakeScanner) Scan(module, code string) FileScan {
 	k := strings.ToLower(module + "/" + code)
 	if f.missing[k] {
-		return false, false
+		return FileScan{}
 	}
-	return f.mains[k], true
+	return FileScan{Found: true, HasMain: f.mains[k], Defines: f.defines[k]}
 }
 
 func TestImportCSVDataFacts(t *testing.T) {
@@ -38,7 +42,7 @@ func TestImportCSVDataFacts(t *testing.T) {
 		"\"prog_e\",\"WPC\",\"ghost\",\"Y\"\r\n" + // 文件不存在
 		"\"\",\"APM\",\"bad\",\"Y\"\r\n" // 缺程序编号
 
-	finder := fakeFinder{
+	finder := fakeScanner{
 		mains: map[string]bool{
 			"apm/apmt100": true,
 			"apm/apmt200": true,
@@ -46,7 +50,7 @@ func TestImportCSVDataFacts(t *testing.T) {
 		},
 		missing: map[string]bool{"wpc/ghost": true},
 	}
-	res, err := ImportCSV([]byte(csv), ImportOptions{MainFinder: finder})
+	res, err := ImportCSV([]byte(csv), ImportOptions{Scanner: finder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,8 +91,8 @@ func TestImportCSVAmbiguousAndBOM(t *testing.T) {
 	csv := "\ufeffGAL01,GAL02,GAL03,GAL04\n" +
 		"grp,APM,one,Y\n" +
 		"grp,APM,two,Y\n"
-	finder := fakeFinder{mains: map[string]bool{"apm/one": true, "apm/two": true}}
-	res, err := ImportCSV([]byte(csv), ImportOptions{MainFinder: finder})
+	finder := fakeScanner{mains: map[string]bool{"apm/one": true, "apm/two": true}}
+	res, err := ImportCSV([]byte(csv), ImportOptions{Scanner: finder})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,4 +479,199 @@ func TestSymbolIndexSyncAndAsync(t *testing.T) {
 func timeAfter(t *testing.T) <-chan time.Time {
 	t.Helper()
 	return time.After(5 * time.Second)
+}
+
+// TestImportExternals 验证"被调用但从无定义"的名字进了外部函数表，
+// 而被 ≥1 个文件定义的、出现次数太少的都不进。
+func TestImportExternals(t *testing.T) {
+	csv := "GAL01,GAL02,GAL03,GAL04\n" +
+		"p1,APM,apmt100,Y\n" +
+		"p2,APM,apmt200,Y\n" +
+		"p3,APM,apmt300,Y\n"
+	sc := fakeScanner{
+		mains: map[string]bool{"apm/apmt100": true, "apm/apmt200": true, "apm/apmt300": true},
+		defines: map[string][]string{
+			// lib_helper 由 apmt100 定义 → 即使被调用也不算外部
+			"apm/apmt100": {"lib_helper"},
+		},
+	}
+	corpus := &CorpusIndex{
+		Defines: map[string]bool{"lib_helper": true},
+		Calls: map[string]*CallStat{
+			"lib_helper":  {Files: 3, Calls: 40}, // 有定义 → 排除
+			"cl_err3":     {Files: 3, Calls: 90},
+			"cl_qbe_init": {Files: 2, Calls: 900}, // 文件少但调用多 → 也算
+			"typo_once":   {Files: 1, Calls: 2},   // 太少 → 不算
+		},
+	}
+	res, err := ImportCSV([]byte(csv), ImportOptions{Scanner: sc, Corpus: corpus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, e := range res.Meta.Externals {
+		got[e.Name] = e.Files
+	}
+	if got["lib_helper"] != 0 {
+		t.Errorf("lib_helper 有定义，不该进外部函数表：%v", got)
+	}
+	if got["typo_once"] != 0 {
+		t.Errorf("只被 1 个文件调用，不该进外部函数表：%v", got)
+	}
+	if got["cl_err3"] != 3 {
+		t.Errorf("cl_err3 被 3 个文件调用，应入表：%v", got)
+	}
+	// 双阈值：cl_qbe_init 只被 2 个文件调用，但调用 900 次，同样入表。
+	if got["cl_qbe_init"] != 2 {
+		t.Errorf("cl_qbe_init 调用次数远超阈值，应入表：%v", got)
+	}
+	if res.Meta.ExternalsTotal != 2 {
+		t.Errorf("externalsTotal = %d，期望 2", res.Meta.ExternalsTotal)
+	}
+	if res.Meta.ExternalsMinFiles != DefaultExternalsMinFiles {
+		t.Errorf("externalsMinFiles = %d，期望 %d", res.Meta.ExternalsMinFiles, DefaultExternalsMinFiles)
+	}
+}
+
+// TestImportExternalsIgnore 验证内置名不记入外部函数表。
+func TestImportExternalsIgnore(t *testing.T) {
+	csv := "GAL01,GAL02,GAL03,GAL04\np1,APM,apmt100,Y\np2,APM,apmt200,Y\np3,APM,apmt300,Y\n"
+	sc := fakeScanner{
+		mains: map[string]bool{"apm/apmt100": true, "apm/apmt200": true, "apm/apmt300": true},
+	}
+	corpus := &CorpusIndex{
+		Defines: map[string]bool{},
+		Calls: map[string]*CallStat{
+			"fgl_getenv": {Files: 3, Calls: 30},
+			"arg_val":    {Files: 3, Calls: 30},
+		},
+	}
+	res, err := ImportCSV([]byte(csv), ImportOptions{
+		Scanner: sc,
+		Corpus:  corpus,
+		Ignore:  map[string]bool{"fgl_getenv": true, "arg_val": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Meta.Externals) != 0 || res.Meta.ExternalsTotal != 0 {
+		t.Errorf("内置名不该进外部函数表：%+v", res.Meta.Externals)
+	}
+}
+
+// TestImportExternalsTooMany 验证"太多就不启用"：超过 MaxExternals 时
+// 名单照记，但标记 skipped，解析器据此**不做**豁免。
+func TestImportExternalsTooMany(t *testing.T) {
+	var csv strings.Builder
+	csv.WriteString("GAL01,GAL02,GAL03,GAL04\n")
+	sc := fakeScanner{mains: map[string]bool{}}
+	corpus := &CorpusIndex{Defines: map[string]bool{}, Calls: map[string]*CallStat{}}
+	for i := 0; i < 3; i++ {
+		code := fmt.Sprintf("apmt%03d", i)
+		fmt.Fprintf(&csv, "p%d,APM,%s,Y\n", i, code)
+		sc.mains["apm/"+code] = true
+	}
+	for j := 0; j <= MaxExternals; j++ {
+		corpus.Calls[fmt.Sprintf("ext_%04d", j)] = &CallStat{Files: 3, Calls: 9}
+	}
+	res, err := ImportCSV([]byte(csv.String()), ImportOptions{Scanner: sc, Corpus: corpus})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Meta.ExternalsSkipped {
+		t.Fatalf("超过上限应标记 externalsSkipped")
+	}
+	if len(res.Meta.Externals) > MaxStoredExternals {
+		t.Errorf("存进 meta 的名单应被截断到 %d，实际 %d", MaxStoredExternals, len(res.Meta.Externals))
+	}
+	// 解析器必须忽略这份被标记的名单。
+	idx := &Index{meta: res.Meta}
+	if names := externalNames(idx); len(names) != 0 {
+		t.Errorf("skipped 的名单不该生效，实际 %d 个", len(names))
+	}
+}
+
+// TestResolverUsesExternals 验证外部函数被当成"存在"，而普通未知名仍然报。
+func TestResolverUsesExternals(t *testing.T) {
+	root := t.TempDir()
+	d := filepath.Join(root, "tiptop", "apm", "4gl")
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "apmt100.4gl"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	chains := []*Chain{{
+		Schema: SchemaVersion, Program: "apmt100", Module: "APM", Main: "apmt100",
+		Files: []FileRef{{"APM", "apmt100"}},
+	}}
+	idx := build(chains, &Meta{
+		Externals:         []External{{Name: "cl_err3", Files: 186, Calls: 3200}},
+		ExternalsTotal:    1,
+		ExternalsMinFiles: DefaultExternalsMinFiles,
+	})
+	layout := NewLayout(root, nil)
+	r := NewResolver(idx, layout, []string{"apm"}, fakeParse)
+	r.sym.mu.Lock()
+	r.sym.ready = true
+	r.sym.global = map[string]bool{}
+	r.sym.mu.Unlock()
+
+	set, complete := r.VisibleFunctions(filepath.Join(d, "apmt100.4gl"), true)
+	if !complete {
+		t.Fatalf("文件齐全时应 complete=true")
+	}
+	if !set["cl_err3"] {
+		t.Errorf("外部函数 cl_err3 应可见：%v", SortedKeys(set))
+	}
+	if set["cl_err_typo"] {
+		t.Errorf("未知名不该可见")
+	}
+	if n := r.ExternalTotal(); n != 1 {
+		t.Errorf("ExternalTotal = %d，期望 1", n)
+	}
+	if got := r.ExternalFunctions(); !got["cl_err3"] {
+		t.Errorf("ExternalFunctions 应含 cl_err3：%v", got)
+	}
+}
+
+// TestScanCorpusFacts 验证全语料扫描能同时拿到 MAIN/定义/调用。
+func TestScanCorpusFacts(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "tiptop", "apm", "4gl")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{
+		"apmt100": "MAIN\n  CALL cl_err3(\"x\")\n  CALL cl_err3(\"y\")\nEND MAIN\n",
+		"apmlib":  "FUNCTION helper()\n  LET x = 1\nEND FUNCTION\n",
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name+".4gl"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pool, err := parser.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+
+	layout := NewLayout(root, nil)
+	got, err := ScanCorpus(layout, pool, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Files != 2 {
+		t.Errorf("扫描文件数 = %d，期望 2", got.Files)
+	}
+	if s := got.Scan("APM", "apmt100"); !s.Found || !s.HasMain {
+		t.Errorf("apmt100 应存在且有 MAIN：%+v", s)
+	}
+	if !got.Defines["helper"] {
+		t.Errorf("helper 应被识别为定义：%v", got.Defines)
+	}
+	if st := got.Calls["cl_err3"]; st == nil || st.Calls != 2 || st.Files != 1 {
+		t.Errorf("cl_err3 调用统计不对：%+v", st)
+	}
 }
