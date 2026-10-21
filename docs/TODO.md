@@ -1,12 +1,12 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P7-B 收尾完成：诊断降噪 + 码表防漂移**，`bdl-lsp 0.1.9`）  
+> 更新：2026-10-21（**P6 工作区符号索引完成：全项目跳转/引用/符号搜索**，`bdl-lsp 0.2.0`）  
 > 当前阶段：**P1–P6 全部功能已完成**；**P7 全部收尾项已完成**
 > （Zed 大纲层级、诊断降噪、内置符号表、语法缺口审计、链接资料索引、外部函数过滤、
 > 采集通道、链接资料视图）。  
 > **下一步候选**：
-> ① P6 质量债（record `.*`、schema 索引、全工作区符号索引、跨文件重命名）；
-> ② 各仓小遗留（工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`）。
+> ① P6 质量债剩余（record `.*` / `LIKE table.*` schema 索引、忽略列表）；
+> ② 各仓小遗留（grammar 打 tag、`bdl.deploy.currentFile`）。
 > 见 [PLAN-P7.md](PLAN-P7.md)。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
@@ -16,14 +16,14 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **57 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+未勾选共 **55 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
 已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
 | **P7 路线图** | **1** | P7-C-1 ✅ · P7-C-2 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：P7-D 分片（等体积/耗时触发条件，当前 415 KB 远未到） |
 | P7-B 收尾 | 0 | ✅ `field-not-in-form` 查清（9309→8453） · ✅ `make diagnostics-check` |
-| P6 / 质量债 | 9 | record `.*`、schema 索引、全工作区符号索引、跨文件重命名、忽略列表… |
+| P6 / 质量债 | 7 | record `.*`、schema 索引、跨文件重命名（刻意不做，见理由）、忽略列表… |
 | 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
 | **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp 3 · Zed 加载 1 · Xvfb 已解决 |
 | 文档债 | 2 | 只剩 `TESTING.md`；其余已并入既有文档 |
@@ -415,8 +415,10 @@ Block 6 已完成（VSCode 客户端）：
 
 待做：
 
-- [ ] 工作区扫描（当前 `workspace/symbol`、`references` 只覆盖已打开文档）；
-      P3a 已做**按需**加载 `.global` 文件（GLOBALS 导入），全量扫描与 P3b 共同评估。
+- [x] 工作区扫描（P6，✅ 0.2.0）：`internal/wsindex` 后台索引 + 快照，
+      `workspace/symbol` / 跳转 / 引用都覆盖未打开的文件。
+      实测 7756 文件首次 **24.7 s**、载入快照 0.56 s、无变化增量 22 ms。
+      见 [PLAN-P6-INDEX.md](PLAN-P6-INDEX.md)。
 - [x] 跨文件跳转（genero 的 `GLOBALS` / 导入）✅ P3a 已完成，
       见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
 - [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
@@ -599,7 +601,8 @@ Block P2 已完成：
 - [x] 注释/字符串里不补全（用语法树判定，字符串里的 `--` 也能正确处理）。
 - [x] `completionItem/resolve` 已声明（部分客户端不支持时会不显示文档字段）。
 - （不做）记录成员按类型精确推导：Genero 弱类型，收益低于复杂度。
-- [ ] 全工作区符号索引——需后台索引 + 持久化缓存（PLAN §7.6），当前只看已打开文档。
+- [x] 全工作区符号索引（✅ 0.2.0）：`internal/wsindex`，后台建 + gob+gzip 快照，
+      按 (mtime,size) 增量、按解析器指纹整份失效。见 [PLAN-P6-INDEX.md](PLAN-P6-INDEX.md)。
 
 #### 重命名（✅ 已完成 2026-10-21）
 
@@ -613,7 +616,10 @@ Block P2 已完成：
 - [x] prepareRename 拒绝时**报错**（客户端不弹输入框），而不是返回空编辑。
 - [x] 关键字与"已声明符号"的检查顺序修正：`DEFINE first INTEGER` 里
       `first` 虽是关键字但也是合法符号，应当能改。
-- [ ] 跨文件重命名——需工作区索引。
+- [ ] 跨文件重命名——索引已就绪（0.2.0），但仍**刻意不做**：索引里的调用点是
+      名字匹配，可能命中同名局部变量；且可见性取决于链接资料是否完整，
+      漏改一处比不支持更糟。要做得对需要把 `link.Resolver.VisibleFunctions`
+      与索引结合，并允许"资料不全时拒绝重命名"。见 PLAN-P6-INDEX.md §4。
 
 #### Code Action（✅ 已完成 2026-10-21）
 

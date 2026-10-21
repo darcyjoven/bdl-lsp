@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/darcyjoven/bdl-lsp/internal/document"
@@ -194,8 +195,31 @@ func (s *Server) handleWorkspaceSymbol(ctx context.Context, reply jsonrpc2.Repli
 		}
 	}
 
+	// P6：工作区索引补齐"没打开过的文件"里的符号。
+	// 打开中的文档优先（版本更新、位置更准），索引结果按 (文件, 行) 去重。
+	if ix := s.workspaceIndex(); ix != nil && len(out) < maxResults {
+		seen := make(map[string]bool, len(out))
+		for _, sym := range out {
+			seen[symbolKey(string(sym.Location.URI), sym.Location.Range.Start.Line, sym.Name)] = true
+		}
+		for _, sym := range wsSymbols(ix, query, maxResults) {
+			if seen[symbolKey(string(sym.Location.URI), sym.Location.Range.Start.Line, sym.Name)] {
+				continue
+			}
+			out = append(out, sym)
+			if len(out) >= maxResults {
+				break
+			}
+		}
+	}
+
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return reply(ctx, out, nil)
+}
+
+// symbolKey 是 workspace/symbol 去重用的键（同文件同行同名的只留一条）。
+func symbolKey(uri string, line uint32, name string) string {
+	return uri + "#" + strconv.FormatUint(uint64(line), 10) + ":" + strings.ToLower(name)
 }
 
 // handleHover 返回光标处符号的签名与位置。

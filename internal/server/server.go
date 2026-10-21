@@ -44,6 +44,8 @@ type Server struct {
 	builtins *builtin.Loader
 	// links 是程序链接资料（P7-D）的运行时状态，始终非 nil（内部可能没有解析器）。
 	links *linkState
+	// ws 是工作区符号索引（P6）的运行时状态，始终非 nil。
+	ws *wsIndexState
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
@@ -89,6 +91,7 @@ func New(pool *parser.Pool, logger *slog.Logger, version string) *Server {
 		version:        version,
 		docs:           document.NewStore(),
 		indexes:        newIndexCache(),
+		ws:             &wsIndexState{},
 		cfg:            config.NewManager(""),
 		globalsEntries: map[string][]globals.Entry{},
 		sourceDiags:    map[string][]protocol.Diagnostic{},
@@ -171,6 +174,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleInitialize(ctx, reply, req)
 	case protocol.MethodInitialized:
 		s.logger.Info("客户端已完成初始化")
+		// P6：工作区符号索引在后台建（不阻塞编辑；建好前功能降级为"只看已打开文档"）。
+		s.startWorkspaceIndex(ctx)
 		return nil
 	case protocol.MethodShutdown:
 		return s.handleShutdown(ctx, reply)
@@ -358,6 +363,7 @@ func (s *Server) handleShutdown(ctx context.Context, reply jsonrpc2.Replier) err
 	s.shutdown = true
 	s.mu.Unlock()
 	s.stopLinkSync()
+	s.stopWorkspaceIndex()
 	s.logger.Info("收到 shutdown")
 	return reply(ctx, nil, nil)
 }

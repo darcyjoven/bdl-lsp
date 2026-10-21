@@ -78,6 +78,8 @@ type Settings struct {
 	Builtins BuiltinsSettings `json:"builtins"`
 	// Link 是程序链接资料（P7-D）的配置。
 	Link LinkSettings `json:"link"`
+	// Index 是工作区符号索引（P6）的配置。
+	Index IndexSettings `json:"index"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -149,6 +151,24 @@ func (s Settings) BuiltinsEnabled() bool {
 		return true
 	}
 	return *s.Builtins.Enable
+}
+
+// IndexSettings 是 `bdl.index`：工作区符号索引（P6）。
+//
+// 默认启用：没有它 `workspace/symbol` / 跳转 / 引用只看得到已打开的文件，
+// 用户会因为"时而能跳时而不能"而困惑。7600 个文件的首次索引约 20-25 s
+// （后台、不阻塞编辑），之后按 (mtime,size) 增量刷新。
+type IndexSettings struct {
+	// Enable 关闭后不建索引（超大仓库 / 只想编辑单个文件时用）。
+	Enable *bool `json:"enable,omitempty"`
+}
+
+// IndexEnabled 报告工作区索引是否启用（默认启用）。
+func (s Settings) IndexEnabled() bool {
+	if s.Index.Enable == nil {
+		return true
+	}
+	return *s.Index.Enable
 }
 
 // LinkSettings 控制程序链接资料（P7-D）。
@@ -403,6 +423,10 @@ func (m *Manager) merge(s *Settings) {
 	}
 
 	// P7-D：链接资料
+	if s.Index.Enable != nil {
+		v := *s.Index.Enable
+		m.cur.Index.Enable = &v
+	}
 	if s.Link.Enable != nil {
 		v := *s.Link.Enable
 		m.cur.Link.Enable = &v

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/darcyjoven/bdl-lsp/internal/document"
+	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
 	ts "github.com/tree-sitter/go-tree-sitter"
@@ -169,6 +170,13 @@ func (s *Server) resolveDefinition(doc *document.Document, fi *index.FileIndex, 
 
 	// 5) GLOBALS 引入（跨文件：Location 的 URI 指向 .global 文件）
 	if locs, _ := s.globalsDefinitions(word); len(locs) > 0 {
+		return locs
+	}
+
+	// 6) 工作区符号索引（P6）：本文件没有、但别的模组有这个函数/报表。
+	// 只在"可达模组"（本模组 + sub/lib/qry）里找，且要求唯一命中——
+	// 猜错比跳不过去更糟。
+	if locs := s.wsDefinition(globals.PathOfURI(doc.URI), word); len(locs) > 0 {
 		return locs
 	}
 	return nil
@@ -340,10 +348,33 @@ func (s *Server) handleReferences(ctx context.Context, reply jsonrpc2.Replier, r
 			Range: rng,
 		})
 	}
+	// P6：工作区索引补齐跨文件调用点（同模组 + sub/lib/qry）。
+	// 只对可按名字调用的符号（函数/报表）生效；局部变量与记录字段不跨文件。
+	if s.referencesCrossFile(word) {
+		out = append(out, s.wsReferences(globals.PathOfURI(doc.URI), word)...)
+	}
 	if len(out) == 0 {
 		return reply(ctx, nil, nil)
 	}
 	return reply(ctx, out, nil)
+}
+
+// referencesCrossFile 报告某个词是否值得跨文件找引用。
+//
+// 变量/参数/记录字段的可见性由 GLOBALS 与记录结构决定，按名字跨文件匹配会
+// 大面积误报；函数与报表则是按名字调用的，跨文件找才有意义。
+func (s *Server) referencesCrossFile(word string) bool {
+	ix := s.workspaceIndex()
+	if ix == nil {
+		return false
+	}
+	for _, d := range ix.Lookup(word) {
+		switch d.Kind {
+		case "function", "report", "prepare", "cursor":
+			return true
+		}
+	}
+	return false
 }
 
 // findOccurrences 在文本中查找词的全部出现，排除注释与字符串。

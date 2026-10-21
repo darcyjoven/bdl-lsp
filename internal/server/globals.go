@@ -275,7 +275,8 @@ const queryVariables = `
 // 跨模块函数等）。
 // functionCalls 返回函数调用点。query 在 internal/index，与链接资料导入
 // （P7-D-2 的外部函数统计）共用同一份，避免两处 query 漂移。
-func (s *Server) functionCalls(tree *ts.Tree, src []byte) []index.Call {
+// callCollector 返回（必要时创建）复用的调用点收集器；不可用时返回 nil。
+func (s *Server) callCollector() *index.CallCollector {
 	s.fnCallOnce.Do(func() {
 		c, err := index.NewCallCollector(s.pool)
 		if err != nil {
@@ -284,10 +285,15 @@ func (s *Server) functionCalls(tree *ts.Tree, src []byte) []index.Call {
 		}
 		s.fnCallCollector = c
 	})
-	if s.fnCallCollector == nil {
+	return s.fnCallCollector
+}
+
+func (s *Server) functionCalls(tree *ts.Tree, src []byte) []index.Call {
+	c := s.callCollector()
+	if c == nil {
 		return nil
 	}
-	return s.fnCallCollector.Calls(tree, src)
+	return c.Calls(tree, src)
 }
 
 // variableQueries 是惰性编译并复用的 query（Query 只读可共享）。
