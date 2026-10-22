@@ -9,17 +9,19 @@
 
 ---
 
-## 0. 下一步就做这个（P7-D-3 采集 / P7-E UI）
+## 0. 下一步就做这个
 
-P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态、可见性、
-外部函数过滤、诊断全部就位，`function-not-found` **默认已打开**。
+**P7 全部收尾项与 P6 两个大项都已完成**（P7-A/B/C/D/E；P6：工作区符号索引 0.2.0、
+数据库 schema 索引 0.2.1）。代码侧没有"必须做"的项了，剩下的候选按价值排序：
 
-下一个是采集与 UI：
+1. **忽略列表**（`bdl.ignore` 按文件/字段/表单 glob）——大仓库里排除构建产物；
+2. **`bdl.deploy.currentFile`** 命令（P5 占位，小活）；
+3. **grammar 打 tag、去掉 `replace`**——两个语法仓发版，工程收尾；
+4. **`docs/TESTING.md`**——把 `make` 目标与 Linux/Windows 命令整理成矩阵；
+5. **`bdl.schema` 之外的 `record-member-unknown` 默认级别决定**：开启后语料
+   24 条（见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) §4.1），等真实使用反馈再定。
 
-**P7 全部收尾项已完成**（P7-A/B/C-1/C-2/D/D-2/D-3/E）。剩下的候选：
-
-- P6 质量债剩余：忽略列表（按文件/字段/表单 glob）；`record-member-unknown` 是否默认开启（现 24 条，等用户观察后再定）；
-- 各仓小遗留：grammar 打 tag 去掉 `replace`、`bdl.deploy.currentFile` 命令。
+完整清单与分类见 [TODO.md](TODO.md)：46 项未勾选，其中 21 项要 Windows/真实服务器/GUI。
 
 **诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
 `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md`，再跑 `make lint`
@@ -356,7 +358,7 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 
 ## 8. 下一步候选（按建议顺序）
 
-### ★ P7（进行中，P7-D-2 是下一轮）
+### ★ P6/P7 收尾（全部完成，剩下的是可选项）
 
 见本文 §0 与 [PLAN-P7.md](PLAN-P7.md)。顺序：
 
@@ -364,7 +366,7 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 |---|---|---|
 | P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
 | P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
-| P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（未做，可随时插入） | ✅ / 待定 |
+| P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（✅ 0.1.7） | ✅ |
 | P7-D | 链接资料：核心（索引 + 可见性 + 诊断） | ✅ 0.1.4 |
 | P7-D-2 | 外部函数过滤（`function-not-found` 默认打开） | ✅ 0.1.5 |
 | P7-D-3 | 采集链路（golang / command / file + 后台同步） | ✅ 0.1.6 |

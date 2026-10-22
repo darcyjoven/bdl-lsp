@@ -16,20 +16,24 @@
 
 ## ★ 剩余待办速查（2026-10-21 盘点）
 
-未勾选共 **55 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
-已经清掉了 27 项"实际已完成但没打勾"的历史项与 10 项 P7-D 落地项，所以这个数字现在可以信。
+未勾选共 **46 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+本轮（0.2.1）关掉了 7 项已完成但没打勾的（schema 索引 ×2、diagnostics-check、
+`#{ }#`、`.link/` gitignore、link-audit 复跑、15k 索引性能、字段误报率）。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **P7 路线图** | **1** | P7-C-1 ✅ · P7-C-2 ✅ · P7-D 核心 ✅ · P7-D-2 ✅ · P7-D-3 ✅ · P7-E ✅ · 剩余：P7-D 分片（等体积/耗时触发条件，当前 415 KB 远未到） |
-| P7-B 收尾 | 0 | ✅ `field-not-in-form` 查清（9309→8453） · ✅ `make diagnostics-check` |
-| P6 / 质量债 | 7 | record `.*`、schema 索引、跨文件重命名（刻意不做，见理由）、忽略列表… |
-| 各仓小遗留 | 6 | 工作区扫描、grammar 打 tag、`bdl.deploy.currentFile`… |
-| **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp 3 · Zed 加载 1 · Xvfb 已解决 |
-| 文档债 | 2 | 只剩 `TESTING.md`；其余已并入既有文档 |
-| 风险跟踪（非任务） | 15 | §7 已知风险 11 · P7 专项风险 4 |
+| **可做 · 现在就能动手** | **6** | `docs/TESTING.md` · grammar 打 tag 去 `replace` · `bdl.deploy.currentFile` · 忽略列表（glob）· Zed/VSCode 能力差异文档 · `go-tree-sitter` 升 v0.25 |
+| **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp/URI 3 · Zed 加载 1 · Windows CGO 1 |
+| 未排期 / 等触发 / 待决策 | 10 | 批量修复 · 使用处着色 · 纯 Go SFTP · macOS · P7-D 分片（当前 415 KB 远未到）· 跨文件重命名（刻意不做）· 单文件远程编译超时 · `go-ora` 二进制体积 · `expression name:` 抽查 · Windows URI 根因假说 |
+| 风险跟踪（非任务） | 9 | §7 已知风险登记 |
 
-> 也就是说：**代码侧只剩 P7-C/D/E 三个阶段**，其余是环境验证和风险清单。
+> 也就是说：**代码侧没有"必须做"的项了**，剩下的是两个可选功能（schema 之外的
+> 忽略列表、`bdl.deploy.currentFile`）、两项工程收尾（grammar tag、TESTING.md）
+> 和一大块"需要 Windows/真实服务器/GUI"的验证。
+
+（P7 路线图只剩 P7-D 分片一项，已计入"未排期/等触发"；当前链接资料 415 KB，
+远未到 8 MB 的触发条件。）
+
 
 ---
 
@@ -421,7 +425,9 @@ Block 6 已完成（VSCode 客户端）：
       见 [PLAN-P6-INDEX.md](PLAN-P6-INDEX.md)。
 - [x] 跨文件跳转（genero 的 `GLOBALS` / 导入）✅ P3a 已完成，
       见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md)。
-- [ ] `RECORD LIKE table.*` 的 schema 索引（P6）。
+- [x] `RECORD LIKE table.*` 的 schema 索引（✅ 0.2.1）：`internal/schema` 解析
+      `<模组根>/<模组>/sch/*.sch`（3127 文件 → 2879 表，118 ms），
+      开启 `recordMemberDiagnostics` 后语料只剩 24 条。见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md)。
 - [x] 配置 `bdl.generoVersion`（默认 2.50，Block 5 实现，Block 6 在客户端暴露）。
 - [x] GitHub Actions：Linux + Windows 构建/测试（`.github/workflows/build.yml`，不发布 Release）。
 - [ ] 为 grammar 打 tag，去掉 `replace`。
@@ -696,8 +702,8 @@ Block P2 已完成：
       `diagnostics.<code>` > 旧键（`syntaxDiagnostics` 等）> 注册表默认。
 - [x] 旧配置键保留并标注 deprecated（至少两个版本不删）。
 - [x] 拼错保护：`diagnostics` 里出现未注册的码 → 记 warn。
-- [ ] `make diagnostics-check`：Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode enum 三处一致。
-      （留到 P7-C，码表变大时一起做）
+- [x] `make diagnostics-check`：Go 注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode enum 三处一致
+      （✅ P7-B，`cmd/diagnostics-check` + `make lint` 已接入；变异测试证明它抓得住漂移）。
 - [x] **修调用点误报**：`IF fn() THEN` / `LET x = fn(1)` 的函数名被当成变量检查。
       query 增加 `(expression name: (variable (identifier) @skip))`。
 - [x] 新增 `function-not-found`（默认 off；实测开着会报 3660 条，等 P7-C/D）。
@@ -811,10 +817,10 @@ Block P2 已完成：
 
 ### P7-C-2 grammar 缺口（1 项新增）
 
-- [ ] `#{ … }#` 块注释：语法里 `#` 只是**行注释**（`seq("#", /.*/)`），
-      语料里有 **533 处** `#{` 当块注释用 → 被注释掉的代码仍被解析，
-      会产出 fnf/变量类误报。修法：`comment` 规则增加
-      `seq("#{", /[^}]*/, "}#")`，需要 `tree-sitter generate` 重新生成 parser.c。
+- [x] ~~`#{ … }#` 块注释~~（✅ 已查清，**不是缺口**）：语法里 `#` 就是行注释
+      （`seq("#", /.*/)`）。语料里 533 处 `#{` 逐个查过，全部是**装饰性行注释**
+      （`#{====…}#` 之类的分隔线、注释框），没有一处是"用 `#{ }#` 包住一段代码"。
+      因此不需要改 grammar——改了反而会把真正的注释吃成代码。
 
 ### P7-E 链接资料 UI
 
@@ -853,7 +859,9 @@ Block P2 已完成：
 
 - [ ] Windows URI 根因判断可能偏差 → 上机先打印两个客户端 `initialize` 入参再动手。
 - [ ] `expression name:` 跳过规则可能误伤 → 先跑语料差异清单人工抽查。
-- [ ] 链接资料含生产库信息 → `.link/` 建议 gitignore，文档写明不要提交。
+- [x] ~~链接资料含生产库信息 → `.link/` 建议 gitignore~~（**不做**，用户 2026-10-21 决定）：
+      链接资料本来就是导出物，各项目自己决定怎么管；工具不该替用户改 `.gitignore`。
+      文档已在 [PLAN-P7.md](PLAN-P7.md) 写明"资料可能含生产库信息，别提交"。
 - [ ] 纯 Go 驱动 `go-ora` 依赖 +2–3 MB 二进制（当前 11 MB）；
       本地驱动方案走 build tag `ora-native`，默认不编译。
 - [x] ~~本地 Oracle 驱动路径配错~~ → 已取消该方案，无此风险。
@@ -865,7 +873,8 @@ Block P2 已完成：
 - [x] 关键修正：体积 1–2 MB → **415 KB**；隐含模组 980 → **983**；
       典型链解析 100–300 ms → **2–10 ms**（p50=1 文件）。
 - [x] ~~发现待确认项：`lib→sub` 11 处反例~~ → 已随 Q14 改为扁平规则而消解。
-- [ ] 待做：`cmd/link-audit` 落地后，用同一份 CSV 复跑并核对数字一致。
+- [x] `cmd/link-audit` 已落地并用同一份 CSV 复跑核对：链 5398 / orphan 451 / 文件 7931，
+      与 PLAN-P7.md 记录一致；`function-not-found` 基线 1423 已完成闭环。
 
 
 ---
@@ -874,8 +883,10 @@ Block P2 已完成：
 
 - [ ] ABI 15 ↔ Zed Tree-sitter 运行时兼容性。
 - [ ] BDL scanner 在 WASI 下的编译。
-- [ ] 15k 文件索引性能。
-- [ ] 字段上下文误报率（P3b）。
+- [x] 15k 文件索引性能——已实测（P6，0.2.0）：7756 个 `.4gl`/`.global` 首次索引
+      **24.7 s**、载入快照 0.56 s、无变化增量 22 ms，目标 60 s 达标。
+- [x] 字段上下文误报率（P3b）——已量化（P7-B）：`field-not-in-form` 1725 → **869**，
+      逐条查清后修掉 CONSTRUCT `ON` 列与 `Edit aa1=FormOnly.ada01` 两类误报。
 - [ ] P3a 变量来源校验误报率：保守规则已落地（只查 variable 首标识符、
       Unresolvable 导入时全部放过），`scripts/globals-audit.sh` 人工标注
       **未做**，留待真实使用反馈；用户可 off 兜底。
