@@ -677,6 +677,14 @@ func (s *Server) scheduleSourceRecheck(uri string) {
 		if doc == nil {
 			return
 		}
+		// 与 handle 共用 parseMu：reparseFull 会 SetTree（关闭旧树），
+		// 不能和正在处理请求的 query 并行（见 handle 注释）。
+		s.parseMu.Lock()
+		defer s.parseMu.Unlock()
+		// 拿锁期间文档可能被关闭：释放后再取一次。
+		if doc = s.docs.Get(uri); doc == nil {
+			return
+		}
 		s.reparseFull(context.Background(), doc)
 	})
 }

@@ -2,10 +2,9 @@ name: build
 
 # 只做构建与测试，**不发布 Release**（用户明确暂不排期）。
 #
-# 目录布局是硬约束：go.mod 里有
-#   replace github.com/darcyjoven/tree-sitter-bdl => ../tree-sitter-bdl
-#   replace github.com/darcyjoven/tree-sitter-per => ../tree-sitter-per
-# 所以必须把 bdl-lsp 检出到子目录，两个 grammar 检出到与之并列的位置。
+# 两个 grammar 自 v1.0.0/v1.0.1 起是**带 tag 的普通 Go 模块**，由 go.mod 固定，
+# 不再需要检出兄弟目录（旧的 replace 布局已去掉）。改 grammar 后的回归
+# 需要本地/另仓运行，见 docs/TESTING.md §3.3。
 
 on:
   push:
@@ -27,18 +26,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: bdl-lsp
-
-      - name: 检出 grammar（replace 依赖的兄弟目录）
-        uses: actions/checkout@v4
-        with:
-          repository: darcyjoven/tree-sitter-bdl
-          path: tree-sitter-bdl
-
-      - name: 检出 grammar（replace 依赖的兄弟目录）
-        uses: actions/checkout@v4
-        with:
-          repository: darcyjoven/tree-sitter-per
-          path: tree-sitter-per
 
       - name: 安装 Go
         uses: actions/setup-go@v5
@@ -105,18 +92,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: bdl-lsp
-
-      - name: 检出 grammar（replace 依赖的兄弟目录）
-        uses: actions/checkout@v4
-        with:
-          repository: darcyjoven/tree-sitter-bdl
-          path: tree-sitter-bdl
-
-      - name: 检出 grammar（replace 依赖的兄弟目录）
-        uses: actions/checkout@v4
-        with:
-          repository: darcyjoven/tree-sitter-per
-          path: tree-sitter-per
 
       - name: 安装 Go
         uses: actions/setup-go@v5

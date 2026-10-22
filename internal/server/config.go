@@ -83,6 +83,9 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	}
 	s.publishLinkStatus(ctx)
 
+	// P8：忽略列表变化要立刻生效。
+	s.newIgnoreMatcher()
+
 	// 重新诊断所有打开的文档
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)

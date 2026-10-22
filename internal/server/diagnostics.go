@@ -200,6 +200,12 @@ func (s *Server) publish(ctx context.Context, uri string, version int32, issues 
 	}
 	diags = append(diags, extra...)
 
+	// P8：整文件忽略。放在转换之后统一清空，语法/语义/提示走同一条出口，
+	// 不会出现"语法静了、字段还在响"的半忽略状态。
+	if s.ignoredFile(uri) {
+		diags = nil
+	}
+
 	params := &protocol.PublishDiagnosticsParams{
 		URI:         protocol.DocumentURI(uri),
 		Diagnostics: diags,
@@ -218,6 +224,10 @@ func (s *Server) publish(ctx context.Context, uri string, version int32, issues 
 // 级别走注册表（默认 information），可用 `bdl.diagnostics.file-too-large`
 // 调整或关闭——大文件很常见时用户会想把它关掉。
 func (s *Server) publishNotice(ctx context.Context, uri string, version int32, message string) {
+	if s.ignoredFile(uri) {
+		s.publish(ctx, uri, version, nil, nil)
+		return
+	}
 	severity, enabled := diag.SeverityFor(diag.CodeFileTooLarge, s.settings(), "")
 	if !enabled {
 		// 关掉提示但仍要清掉上一轮的诊断（LSP 诊断是全量替换）。

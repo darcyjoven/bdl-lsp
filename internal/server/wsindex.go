@@ -128,6 +128,7 @@ func (s *Server) buildWorkspaceIndex(ctx context.Context, st *wsIndexState) {
 		Root:        s.rootPath,
 		ModuleRoots: settings.Link.ModuleRoots,
 		Grammar:     grammar,
+		Exclude:     settings.Ignore.Files,
 		Progress: func(done, total int) {
 			if done == total || done%(total/10+1) == 0 {
 				s.logger.Debug("工作区索引进度", "done", done, "total", total)

@@ -82,7 +82,7 @@ func CollectFiles(localRoot string, up Upload) ([]File, error) {
 			return nil
 		}
 		rel := relSlash(root, p)
-		if !inc.any(rel) || exc.any(rel) {
+		if !inc.Match(rel) || exc.Match(rel) {
 			return nil
 		}
 		kind, ok := kindOf(p)

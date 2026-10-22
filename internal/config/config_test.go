@@ -179,6 +179,34 @@ func TestDiagnosticsMergeByCode(t *testing.T) {
 	}
 }
 
+func TestIgnoreMergeAndValidate(t *testing.T) {
+	m := NewManager("")
+	if err := m.Apply(json.RawMessage(`{"ignore":{"files":["build/**"],"fields":["tmp_*"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Apply(json.RawMessage(`{"ignore":{"forms":["cust"]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	s := m.Get()
+	if len(s.Ignore.Files) != 1 || len(s.Ignore.Fields) != 1 || len(s.Ignore.Forms) != 1 {
+		t.Fatalf("三组忽略规则应增量保留：%+v", s.Ignore)
+	}
+
+	bad := Default()
+	bad.Ignore.Files = []string{"a/["}
+	if got := bad.Validate(); len(got) == 0 {
+		t.Error("非法 ignore.files glob 应被 Validate 报出")
+	}
+
+	// 显式清空（空数组）应生效，不能被当作"未下发"。
+	if err := m.Apply(json.RawMessage(`{"ignore":{"files":[]}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Ignore.Files; len(got) != 0 {
+		t.Errorf("显式清空未生效：%v", got)
+	}
+}
+
 func TestDiagnosticsAbsentKeepsValues(t *testing.T) {
 	m := NewManager("")
 	if err := m.Apply(json.RawMessage(`{"diagnostics":{"file-too-large":"off"}}`)); err != nil {

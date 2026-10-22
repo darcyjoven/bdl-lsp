@@ -1,9 +1,9 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
+> 更新时间：2026-10-22（第十轮：**P8 收尾完成——TESTING / grammar tag / 忽略列表 / 编辑器差异 / go-tree-sitter v0.25**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.2.1** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*` / `bdl.index.enable`（41 项））/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.2.2** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -11,72 +11,72 @@
 
 ## 0. 下一步就做这个
 
-**P7 全部收尾项与 P6 两个大项都已完成**（P7-A/B/C/D/E；P6：工作区符号索引 0.2.0、
-数据库 schema 索引 0.2.1）。代码侧没有"必须做"的项了，剩下的候选按价值排序：
+**P1–P8 全部完成**。代码侧没有"必须做"的项了；剩下的都需要真实环境或使用反馈：
 
-1. **忽略列表**（`bdl.ignore` 按文件/字段/表单 glob）——大仓库里排除构建产物；
-2. **`bdl.deploy.currentFile`** 命令（P5 占位，小活）；
-3. **grammar 打 tag、去掉 `replace`**——两个语法仓发版，工程收尾；
-4. **`docs/TESTING.md`**——把 `make` 目标与 Linux/Windows 命令整理成矩阵；
-5. **`bdl.schema` 之外的 `record-member-unknown` 默认级别决定**：开启后语料
-   24 条（见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) §4.1），等真实使用反馈再定。
+1. **Windows 实机验证**（最高价值）：`scripts\build.ps1`、`scripts\e2e-vscode.ps1`、
+   GLOBALS 路径（`axmt620.4gl`）、部署 scp 回退。CI 的 windows job 只证明能编译。
+2. **Zed GUI 验证**：dev extension 加载、outline 层级、LSP 启动。
+3. **真实 Genero 服务器**：`fglcomp`/`fglform` 编译诊断的行号映射。
+4. **`record-member-unknown` 默认级别**：开启后全语料 24 条（[PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) §4.1），等使用反馈再定。
+5. **P7-D 分片**：链接资料 > 8 MB 才触发（当前 415 KB）。
 
-完整清单与分类见 [TODO.md](TODO.md)：46 项未勾选，其中 21 项要 Windows/真实服务器/GUI。
+完整清单见 [TODO.md](TODO.md)：40 项未勾选，**"可做"档为 0**，其中 21 项要
+Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
+编辑器差异见 [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)。
 
 **诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
 `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md`，再跑 `make lint`
 （内含 `diagnostics-check`，会核对 VSCode `package.json` 的枚举与老键默认值）。
 
-**改 grammar 的两条硬规矩**（P7-C-2 踩过）：
+**改 grammar 的硬规矩**：
 
 1. `bindings/go/binding.go` 是 `#include "../../src/parser.c"`，**Go 构建缓存不跟踪
    被 include 的 C 文件** → 改完 `src/scanner.c` 必须 `go build -a ./internal/parser`，
    否则跑的还是旧产物（症状：改前改后审计结果一模一样）；
 2. 每次改动都要跟 `make grammar-audit JSON=/tmp/before.json` 的逐文件结果 diff，
    并跑 `go test ./internal/gramaudit/`（`TestCorpusGrammarBaseline` 会拦住"修一个坏两个"）。
+3. grammar 发版后要同步**两处版本**：bdl-lsp `go.mod` 的 tag、zed-extension
+   `extension.toml` 的 40 位 SHA。只改一处会出现"LSP 新语法、Zed 旧染色"。
 
-### 已完成（本轮）
+### 已完成（本轮 P8）
 
 | 交付 | 入口 |
 |---|---|
-| CSV → 链接资料 | `bdl-lsp link import -csv <导出.csv>` → `<root>/.link/links.jsonl`（753 KB / 5398 链 / 7931 文件） |
-| 状态查看 | `bdl-lsp link status`（含**外部函数**名单） |
-| 可见函数集 | 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平） |
-| 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义 → 视为存在，记进 meta |
-| 诊断 | `function-not-found`（**默认 warning**）· `link-data-invalid` · `link-data-stale` |
-| 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
-| 采集 | `bdl-lsp link sync -source golang|command|file`；`scripts/fetch-gal-file.sh`（sqlplus 兜底） |
-| 语法审计（P7-C-2） | `make grammar-audit [TOP=60 JSON=/tmp/a.json]`；基线 `TestCorpusGrammarBaseline` |
-| schema 索引 | `internal/schema`：扫描 `<模组根>/<模组>/sch/*.sch`，`initialize` 时同步加载（118 ms）；`bdl.schema.enable` / `bdl.schema.paths`；设计见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) |
-| 工作区索引 | `internal/wsindex`；快照在 `$XDG_CACHE_HOME/bdl-lsp/<工作区>.idx`；`bdl.index.enable=false` 关闭；设计见 [PLAN-P6-INDEX.md](PLAN-P6-INDEX.md) |
-| 诊断码表 | `make diagnostics-check`（并入 lint）· `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md` |
-| 视图（VSCode） | Explorer「链接资料」：程序 → 链内文件（点击跳转）+ 反查引用程序（分页 50） |
-| 后台同步 | `bdl.link.sync.*`（默认关，失败指数退避，成功后自动重载） |
-| 审计 | `cmd/link-audit`（`-externals`/`-missing`）、`diag-audit -no-link` |
+| 测试矩阵 | [TESTING.md](TESTING.md)：L1–L6、Linux/Windows 命令、语料回归、真实环境清单 |
+| grammar tag | `tree-sitter-bdl v1.0.1` · `tree-sitter-per v1.0.0`；bdl-lsp 去 `replace`，CI 不再检出兄弟目录 |
+| go-tree-sitter v0.25 | 两个 grammar 的 `bindings/go` 测试：ABI ≥15 + 真实文件解析 0 ERROR |
+| 忽略列表 | `bdl.ignore.files/fields/forms`（`internal/glob` + `internal/ignore`）；文件命中同时排除出索引 |
+| 部署当前文件 | VSCode `bdl.deployCurrentFile` + Zed task `$ZED_FILE`（复核 + 文档） |
+| 编辑器差异 | [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)：语义高亮、pull diagnostics、配置外壳、链接视图、部署 |
+| 稳定性修复 | `parseMu` 串行化请求与防抖重算，修掉偶发 `ts_query_cursor_next_match` SIGSEGV（坑 #31） |
 
 ## 1. 一句话状态
 
-**P1–P6 全部功能已完成并推送**；P7 已立项、六项决策已定稿、链接数据已验证。
-P7-A（缺陷修复）与 P7-B 前五批全部完成：**B-1/2 悬停作用域、B-3 Zed 大纲层级、
-B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§0），
-之后是 P7-C 内置符号 → P7-D 链接索引 → P7-E 链接 UI。
-剩下还有需要真实环境才能验的项（Windows / Zed GUI / macOS）。
+**P1–P8 全部功能已完成并推送**：语言智能（诊断/悬停/跳转/补全/重命名/格式化）、
+GLOBALS、字段/表单、部署、索引、链接资料、内置符号、忽略列表、编辑器文档齐备。
+剩下的是**需要真实环境的验证**（Windows / Zed GUI / 真实 Genero 服务器 / macOS）
+和几个等使用反馈的决策，不再有"现在就能动手"的代码项。
 
 ## 2. 三个仓库（都已推送，工作树干净）
 
-| 目录 | 远程 | HEAD | 内容 |
+| 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.2.1`，见 `git log -1` | Go LSP 服务器 + CLI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
-| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.2.2` | Go LSP 服务器 + CLI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.1.1` | VSCode 插件 |
+| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件 |
 
-> `bdl-lsp` 的 HEAD 不写死——它每轮都变，写死必然过期（这份文档里已经
-> 因此过期过两次）。用 `git -C /code/workspace/bdl-lsp log -1 --oneline` 现查。
+> HEAD 不写死——每轮都变（这份文档已因此过期过两次）。用
+> `git -C /code/workspace/<repo> log -1 --oneline` 现查。
 
-依赖的两个 grammar 仓库（本地 `replace`，未打 tag）：
+两个 grammar 仓库**已打 tag**，bdl-lsp 不再使用 `replace`：
 
-- `/code/workspace/tree-sitter-bdl`
-- `/code/workspace/tree-sitter-per`
+| 仓库 | Go 模块 tag | 用途 |
+|---|---|---|
+| `tree-sitter-bdl` | `v1.0.1` | `go.mod` 固定；Zed rev `ad54d64` |
+| `tree-sitter-per` | `v1.0.0` | `go.mod` 固定；Zed rev `f76dab7` |
+
+本地仍是兄弟目录（`/code/workspace/tree-sitter-bdl`、`tree-sitter-per`），
+但构建走**模块缓存**；改 grammar 后必须提交+push+打新 tag，再升 `go.mod`。
 
 ## 3. 当前能力矩阵
 
@@ -114,12 +114,15 @@ workspace/didChangeConfiguration
 | 诊断级别注册表 + 降噪（289304 → 7886） | P7-B | [PLAN-P7](PLAN-P7.md) |
 | 内置符号表（96→97 条，三层可配置、可热更新） | P7-C-1 | [PLAN-P7](PLAN-P7.md) §10.6 |
 | 链接资料索引（导入/状态/可见性/`link-data-*`） | **P7-D 核心** | [PLAN-P7](PLAN-P7.md) §10.7 |
+| 忽略列表（文件/字段/表单，glob + `**`） | P8 | [TESTING](TESTING.md)、[FEATURES](FEATURES.md) |
+| 编辑器能力差异（VSCode/Zed） | P8 | [EDITOR-SUPPORT](EDITOR-SUPPORT.md) |
+| grammar tag / go-tree-sitter v0.25 | P8 | [TESTING](TESTING.md) §3.3 |
 
 ## 4. 验收基线（当前实测值）
 
 | 项目 | 结果 |
 |---|---|
-| `go test -race ./internal/...` | 20 个包全绿（14 个含测试），**303 个测试函数**（server 129 / index 36） |
+| `go test -race ./internal/...` | **24 个含测试的包全绿**，**444 个测试函数**（server 174）；P8 新增 glob/ignore/wsindex 排除/协议级 ignore 用例 |
 | VSCode e2e | **33/33** |
 | `make lint` | 通过（含 `keywords-check` 防清单漂移） |
 | 语料规模 | `.4gl` 7699 / `.per` 7409（`/code/workspace/tiptop-gp`） |
@@ -148,6 +151,9 @@ globals.fileNotFoundDiagnostics     warning
 globals.unresolvedSourceDiagnostics warning
 globals.searchPaths                 []
 fieldDiagnostics                    warning
+ignore.files                        []         ← P8：整文件静默 + 不进索引
+ignore.fields                       []         ← P8：只屏蔽 field-not-in-form
+ignore.forms                        []         ← P8：屏蔽该表单的字段类诊断
 perRoots                            []
 recordMemberDiagnostics             off        ← P6，默认关闭
 diagnostics.<码>                    （见 FEATURES） ← P7-B 注册表，优先级最高
@@ -356,62 +362,50 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
       - 正解：首个 `didOpen` 时再发（`maybePublishLinkStatus`），
         那时用户已经真的在看文件了。
 
+31. **语法树是裸 C 指针，替换/关闭不能与 query 并行**（P8 踩，偶发 SIGSEGV）：
+    两处会 `Close` 树：`Document.SetTree`（解析出新树时）与
+    `ServeStream` 退出时的 `docs.CloseAll()`。防抖 timer（400ms 后
+    `reparseFull`）或 `ctx` 取消都可能与正在 `ts_query_cursor_next_match` /
+    `ts_tree_root_node` 的 handler 并行 → 段错误。
+    症状：单独跑 server 测试全绿，全量/`-race` 下偶发崩溃，栈在 cgo 里，
+    且常发生在 `t.Cleanup` 阶段。
+    修法：`Server.parseMu` 把 `handle`、timer 重算、**退出时 CloseAll**
+    串行化（jsonrpc2 本来就按帧顺序处理请求，不会降低吞吐）。
+    **以后任何"后台重算 / 释放资源"都要共用这把锁**，不要各自直接调
+    `reparseFull` 或 `docs.CloseAll`。
+
+32. **glob 只有一份实现**（P8）：`internal/glob` 支持 `**`，部署 include/exclude
+    与 `bdl.ignore.*` 共用。不要再用 `filepath.Match`（坑 #3），也不要复制第二份
+    ——两套 glob 的锚定/空段行为一旦不一致，"同样的模式在部署生效、在忽略不生效"
+    会非常难查。
+
+33. **Go 模块 tag 必须 `v` 开头**（P8）：grammar 仓原来只有一个 `1.0.0`
+    （没有 `v`），Go 的模块解析**不认**，所以之前只能靠 `replace`。
+    P8 改打 `v1.0.1` / `v1.0.0` 并 push，`go mod tidy` 才能拉到。
+    升 grammar 的完整顺序：commit → push → **tag + push tag** → 改 bdl-lsp
+    `go.mod` → `go mod tidy` → 改 Zed `extension.toml` 的 40 位 SHA。
+
 ## 8. 下一步候选（按建议顺序）
 
-### ★ P6/P7 收尾（全部完成，剩下的是可选项）
+**P1–P8 全部完成**，代码侧没有待办。下面按"价值 / 成本"排序，且都需要
+本沙箱之外的条件：
 
-见本文 §0 与 [PLAN-P7.md](PLAN-P7.md)。顺序：
+| 顺序 | 事项 | 需要什么 | 验收 |
+|---|---|---|---|
+| A | Windows 实机（构建 / e2e / GLOBALS 路径 / scp 部署） | Windows 10/11 + MinGW + VSCode | [TESTING](TESTING.md) §5 |
+| B | Zed GUI（dev extension、outline、LSP 启动） | 有显示器的机器 | `make zed-check` + 手工 |
+| C | 真实 Genero 服务器（远程编译诊断行号） | SSH + `fglcomp`/`fglform` | `deploy -dry-run` → `deploy` |
+| D | `record-member-unknown` 默认级别 | 真实使用反馈 | [PLAN-P6-SCHEMA](PLAN-P6-SCHEMA.md) §4.1 |
+| E | P7-D 分片（资料 > 8 MB） | 更大的真实链接导出 | [PLAN-P7](PLAN-P7.md) |
+| F | macOS 构建/验证 | macOS 机器 | [TESTING](TESTING.md) §5 |
 
-| 阶段 | 内容 | 状态 |
-|---|---|---|
-| P7-A | Zed 大纲层级 + VSCode GLOBALS 路径 | ✅ 完成 |
-| P7-B | 悬停作用域（B-1/2）→ Zed 大纲层级（B-3）→ 游标/prepare（B-5）→ **诊断降噪（B-4/B-6）** | ✅ 完成 |
-| P7-C | **C-1 内置符号表**（✅ 0.1.3）/ C-2 grammar 缺口清单（✅ 0.1.7） | ✅ |
-| P7-D | 链接资料：核心（索引 + 可见性 + 诊断） | ✅ 0.1.4 |
-| P7-D-2 | 外部函数过滤（`function-not-found` 默认打开） | ✅ 0.1.5 |
-| P7-D-3 | 采集链路（golang / command / file + 后台同步） | ✅ 0.1.6 |
-| P7-E | 链接资料 UI（VSCode TreeView / Zed 降级） | 待 P7-D |
-
-### A. Windows 实测（成本低，价值高）
-
-代码路径已就绪，但从未在 Windows 跑过：
-
-- `scripts/build.ps1`（无需 make）
-- `scripts/e2e-vscode.ps1`
-- 部署：Windows 无 rsync → 自动回退 scp（逐文件 + 路径归一已实现）
-
-> 注：P7-A 的两个 BUG 正是 Windows 实测发现的，上机时一并复验。
-
-### B. 数据库 schema 索引（能显著提升 record 校验覆盖面）
-
-现状：`DEFINE r LIKE table.*` 占语料 **87%** 的 record 成员引用，静态看不到列名，
-全部跳过。有 schema 索引后可校验比例从 13% → 接近 100%。
-
-需要决策：schema 来源（`.sch`/`.sql` 文件？数据库连接？）。
-可复用 P7-D 的 Oracle 直连基础设施（`go-ora`），两者一并评估。
-
-### C. 工作区级符号索引（解锁跨文件重命名 + 更全的补全）
-
-现状：重命名和补全都只看当前文件/已打开文档。
-计划要求 15k 文件 < 60s，需要后台任务 + 持久化缓存。
-P7-D 的链接索引是"按程序分组索引"的子集，可视为该方向的起步。
-
-### D. Zed 侧验证
-
-本机无 GUI，需在有显示器的机器上手动加载 dev extension。
-注意 Zed 不消费 LSP semantic tokens（走 `highlights.scm`），已在 README 说明。
-
-### E. 暂不排期
-
-- Genero 5.0 语法
-- GitHub Release / 二进制自动下载
-- VSCode Marketplace / Zed registry 发布
-- macOS
+暂不排期：Genero 5.0 语法、GitHub Release / 二进制自动下载、Marketplace /
+Zed registry 发布、跨文件重命名（刻意不做）、纯 Go SFTP、批量修复。
 
 ## 9. 常用命令
 
 ```bash
-# 测试
+# 测试（完整矩阵见 docs/TESTING.md）
 cd bdl-lsp && source scripts/dev-env.sh
 go test -race ./...
 make lint                      # vet + gofmt + keywords-check
@@ -440,7 +434,9 @@ FMT_DEBUG=<file> go run ./cmd/fmt-audit   # 单文件格式化调试
 | [README](../README.md) | 仓库总览、快速开始、能力表 |
 | [PLAN](PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
 | [FEATURES](FEATURES.md) | 功能基线清单（编号 1–40）+ 阶段映射 |
-| [TODO](TODO.md) | 已完成/待办逐项清单（最详细的进度记录；§下一轮 = P7-A） |
+| [TODO](TODO.md) | 已完成/待办逐项清单（最详细的进度记录；§下一轮 = 真实环境验证） |
+| [TESTING](TESTING.md) | **测试矩阵**：L1–L6、Linux/Windows 命令、语料回归、常见失败 |
+| [EDITOR-SUPPORT](EDITOR-SUPPORT.md) | **VSCode/Zed 能力差异**：语义高亮、诊断、配置、部署 |
 | [PLAN-P7](PLAN-P7.md) | **P7 立项**：缺陷根因、内置符号、链接资料设计、待确认决策 |
 | [ENVIRONMENT](ENVIRONMENT.md) | 工具链、沙箱约束 |
 | [TECH-STACK](TECH-STACK.md) | 版本与选型理由 |

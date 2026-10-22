@@ -1,3 +1,7 @@
+github.com/darcyjoven/tree-sitter-bdl v1.0.1 h1:UHiy6Nhyf0mL/VqRQ9useRA3LVKjT+faYR3T7fV8uqE=
+github.com/darcyjoven/tree-sitter-bdl v1.0.1/go.mod h1:vBpPyijQn9pLWXWkepEt0LM6MLGs2HCaJBgEMKRSUOo=
+github.com/darcyjoven/tree-sitter-per v1.0.0 h1:TRmogBT7m78pLrt3FXEh8koKziM+e2ijCNXEloRnUFE=
+github.com/darcyjoven/tree-sitter-per v1.0.0/go.mod h1:DDC1aI1Gwo6GbpVvjhc/vTMji3yzTGx9X0GNc+wcsik=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/go-cmp v0.4.0/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=

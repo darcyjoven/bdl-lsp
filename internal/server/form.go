@@ -80,8 +80,17 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 	}
 
 	idx := doc.Index()
+	ign := s.ignoreMatcher()
 	var diags []protocol.Diagnostic
 	for _, iss := range fieldIssues {
+		// P8：按表单/字段忽略。表单忽略覆盖三类字段类诊断；
+		// 字段忽略只针对 field-not-in-form（另外两类没有字段名）。
+		if ign.Form(iss.Literal, iss.FormPath) {
+			continue
+		}
+		if iss.Kind == string(diag.CodeFieldNotInForm) && ign.Field(iss.Field) {
+			continue
+		}
 		d := protocol.Diagnostic{
 			Range:    byteRange(idx, iss.Start, iss.End),
 			Severity: severity,

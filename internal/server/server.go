@@ -21,6 +21,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
+	"github.com/darcyjoven/bdl-lsp/internal/ignore"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/schema"
@@ -57,6 +58,10 @@ type Server struct {
 	lastSearchPaths []string
 	// lastPerRoots 是上次构建表单解析器用的 perRoots（检测变化）。
 	lastPerRoots []string
+	// ign 是 `bdl.ignore` 编译后的匹配器（P8）；由 ignMu 保护。
+	// nil / 空 matcher 都表示"不忽略"。
+	ign   *ignore.Matcher
+	ignMu sync.RWMutex
 	// globalsEntries 缓存每个文档最近一次的 GLOBALS 解析结果，
 	// 供跳转/悬停查询（gMu 保护）。
 	globalsMu      sync.RWMutex
@@ -76,6 +81,9 @@ type Server struct {
 	fieldDiags    map[string][]protocol.Diagnostic
 	recheckTimers map[string]*time.Timer
 	debounceMu    sync.Mutex
+	// parseMu 串行化请求处理与防抖重算（见 handle 注释）：
+	// 两者都会替换/关闭文档语法树，不能真正并行。
+	parseMu sync.Mutex
 
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
@@ -137,8 +145,13 @@ func (s *Server) ServeStream(ctx context.Context, rwc io.ReadWriteCloser) error 
 		_ = conn.Close()
 	}
 
+	// 释放文档树前先拿 parseMu：读循环里的 handler 是同步执行的，
+	// ctx 取消时它可能还在 reparseFull 里用这棵树。不串行化就 CloseAll
+	// 会释放正在被 query 的 tree（cgo 段错误，P8 在 -race 下稳定复现）。
+	s.parseMu.Lock()
 	s.docs.CloseAll()
 	s.indexes.dropAll()
+	s.parseMu.Unlock()
 
 	// exit 通知后等待读循环退出，避免 stdout 被提前关闭导致响应丢失。
 	select {
@@ -171,7 +184,17 @@ func (stdioStream) Write(p []byte) (int, error) { return os.Stdout.Write(p) }
 func (stdioStream) Close() error                { return nil }
 
 // handle 是 jsonrpc2 的主分发函数。
+//
+// parseMu 把每个请求与防抖重算（scheduleSourceRecheck 的 timer）串行化。
+// 两者都会调用 reparseFull → Document.SetTree，而 SetTree 会 Close 旧树；
+// 若一个 goroutine 正在用旧树跑 query（ts_tree 是裸 C 指针），另一个
+// Close 掉它就会 SIGSEGV（实测在 ts_query_cursor_next_match 里段错误，
+// 低概率、与负载相关）。jsonrpc2 本身按帧顺序处理请求，所以这里加锁
+// 不会降低吞吐，只是把 timer 拉回同一把锁。
 func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	s.parseMu.Lock()
+	defer s.parseMu.Unlock()
+
 	switch req.Method() {
 	case protocol.MethodInitialize:
 		return s.handleInitialize(ctx, reply, req)
@@ -322,6 +345,10 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			}
 		}
 	}
+
+	// P8：忽略列表（放在 InitializationOptions 之后：客户端可能从初始化选项
+	// 直接下发 ignore，必须用最终配置编译）。
+	s.newIgnoreMatcher()
 
 	result := protocol.InitializeResult{
 		Capabilities: protocol.ServerCapabilities{

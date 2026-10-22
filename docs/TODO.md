@@ -1,39 +1,65 @@
 # 待办与待确认
 
-> 更新：2026-10-21（**P6 工作区符号索引完成：全项目跳转/引用/符号搜索**，`bdl-lsp 0.2.0`）  
-> 当前阶段：**P1–P6 全部功能已完成**；**P7 全部收尾项已完成**
-> （Zed 大纲层级、诊断降噪、内置符号表、语法缺口审计、链接资料索引、外部函数过滤、
-> 采集通道、链接资料视图）。  
-> **下一步候选**：
-> ① P6 质量债剩余（record `.*` / `LIKE table.*` schema 索引、忽略列表）；
-> ② 各仓小遗留（grammar 打 tag、`bdl.deploy.currentFile`）。
-> 见 [PLAN-P7.md](PLAN-P7.md)。  
+> 更新：2026-10-22（**P8 收尾完成**：TESTING.md、grammar tag 去 replace、
+> 忽略列表、部署当前文件复核、编辑器能力差异、go-tree-sitter v0.25，`bdl-lsp 0.2.2`）  
+> 当前阶段：**P1–P8 全部已完成**。  
+> **下一步候选**（都需要真实环境或使用反馈）：
+> ① Windows 实机 / Zed GUI / 真实 Genero 服务器验证；
+> ② record-member 默认级别（等使用反馈）；
+> ③ P7-D 分片（链接资料 > 8 MB 才触发）。
+> 见 [PLAN-P7.md](PLAN-P7.md) 与 [TESTING.md](TESTING.md) §5。  
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
 > **新会话接手先读 [HANDOVER.md](HANDOVER.md)**（状态 / 基线 / 坑 / 下一步）。
 
 ---
 
-## ★ 剩余待办速查（2026-10-21 盘点）
+## ★ 剩余待办速查（2026-10-22 盘点）
 
-未勾选共 **46 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
-本轮（0.2.1）关掉了 7 项已完成但没打勾的（schema 索引 ×2、diagnostics-check、
-`#{ }#`、`.link/` gitignore、link-audit 复跑、15k 索引性能、字段误报率）。
+未勾选共 **40 项**（[PLAN-P7.md](PLAN-P7.md) 另有 16 项，全是 P7-D/E 与 P7-C-2 的验收标准）。
+本轮（0.2.2）关掉了 **6 项**：`docs/TESTING.md`、grammar tag 去 `replace`、
+`bdl.deployCurrentFile` 复核、忽略列表、Zed/VSCode 能力差异、go-tree-sitter v0.25。
 
 | 档 | 约数 | 内容 |
 |---|---:|---|
-| **可做 · 现在就能动手** | **6** | `docs/TESTING.md` · grammar 打 tag 去 `replace` · `bdl.deploy.currentFile` · 忽略列表（glob）· Zed/VSCode 能力差异文档 · `go-tree-sitter` 升 v0.25 |
+| **可做 · 现在就能动手** | **0** | 已清空。代码侧没有"必须做"的项了。 |
 | **要机器 / 要人** | 21 | Windows 环境 10 · 账号服务器 3 · GUI 手工验证 3 · Windows e2e/scp/URI 3 · Zed 加载 1 · Windows CGO 1 |
 | 未排期 / 等触发 / 待决策 | 10 | 批量修复 · 使用处着色 · 纯 Go SFTP · macOS · P7-D 分片（当前 415 KB 远未到）· 跨文件重命名（刻意不做）· 单文件远程编译超时 · `go-ora` 二进制体积 · `expression name:` 抽查 · Windows URI 根因假说 |
 | 风险跟踪（非任务） | 9 | §7 已知风险登记 |
 
-> 也就是说：**代码侧没有"必须做"的项了**，剩下的是两个可选功能（schema 之外的
-> 忽略列表、`bdl.deploy.currentFile`）、两项工程收尾（grammar tag、TESTING.md）
-> 和一大块"需要 Windows/真实服务器/GUI"的验证。
+> 也就是说：**代码侧没有"必须做"的项了**，剩下的全是"需要 Windows / 真实服务器 /
+> GUI / 使用反馈"的验证与决策。
 
 （P7 路线图只剩 P7-D 分片一项，已计入"未排期/等触发"；当前链接资料 415 KB，
 远未到 8 MB 的触发条件。）
 
+
+---
+
+## ★ P8 已完成（2026-10-22，`bdl-lsp 0.2.2`）
+
+> 接手文档：[HANDOVER](HANDOVER.md)；命令：[TESTING](TESTING.md)；
+> 编辑器差异：[EDITOR-SUPPORT](EDITOR-SUPPORT.md)。
+
+- [x] `docs/TESTING.md`：L1–L6 测试分层、Linux/Windows 命令矩阵、语料回归、
+      真实环境清单、常见失败、提交前检查单。
+- [x] 两个 grammar 打 tag / 去 `replace`：
+      `tree-sitter-bdl v1.0.1`、`tree-sitter-per v1.0.0`；bdl-lsp `go.mod`
+      固定 tag，CI 不再检出兄弟目录；Zed `extension.toml` 同步 40 位 SHA。
+- [x] `go-tree-sitter` 升 v0.25.0：两个 grammar 的 `bindings/go/binding_test.go`
+      增加 ABI ≥15 断言 + 真实 `.4gl`/`.per` 文件解析（0 ERROR）；
+      bdl-lsp 侧全量测试跑通。
+- [x] 忽略列表：`internal/glob`（`**` 共用，deploy 也改用它）+ `internal/ignore`；
+      配置 `bdl.ignore.files/fields/forms`；文件命中不发布诊断且排除出工作区索引；
+      字段/表单按 glob 过滤 `field-not-in-form` / `form-*`；热更新立即生效。
+- [x] `bdl.deployCurrentFile` 复核：VSCode 命令（保存脏文档 → 只传当前文件）
+      与 Zed task（`$ZED_FILE`）两条路径均已实现，文档补齐差异。
+- [x] Zed/VSCode 能力差异文档 `docs/EDITOR-SUPPORT.md`：语义高亮、pull
+      diagnostics、workspace configuration、链接视图、部署、配置外壳差异。
+- [x] 顺带修复：**防抖 timer / 退出清理与请求处理并发释放语法树导致偶发
+      SIGSEGV**（`ts_query_cursor_next_match`、`ts_tree_root_node` 段错误，
+      `-race` 下稳定复现于 `t.Cleanup`）。根因与修法见
+      [HANDOVER](HANDOVER.md) 坑 #31（`parseMu` 同时保护重算与 `CloseAll`）。
 
 ---
 
@@ -323,8 +349,8 @@
       Windows 待上机（见 §2.2）。
 - [x] 真实 `bdl-lsp` 二进制在 VSCode 中打开真实文件：e2e 33/33（fixture 而非 `ammr110.4gl`，
       但"无 stdout 污染 / 日志可读"这两项已由连接可用与日志断言覆盖）。
-- [ ] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 升到 `v0.25.0`，补“真正解析文件”的测试（ABI 15）。
-- [ ] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。
+- [x] 在 `tree-sitter-bdl` / `tree-sitter-per` 中把 Go bindings 的 `go-tree-sitter` 升到 `v0.25.0`，补“真正解析文件”的测试（ABI 15）。✅ P8：两个 grammar 均升 v0.25.0，新增 `bindings/go/binding_test.go` 的 ABI/真实文件解析断言；bdl-lsp 去掉 `replace`，改用 tag `v1.0.1`/`v1.0.0`。
+- [x] 记录 Zed/VSCode 的 LSP 能力差异（semantic tokens、pull diagnostics、workspace configuration）。✅ P8：[EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)。
 - [x] 本机验证 CGO 构建 + 双 grammar 运行（Linux）。
 - [ ] 验证 Windows 下 CGO 构建 + 运行 LSP（可先用 spike）。
 - [x] 无桌面 VSCode CLI headless 模式验证（用于 e2e）。
@@ -344,13 +370,13 @@
 - [x] `docs/PLAN-DETAILED-P3.md`（字段校验）→ **以 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) 落地**，不再单开。
   - [x] 表单索引数据结构（`internal/form` + `index.FileIndex.FormItemNames/FormFieldNames`）
   - [x] 4GL 绑定/字段提取规则表
-  - [ ] 诊断/忽略配置（**忽略列表仍未做**，见下方"字段校验"小节）
+  - [x] 诊断/忽略配置（P8：`bdl.ignore.files/fields/forms`，见 [TESTING.md](TESTING.md) 与 [FEATURES.md](FEATURES.md)）
   - [x] 标注集与评估脚本（`cmd/field-audit`，模块一致率 97.2%）
   - [x] record `.*` 成员校验（最后做，默认关闭）
 - [x] `docs/FORMATTER.md`（规则表与示例）→ **以 [PLAN-P4-FORMAT.md](PLAN-P4-FORMAT.md) 落地**。
 - [x] `docs/DEPLOY.md`（配置 schema、rsync/scp、安全、错误处理）→ **以 [PLAN-P5-DEPLOY.md](PLAN-P5-DEPLOY.md)
       + [DEPLOY-ZED.md](DEPLOY-ZED.md) 落地**。
-- [ ] `docs/TESTING.md`（测试矩阵、Linux/Windows 命令）
+- [x] `docs/TESTING.md`（测试矩阵、Linux/Windows 命令）✅ P8
 - [x] `docs/GENERO-VERSIONS.md`（2.50 基线；5.0 暂不排期）→ **并入 [TECH-STACK.md](TECH-STACK.md) §ABI/Genero 版本**。
 
 ---
@@ -430,7 +456,7 @@ Block 6 已完成（VSCode 客户端）：
       开启 `recordMemberDiagnostics` 后语料只剩 24 条。见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md)。
 - [x] 配置 `bdl.generoVersion`（默认 2.50，Block 5 实现，Block 6 在客户端暴露）。
 - [x] GitHub Actions：Linux + Windows 构建/测试（`.github/workflows/build.yml`，不发布 Release）。
-- [ ] 为 grammar 打 tag，去掉 `replace`。
+- [x] 为 grammar 打 tag，去掉 `replace`。✅ P8：`tree-sitter-bdl v1.0.1` / `tree-sitter-per v1.0.0`，CI 不再检出兄弟目录。
 
 ### vscode-extension（→ `vscode-bdl`）
 
@@ -455,7 +481,7 @@ Block 7 已完成（CI 与健壮性）：
 - [x] `test/runTest.js` 跨平台化：`Code.exe` 探测、`taskkill` 清理、Linux 专属参数按平台裁剪。
 - [x] `scripts/e2e-vscode.ps1`：Windows 版 e2e 入口。
 - [ ] Windows 下 e2e 实测（代码已就绪，等 Windows 机器跑一次）。
-- [ ] 命令 `bdl.deploy.currentFile`（P5，占位未实现）。
+- [x] 命令 `bdl.deployCurrentFile`（P5 已实现；P8 复核 VSCode 命令/Zed task 两条路径并补文档）。
 
 ### zed-extension（→ `zed-bdl`，id `4gl-full`）
 
@@ -541,8 +567,9 @@ Block P2 已完成：
       （语料存在 .4gl/.per 版本漂移，如 aapr106 的 apa18 不在 aapt110.per）。
 - [x] `.per` 内部校验：重复 item、布局 tag 未定义、SCREEN RECORD 引用不存在
       （三个诊断码，共用 fieldDiagnostics 级别）。
-- [ ] 忽略列表（按文件/字段/表单 glob）——未做；`off` 可整体关闭兜底，
-      精细忽略待真实使用反馈再排期。
+- [x] 忽略列表（按文件/字段/表单 glob）——✅ P8：`internal/ignore` +
+      `bdl.ignore.files/fields/forms`；文件命中同时排除出工作区索引，
+      配置热更新立即生效（索引在下次构建时排除）。
 - [x] 50 模块人工标注——已以自动标注（模块一致率 97.2%）+ 抽样人工复核替代。
       完整人工标注待真实用户环境。
 

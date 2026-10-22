@@ -31,6 +31,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/darcyjoven/bdl-lsp/internal/glob"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/link"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
@@ -101,6 +102,9 @@ type Options struct {
 	Workers int
 	// Limit 限制文件数（调试/测试用），0=全部。
 	Limit int
+	// Exclude 是排除的文件 glob（相对 Root，`**` 跨目录）。
+	// 来自 `bdl.ignore.files`：构建产物、历史遗留目录不进索引。
+	Exclude []string
 	// Progress 每处理约 200 个文件回调一次（可在任意 goroutine 调用）。
 	Progress func(done, total int)
 	// Logf 记录非致命错误（可为 nil）。
@@ -134,7 +138,20 @@ func Build(ctx context.Context, b Bindings, opt Options, prev *Index) (*Index, S
 	}
 
 	layout := link.NewLayout(opt.Root, opt.ModuleRoots)
-	files, err := enumerate(layout, opt.Limit)
+	// 单个写错的排除模式只跳过它自己：配置校验会给出警告，但不应让
+	// 整个工作区索引构建失败（用户只是多打了一个 `[`）。
+	var exclude glob.Set
+	for _, p := range opt.Exclude {
+		g, gerr := glob.Compile(p)
+		if gerr != nil {
+			if opt.Logf != nil {
+				opt.Logf("wsindex: 跳过非法排除 glob %q: %v", p, gerr)
+			}
+			continue
+		}
+		exclude = append(exclude, g)
+	}
+	files, err := enumerate(layout, opt.Limit, exclude)
 	if err != nil {
 		return nil, Stats{}, err
 	}
@@ -371,7 +388,7 @@ func (li *lineIndex) at(off uint) (line, col int) {
 // enumerate 列出待索引的文件（.4gl 与 .global）。
 //
 // 只走模组根，避免把工作区里的 node_modules / 构建产物扫进来。
-func enumerate(layout *link.Layout, limit int) ([]string, error) {
+func enumerate(layout *link.Layout, limit int, exclude glob.Set) ([]string, error) {
 	var files []string
 	for _, root := range layout.RootDirs() {
 		err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
@@ -387,6 +404,15 @@ func enumerate(layout *link.Layout, limit int) ([]string, error) {
 			}
 			lower := strings.ToLower(p)
 			if strings.HasSuffix(lower, ".4gl") || strings.HasSuffix(lower, ".global") {
+				if !exclude.Empty() {
+					rel, rerr := filepath.Rel(layout.ProjectRoot, p)
+					if rerr == nil {
+						rel = filepath.ToSlash(rel)
+						if exclude.Match(rel) || exclude.Match(filepath.Base(rel)) {
+							return nil
+						}
+					}
+				}
 				files = append(files, p)
 			}
 			return nil

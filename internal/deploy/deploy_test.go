@@ -239,7 +239,7 @@ func TestGlobDoubleStar(t *testing.T) {
 		if err != nil {
 			t.Fatalf("编译 %q 失败: %v", tc.pattern, err)
 		}
-		if got := g.match(tc.rel); got != tc.want {
+		if got := g.Match(tc.rel); got != tc.want {
 			t.Errorf("%q 匹配 %q = %v，期望 %v", tc.pattern, tc.rel, got, tc.want)
 		}
 	}

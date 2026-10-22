@@ -15,6 +15,7 @@ import (
 	"sync"
 
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
+	"github.com/darcyjoven/bdl-lsp/internal/glob"
 )
 
 // GeneroVersion 是目标 Genero 版本。
@@ -90,6 +91,8 @@ type Settings struct {
 	Index IndexSettings `json:"index"`
 	// Schema 是数据库 schema 索引（P6）的配置。
 	Schema SchemaSettings `json:"schema"`
+	// Ignore 是诊断忽略列表（P8）：按文件/字段/表单 glob 屏蔽诊断。
+	Ignore IgnoreSettings `json:"ignore"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -200,6 +203,28 @@ func (s Settings) IndexEnabled() bool {
 		return true
 	}
 	return *s.Index.Enable
+}
+
+// IgnoreSettings 是 `bdl.ignore`：按文件/字段/表单忽略诊断（P8）。
+//
+// 为什么需要：真实项目里有构建产物、历史遗留目录，也有少量长期存在的
+// 字段/表单版本漂移。逐条 `bdl.diagnostics.<码> = off` 会一刀切关掉整个
+// 诊断码，范围太大；忽略列表把范围收窄到"某类文件/某个字段/某张表单"。
+//
+// 语义（详见 docs/FEATURES.md）：
+//   - Files：匹配当前文件（工作区相对路径，`**` 跨目录；不含 `/` 的模式
+//     同时按 basename 匹配），命中后**该文件的全部诊断**都不发布，并且
+//     不进入工作区符号索引（大仓库排除 build/ 产物）；
+//   - Fields：匹配字段名（大小写不敏感），只屏蔽 `field-not-in-form`；
+//   - Forms：匹配表单字面量/文件名/相对路径，屏蔽该表单的全部字段类诊断
+//     （当前是 `field-not-in-form`；以后新增的字段类码一并覆盖）。
+//
+// 忽略只影响**诊断与索引**，不影响解析/悬停/跳转：用户点开被忽略的文件
+// 仍然有语法高亮与导航。
+type IgnoreSettings struct {
+	Files  []string `json:"files"`
+	Fields []string `json:"fields"`
+	Forms  []string `json:"forms"`
 }
 
 // LinkSettings 控制程序链接资料（P7-D）。
@@ -532,6 +557,17 @@ func (m *Manager) merge(s *Settings) {
 		m.cur.Builtins.Disable = s.Builtins.Disable
 	}
 
+	// P8：忽略列表（nil 区分未下发与显式清空）
+	if s.Ignore.Files != nil {
+		m.cur.Ignore.Files = append([]string(nil), s.Ignore.Files...)
+	}
+	if s.Ignore.Fields != nil {
+		m.cur.Ignore.Fields = append([]string(nil), s.Ignore.Fields...)
+	}
+	if s.Ignore.Forms != nil {
+		m.cur.Ignore.Forms = append([]string(nil), s.Ignore.Forms...)
+	}
+
 	// P4：格式化
 	if s.Format.Keywords != "" {
 		m.cur.Format.Keywords = s.Format.Keywords
@@ -718,5 +754,11 @@ func (s Settings) Validate() []string {
 			problems = append(problems, fmt.Sprintf("未知 %s %q（支持 off/error/warning/information/hint）", name, lvl))
 		}
 	}
+
+	// P8：忽略列表的 glob 语法。写错不是致命错误（该条永不匹配），
+	// 但必须让用户看到日志，否则会以为"忽略没生效"。
+	problems = append(problems, glob.Validate("ignore.files", s.Ignore.Files)...)
+	problems = append(problems, glob.Validate("ignore.fields", s.Ignore.Fields)...)
+	problems = append(problems, glob.Validate("ignore.forms", s.Ignore.Forms)...)
 	return problems
 }

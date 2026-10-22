@@ -2,6 +2,7 @@ package wsindex
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -101,6 +102,51 @@ func TestBuildAndQuery(t *testing.T) {
 	}
 	if got := ix.Search("", 2); len(got) != 2 {
 		t.Errorf("limit 未生效：%d 条", len(got))
+	}
+}
+
+func TestBuildExcludesIgnoredFiles(t *testing.T) {
+	root := newFixture(t)
+	b := newBindings(t)
+	ix, stats, err := Build(context.Background(), b, Options{
+		Root:    root,
+		Grammar: "test",
+		Exclude: []string{"tiptop/aap/4gl/aapr2*"},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stats.Total != 2 {
+		t.Fatalf("排除后文件数 = %d，期望 2", stats.Total)
+	}
+	if got := ix.Lookup("aapr200"); len(got) != 0 {
+		t.Errorf("被排除的文件不应进索引: %+v", got)
+	}
+	if got := ix.Lookup("aapr100"); len(got) != 1 {
+		t.Errorf("未被排除的文件仍应在索引里")
+	}
+}
+
+func TestBuildSkipsInvalidExclude(t *testing.T) {
+	root := newFixture(t)
+	b := newBindings(t)
+	var logged []string
+	_, stats, err := Build(context.Background(), b, Options{
+		Root:    root,
+		Grammar: "test",
+		Exclude: []string{"aapr2[", "tiptop/aap/4gl/aapr2*"},
+		Logf: func(format string, args ...any) {
+			logged = append(logged, fmt.Sprintf(format, args...))
+		},
+	}, nil)
+	if err != nil {
+		t.Fatalf("非法排除模式不应让索引构建失败: %v", err)
+	}
+	if stats.Total != 2 {
+		t.Fatalf("排除后文件数 = %d，期望 2（非法模式被跳过，合法模式仍生效）", stats.Total)
+	}
+	if len(logged) == 0 {
+		t.Error("非法模式应通过 Logf 记录")
 	}
 }
 

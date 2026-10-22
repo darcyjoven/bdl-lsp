@@ -13,7 +13,8 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1–P5 + P6（补全/重命名/Code Action/语义高亮）已完成**。
+> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.2.2`）：语言智能、GLOBALS、字段/表单、
+> 部署、工作区索引、链接资料、内置符号、忽略列表均已落地。剩下的是真实环境验证。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
 > 见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)；
 > P3b：4GL 字段存在性校验与 .per 内部一致性，见 [docs/PLAN-P3B-FIELD.md](docs/PLAN-P3B-FIELD.md)。
@@ -26,8 +27,8 @@
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
 | `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化，remote 已配置 |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | **v0.1.0 可用**，14 个 e2e 用例通过 |
-| `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` 可用**，38 项 query 校验通过 |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | **v0.1.1 可用**，e2e 33/33 |
+| `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**，query 校验通过 |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |
 
@@ -40,6 +41,8 @@
 ## 文档
 
 - **[会话交接（HANDOVER）](docs/HANDOVER.md)** —— 接手新会话先读这一份
+- **[测试指南（TESTING）](docs/TESTING.md)** —— 测试矩阵、Linux/Windows 命令、语料回归
+- **[编辑器能力差异（EDITOR-SUPPORT）](docs/EDITOR-SUPPORT.md)** —— VSCode vs Zed
 - [功能清单](docs/FEATURES.md) —— 功能基线（标注来源：用户提供 / 协助规划）
 - [P1 详细计划](docs/PLAN-DETAILED-P1.md) —— 当前阶段的实现清单与验收
 - [粗略计划](docs/PLAN.md) —— 目标、范围、架构、里程碑、风险
@@ -134,9 +137,15 @@ bash scripts/corpus-smoke.sh 60
 | 代码补全（关键字/符号/表单字段） | ✅ P6 |
 | 重命名（仅当前文件） | ✅ P6 |
 | Code Action（字段拼错快速修复） | ✅ P6 |
-| 语义高亮（自定义符号） | ✅ P6 |
+| 语义高亮（自定义符号，仅 VSCode） | ✅ P6 |
 | record `BY NAME` 成员校验（默认 off） | ✅ P6 |
+| 工作区符号索引（跨文件跳转/引用/符号搜索） | ✅ P6 |
+| 数据库 schema 索引（`LIKE t.*` 成员、列补全） | ✅ P6 |
+| 链接资料（导入/状态/跨文件可见性/TreeView） | ✅ P7 |
+| 内置符号表（97 条，可配置/热更新） | ✅ P7 |
+| 忽略列表（文件/字段/表单 glob，含 `**`） | ✅ P8 |
+| 部署当前文件（VSCode 命令 / Zed task） | ✅ P8 |
 
 性能（7138 行 / 329 KB）：`didOpen` 133 ms，`didChange` 往返 6.0 ms（含字段校验防抖）。
 
-详见 [P1 详细计划](docs/PLAN-DETAILED-P1.md)。
+详见 [测试指南](docs/TESTING.md) 与 [编辑器能力差异](docs/EDITOR-SUPPORT.md)。
