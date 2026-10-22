@@ -3,7 +3,7 @@
 > 更新时间：2026-10-21（第九轮：**P7-C-1 完成——内置符号表 + 降噪 97%**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.2.0** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*` / `bdl.index.enable`（41 项））/ `zed-extension` 0.1.0。
+> 版本：`bdl-lsp` **0.2.1** / `vscode-extension` 0.1.0（清单新增 `bdl.builtins.*` / `bdl.link.*` / `bdl.index.enable`（41 项））/ `zed-extension` 0.1.0。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -18,7 +18,7 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 
 **P7 全部收尾项已完成**（P7-A/B/C-1/C-2/D/D-2/D-3/E）。剩下的候选：
 
-- P6 质量债剩余：record `.*` / `LIKE table.*` 需要 schema 索引；忽略列表（按 glob）；
+- P6 质量债剩余：忽略列表（按文件/字段/表单 glob）；`record-member-unknown` 是否默认开启（现 24 条，等用户观察后再定）；
 - 各仓小遗留：grammar 打 tag 去掉 `replace`、`bdl.deploy.currentFile` 命令。
 
 **诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
@@ -45,6 +45,7 @@ P7-D / P7-D-2 已完成（`0.1.4` / `0.1.5`）：链接资料的导入、状态�
 | 配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays` |
 | 采集 | `bdl-lsp link sync -source golang|command|file`；`scripts/fetch-gal-file.sh`（sqlplus 兜底） |
 | 语法审计（P7-C-2） | `make grammar-audit [TOP=60 JSON=/tmp/a.json]`；基线 `TestCorpusGrammarBaseline` |
+| schema 索引 | `internal/schema`：扫描 `<模组根>/<模组>/sch/*.sch`，`initialize` 时同步加载（118 ms）；`bdl.schema.enable` / `bdl.schema.paths`；设计见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) |
 | 工作区索引 | `internal/wsindex`；快照在 `$XDG_CACHE_HOME/bdl-lsp/<工作区>.idx`；`bdl.index.enable=false` 关闭；设计见 [PLAN-P6-INDEX.md](PLAN-P6-INDEX.md) |
 | 诊断码表 | `make diagnostics-check`（并入 lint）· `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md` |
 | 视图（VSCode） | Explorer「链接资料」：程序 → 链内文件（点击跳转）+ 反查引用程序（分页 50） |
@@ -63,7 +64,7 @@ B-5 游标 / prepare statement 都已落地**。P7-B 只剩**诊断降噪**（§
 
 | 目录 | 远程 | HEAD | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.2.0`，见 `git log -1` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.2.1`，见 `git log -1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `365625a`（v0.1.0） | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `7f80d21`（v0.1.0） | Zed 插件 |
 

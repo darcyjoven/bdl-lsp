@@ -29,7 +29,7 @@
 | `link-data-invalid` | `warning` | 链接资料格式不合法（JSONL 解析失败、schema 版本过高） |
 | `link-data-stale` | `hint` | 链接资料超过 `bdl.link.maxAgeDays` 未更新 |
 | `missing-node` | `warning` | grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等） |
-| `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里（`LIKE table.*` 时静态不可知） |
+| `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关） |
 | `syntax-error` | `warning` | grammar 的 ERROR 节点（无法解析的片段） |
 | `variable-source-unresolved` | `warning` | 变量使用处查不到任何定义（局部 / 模块级 / GLOBALS 引入均无） |
 

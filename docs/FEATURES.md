@@ -111,6 +111,7 @@
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
 | 39 | 程序链接资料索引 | `bdl-lsp link import/status`；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
 | 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
+| 38f | 数据库 schema 索引（P6） | 解析工作区 3127 个 `.sch`（2879 表，118 ms，`initialize` 同步）；`RECORD LIKE t.*` 记录成员可校验（开启 `recordMemberDiagnostics` 后语料仅剩 24 条），`rec.` 补全给出表的全部列 | P6（✅ 0.2.1） |
 | 38e | 工作区符号索引（P6） | 后台索引全工作区（7756 文件 24.7 s，增量 22 ms）并持久化快照；`workspace/symbol` / 跳转 / 引用覆盖未打开文件。可达模组（本模组 + sub/lib/qry）+ 唯一命中两条保守规则 | P6（✅ 0.2.0） |
 | 38d | 诊断码表防漂移（P7-B 收尾） | `make diagnostics-check` 校验注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode `package.json`（枚举、六个老键的 `default`、组内默认级别一致）；文档由 `make diagnostics-write` 生成，并入 `make lint` | P7-B（✅ 0.1.9） |
 | 39d | 链接资料视图（P7-E） | 自定义请求 `bdl/linkTree` / `bdl/linkReferences`；VSCode 独立 TreeView「链接资料」（程序 → 链内文件三级，点击跳转）+ 反查引用程序（默认不查、分页 50）；实测最大链组装 3.4 ms | P7-E（✅ 0.1.7） |

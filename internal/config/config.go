@@ -62,9 +62,17 @@ type Settings struct {
 	// Globals 是 GLOBALS 引入（P3a）相关的配置。
 	Globals GlobalsSettings `json:"globals"`
 	// RecordMemberDiagnostics 是 `BY NAME rec.member` 记录成员校验（P6）
-	// 的诊断级别。**默认 off**：记录成员静态上只能靠 TYPE..END RECORD
-	// 的字段列表，而语料里 `DEFINE r LIKE table.*`（按数据库列展开）
-	// 很常见，硬校验会大面积误报。由用户开启并观察。
+	// 的诊断级别。**默认 off**，但是"可开启"的：
+	//
+	// 没有 schema 索引时，`DEFINE r RECORD LIKE table.*` 的成员全在数据库
+	// 表结构里，静态不可见，硬校验会成片误报——这也是当初默认关掉的原因。
+	// 有了 `bdl.schema`（P6 数据库 schema 索引）之后，这类记录能真正展开，
+	// 语料实测开启后只有 24 条（15108 个文件），且都是"源码里引用了 RECORD
+	// 声明里没有的成员"这类实际存在的不一致。
+	//
+	// 仍然默认 off 的原因：少数记录的成员可能来自链接资料/构建时的其它版本
+	// （实测 ghrr034.4gl 一个文件就占 17 条），默认开启会让用户先看到一片
+	// 红再自行判断，不如让他显式开启。
 	RecordMemberDiagnostics DiagnosticLevel `json:"recordMemberDiagnostics"`
 
 	// FieldDiagnostics 是 4GL 字段存在性校验（P3b）的诊断级别，
@@ -80,6 +88,8 @@ type Settings struct {
 	Link LinkSettings `json:"link"`
 	// Index 是工作区符号索引（P6）的配置。
 	Index IndexSettings `json:"index"`
+	// Schema 是数据库 schema 索引（P6）的配置。
+	Schema SchemaSettings `json:"schema"`
 	// PerRoots 是 .per 表单的附加解析根（相对工作区根，按序尝试）。
 	PerRoots []string `json:"perRoots"`
 	// Format 是 4GL 格式化配置（P4）。.per 不做任何格式化（用户决定）。
@@ -158,6 +168,27 @@ func (s Settings) BuiltinsEnabled() bool {
 // 默认启用：没有它 `workspace/symbol` / 跳转 / 引用只看得到已打开的文件，
 // 用户会因为"时而能跳时而不能"而困惑。7600 个文件的首次索引约 20-25 s
 // （后台、不阻塞编辑），之后按 (mtime,size) 增量刷新。
+// SchemaSettings 是 `bdl.schema`：数据库 schema 索引（P6）。
+//
+// 默认启用：`DEFINE r RECORD LIKE t.*` 在语料里出现 21144 次，成员全在
+// 数据库表结构里。没有 schema 索引时这些记录只能整体不校验。
+// 解析的是工作区里的 `.sch` 文件（`<模组根>/<模组>/sch/*.sch`），
+// 不连数据库、不读生产库信息。
+type SchemaSettings struct {
+	// Enable 关闭后不解析 .sch 文件（`LIKE t.*` 的记录退回"不校验"）。
+	Enable *bool `json:"enable,omitempty"`
+	// Paths 是额外的 schema 目录（相对工作区根，或绝对路径）。
+	Paths []string `json:"paths,omitempty"`
+}
+
+// SchemaEnabled 报告 schema 索引是否启用（默认启用）。
+func (s Settings) SchemaEnabled() bool {
+	if s.Schema.Enable == nil {
+		return true
+	}
+	return *s.Schema.Enable
+}
+
 type IndexSettings struct {
 	// Enable 关闭后不建索引（超大仓库 / 只想编辑单个文件时用）。
 	Enable *bool `json:"enable,omitempty"`
@@ -426,6 +457,13 @@ func (m *Manager) merge(s *Settings) {
 	if s.Index.Enable != nil {
 		v := *s.Index.Enable
 		m.cur.Index.Enable = &v
+	}
+	if s.Schema.Enable != nil {
+		v := *s.Schema.Enable
+		m.cur.Schema.Enable = &v
+	}
+	if len(s.Schema.Paths) > 0 {
+		m.cur.Schema.Paths = append([]string(nil), s.Schema.Paths...)
 	}
 	if s.Link.Enable != nil {
 		v := *s.Link.Enable

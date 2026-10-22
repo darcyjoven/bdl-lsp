@@ -77,7 +77,7 @@ func (s *Server) checkRecordMembers(doc *document.Document) []recordMemberIssue 
 		return nil
 	}
 
-	scopes := buildRecordScopes(fi)
+	scopes := s.buildRecordScopes(fi)
 	containerOf := containerLookup(fi)
 
 	var issues []recordMemberIssue
@@ -108,13 +108,19 @@ func (s *Server) checkRecordMembers(doc *document.Document) []recordMemberIssue 
 // 索引里只有 `apa`/`type` 这些第一层名字。硬校验会把所有
 // `sr.<子记录>.<字段>` 用法误报成"没有成员 apb"——实测占全部发现的
 // 绝大多数（aapg111.4gl 的 sr.apb 反复误报）。
-func membersOf(sym *index.Symbol) (members map[string]bool, hasOpaque bool) {
+func (s *Server) membersOf(sym *index.Symbol) (members map[string]bool, hasOpaque bool) {
 	members = map[string]bool{}
-	// `DEFINE r RECORD LIKE table.*`：字段全部来自数据库 schema，静态不可见。
+	// `DEFINE r RECORD LIKE table.*`：字段全部来自数据库 schema。
 	// 索引里这种记录 Children 为空、TypeText 以 "RECORD LIKE" 开头。
 	// 实测 aapr105.4gl 的 `rvu RECORD LIKE rvu_file.*`：不识别会把它当成
 	// "零成员的记录"，于是所有 rvu.xxx 用法全报错——纯误报。
+	//
+	// P6：schema 索引建好后，这类记录可以**真正校验**（语料里 21144 处
+	// `LIKE t.*` 声明，是记录成员用得最多的地方）。表找不到时退回不校验。
 	if len(sym.Children) == 0 {
+		if cols := s.recordMembersOfType(sym.TypeText); len(cols) > 0 {
+			return cols, false
+		}
 		return members, true
 	}
 	// 防御性校验：内联 RECORD 的 TypeText 必然以 "RECORD" 开头。
@@ -136,10 +142,15 @@ func membersOf(sym *index.Symbol) (members map[string]bool, hasOpaque bool) {
 				members[c.Lower] = true
 			}
 		case index.KindRecord:
-			// 子记录组：内部字段静态不可见（多半是 LIKE table.*）
-			hasOpaque = true
+			// 子记录组：组名本身是合法成员，但组内部字段要看它自己的类型。
+			// 目前 3 层访问（`rec.group.field`）在 recordMemberAt 里本来就
+			// 解析不到变量（`lastIdentRun` 取到的是组名），因此不校验；
+			// 这里保持"组名可见 + 整条记录不校验"的旧行为。
 			if c.Lower != "" {
-				members[c.Lower] = true // 组名本身是合法成员
+				members[c.Lower] = true
+			}
+			if len(s.recordMembersOfType(c.TypeText)) == 0 {
+				hasOpaque = true
 			}
 		}
 	}
@@ -150,7 +161,7 @@ func membersOf(sym *index.Symbol) (members map[string]bool, hasOpaque bool) {
 //
 // 容器名用符号的 Container 字段（顶层为空串）——这是 index 已经维护好的
 // 归属信息，不需要重新遍历语法树。
-func buildRecordScopes(fi *index.FileIndex) map[string]*recordScope {
+func (s *Server) buildRecordScopes(fi *index.FileIndex) map[string]*recordScope {
 	// scopeKey 给成员表加容器前缀。
 	//
 	// 只用符号名做 key 会让不同作用域的同名记录互相覆盖——
@@ -165,7 +176,7 @@ func buildRecordScopes(fi *index.FileIndex) map[string]*recordScope {
 		if sym.Kind != index.KindRecord || len(sym.Children) == 0 {
 			continue
 		}
-		members, opaque := membersOf(sym)
+		members, opaque := s.membersOf(sym)
 		if opaque {
 			// 含子记录组 → 静态无法完整校验，整条跳过（见 membersOf 注释）
 			continue
@@ -205,7 +216,7 @@ func buildRecordScopes(fi *index.FileIndex) map[string]*recordScope {
 
 			// 内联 `DEFINE x RECORD ... END RECORD`：成员就是 Children，
 			// 不再按名字去查 TYPE 声明。
-			members, opaque := membersOf(sym)
+			members, opaque := s.membersOf(sym)
 			sc := get(sym.Container)
 			if opaque || len(members) == 0 {
 				// 记录存在但静态不可校验。必须**记下这个 key**（nil），
@@ -299,7 +310,14 @@ func recordMemberAt(n *ts.Node, src []byte, scopes map[string]*recordScope,
 		// `rec.*`：property 为空，通配形态无需逐个校验。
 		return nil
 	}
-	recName := strings.ToLower(lastIdentRun(string(src[obj.StartByte():clampEnd(obj.EndByte(), len(src))])))
+	recName, ok := recordObjectName(string(src[obj.StartByte():clampEnd(obj.EndByte(), len(src))]))
+	if !ok {
+		// 多级限定（`a.b.c`）：左侧不是简单变量，成员归属无从谈起。
+		// 实测 cbmi100.4gl 的 `com.darcy.Hello.newHello(...)`：左侧是外部类
+		// 限定名，最后一段 `darcy` 恰好与一个记录变量同名，按旧逻辑（取
+		// 最后一段标识符）会把 `Hello` 判成 darcy 的成员——纯误报。
+		return nil
+	}
 	memberName := strings.TrimSpace(string(src[prop.StartByte():clampEnd(prop.EndByte(), len(src))]))
 	if recName == "" || memberName == "" {
 		return nil
@@ -334,6 +352,41 @@ func recordMemberAt(n *ts.Node, src []byte, scopes map[string]*recordScope,
 		Start:      prop.StartByte(),
 		End:        prop.EndByte(),
 	}
+}
+
+// recordObjectName 从 `object` 节点的源码文本里取**简单变量名**。
+//
+// 接受：`rec`、`g_bmb[l_ac]`（数组元素）、`rec [1]`。
+// 拒绝：任何含 `.` 的形态（`sr.apb`、`com.darcy.Hello`）——多级访问里的
+// 最后一段不是变量名，硬按变量名查只会误报（见调用处的注释）。
+func recordObjectName(text string) (string, bool) {
+	// 去掉所有成对的下标：`g_bmb[l_ac]` → `g_bmb`
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(text); i++ {
+		switch text[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth > 0 {
+				depth--
+			}
+		default:
+			if depth == 0 {
+				b.WriteByte(text[i])
+			}
+		}
+	}
+	name := strings.TrimSpace(b.String())
+	if name == "" {
+		return "", false
+	}
+	for i := 0; i < len(name); i++ {
+		if !isWordByte(name[i]) {
+			return "", false // `.`、空格、调用括号等都不算简单变量
+		}
+	}
+	return strings.ToLower(name), true
 }
 
 // lookupRecordType 返回记录变量的类型描述（用于诊断消息）。

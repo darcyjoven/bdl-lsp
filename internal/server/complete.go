@@ -62,12 +62,17 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 	}
 	cctx.InComment, cctx.InString = contextAt(tree, uint(offset))
 
+	// P6：`. `左侧是 `RECORD LIKE t.*` 时，把数据库列作为精确候选。
+	fi, _ := s.indexFor(doc)
+	if cctx.AfterDot {
+		cctx.Members, cctx.MemberDetail = s.schemaMembersForCompletion(fi, lineText)
+	}
+
 	// 注释/字符串里不补全：关键字会干扰写作。
 	if cctx.InComment || cctx.InString {
 		return reply(ctx, protocol.CompletionList{Items: []protocol.CompletionItem{}}, nil)
 	}
 
-	fi, _ := s.indexFor(doc)
 	symbols := s.crossFileSymbols(doc.URI)
 	fields := s.formFieldsAt(doc, tree, text, uint(offset))
 

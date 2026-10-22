@@ -23,6 +23,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/internal/schema"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
@@ -46,6 +47,8 @@ type Server struct {
 	links *linkState
 	// ws 是工作区符号索引（P6）的运行时状态，始终非 nil。
 	ws *wsIndexState
+	// schema 是数据库 schema 索引（P6）；未启用/没有 .sch 时为 nil。
+	schema *schema.Index
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
@@ -296,6 +299,11 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 
 	// P7-C：内置符号表（内置数据 + 项目覆盖文件）
 	s.newBuiltinLoader()
+
+	// P6：数据库 schema 索引（.sch 文件）。3127 个文件约 110 ms，
+	// 同步加载即可：它决定 didOpen 首轮诊断是否校验 `LIKE t.*` 的记录成员，
+	// 异步会让"第一次打开"和"第二次打开"报不一样的结果。
+	s.loadSchemaIndex()
 
 	// P7-D：链接资料（.link/links.jsonl）；没有资料时静默跳过。
 	// 注意：不在这里 publishLinkStatus —— initialize 期间发通知会和

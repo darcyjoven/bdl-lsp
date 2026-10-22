@@ -664,14 +664,17 @@ Block P2 已完成：
       可校验 281160 处、报出 157 处（**0.1%**），抽查确认为真阳性。
 - [x] **`collectDefines` 多变量 DEFINE 错配**：已修，回归测试
       `TestMultiVariableDefineTypes`（`internal/index/index_test.go`）。
-- [ ] `LIKE table.*` 的成员校验——需数据库 schema 索引。
+- [x] `LIKE table.*` 的成员校验（✅ 0.2.1）：schema 索引落地后 `RECORD LIKE t.*`
+      可校验；`record-member-unknown` 仍默认 off（开启后语料 24 条，见 PLAN-P6-SCHEMA.md §4.1）。
 
 #### 其余 P6 项
 
 - [x] record `.*` 成员校验（`INPUT BY NAME rec.*` / `DISPLAY BY NAME rec.*`）—— 已完成，默认关闭
       （见 [PLAN-P6-RECORDMEMBER.md](PLAN-P6-RECORDMEMBER.md)）。
 - [x] 语义高亮（VSCode + Zed）—— 已完成（见 [PLAN-P6-SEMTOK.md](PLAN-P6-SEMTOK.md)；Zed 走 `highlights.scm`）。
-- [ ] 数据库 schema 索引。
+- [x] 数据库 schema 索引（✅ 0.2.1）：`internal/schema` 解析 `<模组根>/<模组>/sch/*.sch`
+      （3127 文件 → 2879 表，118 ms），`RECORD LIKE t.*` 的成员可校验、`rec.` 补全给全部列。
+      见 [PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md)。
 - [ ] 纯 Go SFTP（仅在确有需求时评估）。
 - [ ] 性能缓存与 macOS 兼容（5.0 未排期）。
 

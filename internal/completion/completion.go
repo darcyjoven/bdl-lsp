@@ -66,6 +66,12 @@ type Context struct {
 	InString bool
 	// TriggerChar 是触发字符（`.` 等），手工触发时为空。
 	TriggerChar string
+	// Members 是 `.` 左侧记录变量的已知成员（P6：来自数据库 schema 索引）。
+	// 只给**精确**知道归属的成员：`maj.` 且 maj 是 `RECORD LIKE maj_file.*`
+	// 时就是 maj_file 的列。为空表示"没有更精确的信息"，退回尽力而为。
+	Members []string
+	// MemberDetail 是 Members 的右侧说明（如 "maj_file 的列"）。
+	MemberDetail string
 }
 
 // Result 是一次补全的结果。
@@ -134,6 +140,15 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 	// 1) 成员访问（`.` 之后）：只给字段/记录成员，不给关键字。
 	//    这里没有类型信息，给的是"当前表单字段 + 同名符号"，属于尽力而为。
 	if ctx.AfterDot {
+		// 记录的已知成员优先：`maj.` → maj_file 的全部列（schema 索引）。
+		// 这类记录在语料里有 21144 处，靠表单字段猜几乎没有命中率。
+		if len(ctx.Members) > 0 {
+			for _, m := range ctx.Members {
+				add(Item{Label: m, Kind: KindField, Detail: ctx.MemberDetail, SortText: "0" + m})
+			}
+			sortItems(items)
+			return Result{Items: truncate(items, max)}
+		}
 		for _, f := range fields {
 			add(Item{Label: f, Kind: KindField, Detail: "表单字段", SortText: "0" + f})
 		}
