@@ -107,14 +107,9 @@ if (-not (Get-Command $CC -ErrorAction SilentlyContinue)) {
 $gccVersion = (& $CC --version) | Select-Object -First 1
 Info "cc      : $gccVersion"
 
-# grammar 与 bdl-lsp 是兄弟目录：go.mod 里用 replace ../tree-sitter-bdl。
-foreach ($dir in @("..\tree-sitter-bdl", "..\tree-sitter-per")) {
-    $p = [System.IO.Path]::GetFullPath((Join-Path $Root $dir))
-    if (-not (Test-Path $p)) {
-        Fail "缺少 grammar 目录：$p`n（go.mod 用 replace 指向兄弟目录，需与 bdl-lsp 同级）"
-    }
-}
-Info "grammar : ..\tree-sitter-bdl, ..\tree-sitter-per"
+# 两个 grammar 自 v1.0.0/v1.0.1 起是**带 tag 的普通 Go 模块**（go.mod 固定版本），
+# 不再用 replace 指向兄弟目录，所以这里**不**检查 ..\tree-sitter-*。
+# 曾经的检查会让 CI（只检出 bdl-lsp）在构建前就 Fail。
 
 # ---------------------------------------------------------------------------
 # 1~5. 设置环境 → 依赖 → 构建 → 验证 → 测试
