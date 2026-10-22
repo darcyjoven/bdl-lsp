@@ -27,7 +27,7 @@
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
 | `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化，remote 已配置 |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包 | **v0.2.0 可用**，e2e 33/33 |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp`） | **v0.3.0 可用**，e2e 33/33 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**，query 校验通过 |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |
