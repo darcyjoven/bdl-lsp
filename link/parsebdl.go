@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/index"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // NewBDLParseFunc 返回"从 .4gl 提取可调用函数名"的真实实现。

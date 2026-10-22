@@ -14,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/darcyjoven/bdl-lsp/glob"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
-	"github.com/darcyjoven/bdl-lsp/internal/glob"
 )
 
 // GeneroVersion 是目标 Genero 版本。
@@ -221,53 +221,9 @@ type LinkSettings struct {
 	GlobalModules []string `json:"globalModules"`
 	// MaxAgeDays 是资料过期提示阈值（天），0 = 不提示。
 	MaxAgeDays int `json:"maxAgeDays"`
-	// Sync 是采集（P7-D-3）：从哪里把 DS.GAL_FILE 取回来。
-	Sync LinkSyncSettings `json:"sync"`
-}
-
-// LinkSyncSettings 是 `bdl.link.sync`：自动采集链接资料。
-//
-// 默认**全关**：采集要连用户的数据库/执行命令，必须显式打开。
-type LinkSyncSettings struct {
-	Enable bool `json:"enable"`
-	// Source 是采集来源：golang（直连 Oracle）/ command（执行命令）/ file（读已导出的 CSV）。
-	Source string `json:"source"`
-	// Interval 是自动同步间隔（秒），0 = 只在启动时同步一次。
-	Interval int `json:"interval"`
-	// OnStart 表示启动时先同步一次。
-	OnStart bool `json:"onStart"`
-	// DB 是 golang 来源的连接信息。密码**不要写在这里**：
-	// 用 `password: "${env:BDL_ORA_PASSWORD}"` 或 `<project>/.link/secrets.json`。
-	DB LinkDBSettings `json:"db"`
-	// Command 是 command 来源要执行的命令（CSV 打到 stdout，凭证走 stdin）。
-	Command string `json:"command"`
-	// File 是 file 来源的 CSV 路径；空 = `<dataDir>/gal_file.csv`。
-	File string `json:"file"`
-}
-
-// LinkDBSettings 是 Oracle 连接配置。
-type LinkDBSettings struct {
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Service  string `json:"service"`
-	User     string `json:"user"`
-	Password string `json:"password"`
-	Query    string `json:"query"`
-}
-
-// LinkSync 返回采集配置（带上资料目录）。
-func (s Settings) LinkSync() LinkSyncSettings {
-	cfg := s.Link.Sync
-	if cfg.Source == "" {
-		cfg.Source = "golang"
-	}
-	if cfg.DB.Port == 0 {
-		cfg.DB.Port = 1521
-	}
-	if cfg.File == "" {
-		cfg.File = s.LinkDataDir() + "/gal_file.csv"
-	}
-	return cfg
+	// 注意：这里**没有**采集（sync）配置。
+	// 生成 .link/ 资料是 tiptop 的职责，bdl-lsp 只读它。
+	// 见 docs/PLAN-SEPARATION.md。
 }
 
 // LinkEnabled 报告链接资料功能是否启用（默认启用）。
@@ -467,46 +423,6 @@ func (m *Manager) merge(s *Settings) {
 	if s.Link.MaxAgeDays > 0 {
 		m.cur.Link.MaxAgeDays = s.Link.MaxAgeDays
 	}
-	// P7-D-3：采集。布尔/数字要按"出现过"判断，不能按零值——
-	// 用户可能就是想把它关掉（`enable: false`）。
-	if s.Link.Sync.Enable {
-		m.cur.Link.Sync.Enable = true
-	}
-	if s.Link.Sync.Source != "" {
-		m.cur.Link.Sync.Source = s.Link.Sync.Source
-	}
-	if s.Link.Sync.Interval > 0 {
-		m.cur.Link.Sync.Interval = s.Link.Sync.Interval
-	}
-	if s.Link.Sync.OnStart {
-		m.cur.Link.Sync.OnStart = true
-	}
-	if s.Link.Sync.Command != "" {
-		m.cur.Link.Sync.Command = s.Link.Sync.Command
-	}
-	if s.Link.Sync.File != "" {
-		m.cur.Link.Sync.File = s.Link.Sync.File
-	}
-	if s.Link.Sync.DB.Host != "" {
-		m.cur.Link.Sync.DB.Host = s.Link.Sync.DB.Host
-	}
-	if s.Link.Sync.DB.Port > 0 {
-		m.cur.Link.Sync.DB.Port = s.Link.Sync.DB.Port
-	}
-	if s.Link.Sync.DB.Service != "" {
-		m.cur.Link.Sync.DB.Service = s.Link.Sync.DB.Service
-	}
-	if s.Link.Sync.DB.User != "" {
-		m.cur.Link.Sync.DB.User = s.Link.Sync.DB.User
-	}
-	if s.Link.Sync.DB.Password != "" {
-		m.cur.Link.Sync.DB.Password = s.Link.Sync.DB.Password
-	}
-	if s.Link.Sync.DB.Query != "" {
-		m.cur.Link.Sync.DB.Query = s.Link.Sync.DB.Query
-	}
-
-	// P7-C：内置符号表
 	if s.Builtins.Enable != nil {
 		v := *s.Builtins.Enable
 		m.cur.Builtins.Enable = &v
@@ -588,25 +504,6 @@ func (s Settings) Validate() []string {
 	if s.Link.MaxAgeDays < 0 {
 		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
 	}
-	if s.Link.Sync.Enable {
-		switch strings.ToLower(s.Link.Sync.Source) {
-		case "", "golang", "db", "command", "cmd", "file", "script", "csv":
-		default:
-			problems = append(problems, fmt.Sprintf(
-				"link.sync.source = %q 不认识（可选 golang / command / file）", s.Link.Sync.Source))
-		}
-		if s.Link.Sync.Interval < 0 {
-			problems = append(problems, fmt.Sprintf("link.sync.interval 不能为负（%d）", s.Link.Sync.Interval))
-		}
-		if strings.EqualFold(s.Link.Sync.Source, "command") && strings.TrimSpace(s.Link.Sync.Command) == "" {
-			problems = append(problems, "link.sync.source=command 但 link.sync.command 为空")
-		}
-		if p := s.Link.Sync.DB.Password; p != "" &&
-			!strings.HasPrefix(p, "${env:") && !strings.HasPrefix(p, "$") {
-			problems = append(problems, "link.sync.db.password 看起来是明文；请用 ${env:BDL_ORA_PASSWORD} "+
-				"或 .link/secrets.json（settings.json 会被提交进仓库）")
-		}
-	}
 
 	for i, p := range s.Builtins.Paths {
 		if strings.TrimSpace(p) == "" {
@@ -658,25 +555,6 @@ func (s Settings) Validate() []string {
 	}
 	if s.Link.MaxAgeDays < 0 {
 		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
-	}
-	if s.Link.Sync.Enable {
-		switch strings.ToLower(s.Link.Sync.Source) {
-		case "", "golang", "db", "command", "cmd", "file", "script", "csv":
-		default:
-			problems = append(problems, fmt.Sprintf(
-				"link.sync.source = %q 不认识（可选 golang / command / file）", s.Link.Sync.Source))
-		}
-		if s.Link.Sync.Interval < 0 {
-			problems = append(problems, fmt.Sprintf("link.sync.interval 不能为负（%d）", s.Link.Sync.Interval))
-		}
-		if strings.EqualFold(s.Link.Sync.Source, "command") && strings.TrimSpace(s.Link.Sync.Command) == "" {
-			problems = append(problems, "link.sync.source=command 但 link.sync.command 为空")
-		}
-		if p := s.Link.Sync.DB.Password; p != "" &&
-			!strings.HasPrefix(p, "${env:") && !strings.HasPrefix(p, "$") {
-			problems = append(problems, "link.sync.db.password 看起来是明文；请用 ${env:BDL_ORA_PASSWORD} "+
-				"或 .link/secrets.json（settings.json 会被提交进仓库）")
-		}
 	}
 
 	for i, p := range s.Builtins.Paths {

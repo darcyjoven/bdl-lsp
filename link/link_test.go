@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // fakeScanner 让导入逻辑不依赖磁盘：在 mains 集合里的算 MAIN，

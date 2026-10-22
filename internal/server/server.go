@@ -16,15 +16,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
+	"github.com/darcyjoven/bdl-lsp/builtin"
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/ignore"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/schema"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )
@@ -69,8 +69,6 @@ type Server struct {
 	// varQueries 是变量使用检查的复用 query（T5；惰性编译）。
 	varQueries     *variableQueries
 	varQueriesOnce sync.Once
-	// linkSyncStop 停掉后台采集（P7-D-3；未启用时为 nil）。
-	linkSyncStop func()
 	// fnCallCollector 是函数调用收集的复用 collector（function-not-found；惰性创建）。
 	fnCallOnce      sync.Once
 	fnCallCollector *index.CallCollector
@@ -334,7 +332,6 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	// 改成第一次 didOpen 时发，那时用户已经真的在看文件了。
 	s.newLinkResolver()
 	// P7-D-3：采集（默认全关）。成功后会自己重载资料并补发诊断。
-	s.startLinkSync(ctx)
 	if n := len(s.settings().Globals.SearchPaths); n > 0 {
 		s.logger.Info("globals searchPaths 生效", "count", n)
 	}
@@ -397,7 +394,6 @@ func (s *Server) handleShutdown(ctx context.Context, reply jsonrpc2.Replier) err
 	s.mu.Lock()
 	s.shutdown = true
 	s.mu.Unlock()
-	s.stopLinkSync()
 	s.stopWorkspaceIndex()
 	s.logger.Info("收到 shutdown")
 	return reply(ctx, nil, nil)

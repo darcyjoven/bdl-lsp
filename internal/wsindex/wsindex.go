@@ -31,10 +31,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/darcyjoven/bdl-lsp/internal/glob"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/link"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/glob"
+	"github.com/darcyjoven/bdl-lsp/index"
+	"github.com/darcyjoven/bdl-lsp/link"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // Version 是快照格式版本。字段含义变化（不只是加字段）时必须 +1。

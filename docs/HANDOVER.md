@@ -457,10 +457,27 @@ FMT_DEBUG=<file> go run ./cmd/fmt-audit   # 单文件格式化调试
 # 手工验证 LSP
 ./artifacts/bin/bdl-lsp version
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl
-./artifacts/bin/bdl-lsp deploy -list -workspace <ws>
-./artifacts/bin/bdl-lsp deploy -dry-run -workspace <ws>
+
+# 采集与部署在 tiptop（独立仓库，见 docs/PLAN-SEPARATION.md）
+cd ../tiptop && source ../bdl-lsp/scripts/dev-env.sh && make build
+./artifacts/bin/tiptop link status -root <ws>
+./artifacts/bin/tiptop deploy -list -workspace <ws>
+./artifacts/bin/tiptop deploy -dry-run -workspace <ws>
 ```
 
+36. **`schema.Merge` 曾与文件顺序相关**（分离改造时发现，2026-10-22）：
+
+    `LoadFiles` 按传入顺序合并。ALTER 先到会给表打 `AlterOnly` 标记，
+    之后 CREATE 到达时旧代码**换了一张新表**，把 ALTER 已经加上的列整张丢掉。
+    症状：间歇性"缺少列"（`internal/schema` 测试 2/10 概率失败；目录遍历顺序、
+    多模组目录、并发导入都可能让 ALTER 先到）。
+
+    修法：CREATE 到达时不再换表，只清 `AlterOnly` 并并入列（并集语义）。
+    回归测试 `TestMergeOrderIndependent`（alter 先 / create 先两种顺序都断言）。
+    教训：**任何"按顺序合并"的累积结构，都要问一句"顺序反过来还对吗"**——
+    这类缺陷在本地跑十次九次是过的。
+
+    
 ## 10. 文档地图
 
 | 文档 | 内容 |

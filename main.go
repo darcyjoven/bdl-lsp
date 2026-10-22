@@ -4,9 +4,12 @@
 //
 //	bdl-lsp serve              以 stdio 提供 LSP（默认）
 //	bdl-lsp check <file>...    解析文件并输出问题（用于冒烟测试/CI）
-//	bdl-lsp deploy             上传到远程服务器并远程编译（见 internal/deploy）
-//	bdl-lsp link import|status 导入/查看程序链接资料（见 internal/link）
 //	bdl-lsp version            打印版本
+//
+// 链接资料的生成与部署**不在本程序内**：它们属于具体系统的项目管理工具
+// （如 tiptop 的 `tiptop link import` / `tiptop deploy`）。bdl-lsp 只读取
+// `<项目>/.link/` 下的资料，通过文件系统与那些工具对接。
+// 见 docs/PLAN-SEPARATION.md。
 package main
 
 import (
@@ -19,11 +22,9 @@ import (
 
 	"github.com/darcyjoven/bdl-lsp/internal/check"
 	"github.com/darcyjoven/bdl-lsp/internal/cmdline"
-	"github.com/darcyjoven/bdl-lsp/internal/deploycli"
-	"github.com/darcyjoven/bdl-lsp/internal/linkcli"
 	"github.com/darcyjoven/bdl-lsp/internal/logging"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // version 由 -ldflags "-X main.version=..." 注入。
@@ -31,7 +32,7 @@ import (
 // 版本策略（用户 2026-10-21 定）：从 0.1.1 起算；每完成一轮完整改动
 // 并提交，就 +1。三个仓库（bdl-lsp / vscode-extension / zed-extension）
 // 各自独立记版本，不要求一致。
-var version = "0.3.1"
+var version = "0.3.2"
 
 func main() {
 	os.Exit(run(os.Args[1:]))
@@ -50,10 +51,6 @@ func run(args []string) int {
 		return 0
 	case "check":
 		return runCheck(args)
-	case "deploy":
-		return deploycli.Run(args, version)
-	case "link":
-		return linkcli.Run(args, version)
 	case "serve", "--stdio":
 		return runServe(args)
 	default:

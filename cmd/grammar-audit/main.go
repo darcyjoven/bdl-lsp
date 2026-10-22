@@ -22,7 +22,7 @@ import (
 	"os"
 
 	"github.com/darcyjoven/bdl-lsp/internal/gramaudit"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 func main() {

@@ -9,8 +9,8 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	"go.lsp.dev/protocol"
 )

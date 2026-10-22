@@ -18,11 +18,11 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/completion"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"

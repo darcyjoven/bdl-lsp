@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/builtin"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // builtinNames 返回内置符号表里全部名字（小写）。

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/darcyjoven/bdl-lsp/internal/link"
+	"github.com/darcyjoven/bdl-lsp/link"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 	"go.lsp.dev/uri"

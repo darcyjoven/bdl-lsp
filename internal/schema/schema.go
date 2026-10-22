@@ -114,10 +114,16 @@ func (ix *Index) Merge(stmts []Stmt) {
 			// 取**并集**而不是覆盖：多出来的列最多让校验漏报，
 			// 覆盖则会把真实存在的列判成"不存在"——那是误报。
 			t := ix.tables[strings.ToLower(st.Table)]
-			if t == nil || t.AlterOnly {
+			if t == nil {
 				t = &Table{Name: st.Table, Lower: strings.ToLower(st.Table), byName: map[string]bool{}}
 				ix.tables[t.Lower] = t
 			}
+			// 先前的 ALTER 可能比 CREATE 先到（文件遍历顺序不保证，
+			// 实测 `.sch` 的目录顺序、并发导入都会命中）。此时**不能**
+			// 换一张新表——那会把 ALTER 已经加上的列全部丢掉，
+			// 结果取决于文件顺序，是间歇性的假"缺少列"。
+			// 清掉 AlterOnly 标记，保留已收集的列，再并入 CREATE 的列。
+			t.AlterOnly = false
 			for _, c := range st.Columns {
 				t.addColumn(c)
 			}

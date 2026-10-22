@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/index"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // newFixture 建一个 tiptop 布局的临时工作区：

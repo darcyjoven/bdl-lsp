@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"

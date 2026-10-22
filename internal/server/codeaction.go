@@ -23,10 +23,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )

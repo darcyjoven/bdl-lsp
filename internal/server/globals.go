@@ -16,12 +16,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	"go.lsp.dev/protocol"
 )

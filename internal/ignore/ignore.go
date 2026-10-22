@@ -14,8 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/glob"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
-	"github.com/darcyjoven/bdl-lsp/internal/glob"
 )
 
 // Matcher 是编译后的忽略规则。nil 与空 Matcher 都表示"什么都不忽略"。

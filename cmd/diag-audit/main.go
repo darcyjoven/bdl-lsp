@@ -29,8 +29,8 @@ import (
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // hit 是一条待展示的示例。

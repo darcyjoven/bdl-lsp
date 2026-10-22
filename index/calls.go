@@ -4,7 +4,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 

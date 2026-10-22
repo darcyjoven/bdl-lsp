@@ -26,10 +26,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // maxDepth 是 GLOBALS 链的递归解析深度上限（防环；语料实测为 0 层链）。

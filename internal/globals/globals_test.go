@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/index"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // setup 在临时目录里构造文件树并返回 Resolver。

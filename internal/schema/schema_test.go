@@ -95,6 +95,47 @@ tr02 number(5)
 	}
 }
 
+// TestMergeOrderIndependent 验证 CREATE / ALTER 的到达顺序不影响结果。
+//
+// 背景：LoadFiles 按传入的文件顺序合并；ALTER 先到会把表标成 AlterOnly，
+// 之后 CREATE 到达时若换一张新表，ALTER 加的列就丢了。Directory 遍历顺序、
+// 多模组目录、并发导入都可能让 ALTER 先到，症状是间歇性的"缺少列"。
+func TestMergeOrderIndependent(t *testing.T) {
+	create, problems := Parse([]byte("create table apa_file (apa01 varchar2(10), apa02 number(5));"))
+	if len(problems) != 0 {
+		t.Fatalf("create 解析有可疑语句：%v", problems)
+	}
+	alter, problems := Parse([]byte("alter table apa_file add apa03 date;"))
+	if len(problems) != 0 {
+		t.Fatalf("alter 解析有可疑语句：%v", problems)
+	}
+
+	for _, order := range []struct {
+		name  string
+		stmts []Stmt
+	}{
+		{"create 先", append(append([]Stmt{}, create...), alter...)},
+		{"alter 先", append(append([]Stmt{}, alter...), create...)},
+	} {
+		t.Run(order.name, func(t *testing.T) {
+			ix := New()
+			ix.Merge(order.stmts)
+			tb := ix.Table("APA_FILE")
+			if tb == nil {
+				t.Fatal("查不到 apa_file")
+			}
+			if tb.AlterOnly {
+				t.Error("有 create 的表不应标 AlterOnly")
+			}
+			for _, want := range []string{"apa01", "apa02", "apa03"} {
+				if !tb.Has(want) {
+					t.Errorf("缺少列 %s：%+v", want, tb.Columns)
+				}
+			}
+		})
+	}
+}
+
 func TestMergeAndLookup(t *testing.T) {
 	ix := LoadFiles(writeSchemaFiles(t, map[string]string{
 		"a.sch": "create table apa_file (apa01 varchar2(10), apa02 number(5));",

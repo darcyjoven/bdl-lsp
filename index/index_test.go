@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 const sampleBDL = `SCHEMA ds

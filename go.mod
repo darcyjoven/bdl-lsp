@@ -5,7 +5,6 @@ go 1.24
 require (
 	github.com/darcyjoven/tree-sitter-bdl v1.0.1
 	github.com/darcyjoven/tree-sitter-per v1.0.0
-	github.com/sijms/go-ora/v2 v2.9.0
 	github.com/tree-sitter/go-tree-sitter v0.25.0
 	go.lsp.dev/jsonrpc2 v0.10.0
 	go.lsp.dev/protocol v0.12.0

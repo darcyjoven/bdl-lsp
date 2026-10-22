@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/darcyjoven/bdl-lsp/internal/index"
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/schema"
 )
 

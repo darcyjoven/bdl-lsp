@@ -8,8 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/index"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // CallStat 是一个函数名在全语料里的调用统计。

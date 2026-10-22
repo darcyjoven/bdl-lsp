@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // TestRunSmallTree 在临时目录里钉住审计逻辑本身：

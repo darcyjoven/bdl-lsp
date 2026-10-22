@@ -18,7 +18,7 @@ import (
 	"strings"
 
 	"github.com/darcyjoven/bdl-lsp/internal/form"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 func firstSegment(literal string) string {

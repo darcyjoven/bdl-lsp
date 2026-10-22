@@ -52,7 +52,8 @@
 - [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
 - **[生产项目工作区搭建](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/PROJECT-SETUP.md)** —— 从 `/u1/toppord` 打包 → Git → 链接资料 → 部署测试
 - 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)｜[P6 补全](docs/PLAN-P6-COMPLETION.md)｜[P6 重命名](docs/PLAN-P6-RENAME.md)｜[P6 CodeAction](docs/PLAN-P6-CODEACTION.md)｜[P6 语义高亮](docs/PLAN-P6-SEMTOK.md)｜[P6 record 成员](docs/PLAN-P6-RECORDMEMBER.md)
-- 部署用法：[示例配置](examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
+- 部署用法：由 [tiptop](https://github.com/darcyjoven/tiptop) 提供；[示例配置](examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
+- 分离计划（已完成）：[PLAN-SEPARATION.md](docs/PLAN-SEPARATION.md)
 
 ## 目录约定
 
@@ -99,16 +100,10 @@ make regress                   # 全量语料回归（约 2.5 分钟）
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl
 
-# 程序链接资料（P7-D）：导入 DS.GAL_FILE 导出 → <项目根>/.link/
-./artifacts/bin/bdl-lsp link import -csv artifacts/link/link.csv -root /path/to/project
-./artifacts/bin/bdl-lsp link status -root /path/to/project
-
-# 直接采集（P7-D-3）：纯 Go 直连 Oracle / 执行命令 / 读已导出的 CSV
-export BDL_ORA_PASSWORD=...            # 密码只从环境变量或 .link/secrets.json 取
-# 首次会解析全部 .4gl（约 20–30 秒），stderr 每 400 个文件打印进度
-./artifacts/bin/bdl-lsp link sync -source golang -host db -service PROD -user readonly -root .
-./artifacts/bin/bdl-lsp link sync -source file -file .link/gal_file.csv -root .
-bash scripts/fetch-gal-file.sh          # 没有 go 环境时的兜底：服务器 sqlplus 导出
+# 程序链接资料（P7-D）：采集与导入**不在本程序内**，由 tiptop 负责
+# （见 docs/PLAN-SEPARATION.md）。bdl-lsp 只读取 <项目根>/.link/ 下的资料。
+tiptop link import -csv artifacts/link/link.csv -root /path/to/project
+tiptop link status -root /path/to/project
 
 # 语料抽样
 bash scripts/corpus-smoke.sh 60

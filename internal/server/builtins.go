@@ -3,7 +3,7 @@ package server
 import (
 	"strings"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
+	"github.com/darcyjoven/bdl-lsp/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
 	"go.lsp.dev/protocol"

@@ -3,7 +3,7 @@ package document
 import (
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 func TestNewAndSnapshot(t *testing.T) {

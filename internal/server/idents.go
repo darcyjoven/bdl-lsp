@@ -5,10 +5,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // indexCache 缓存每个文档的符号索引，按 (URI, 版本) 失效。

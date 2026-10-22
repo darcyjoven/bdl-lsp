@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/darcyjoven/bdl-lsp/internal/link"
+	"github.com/darcyjoven/bdl-lsp/link"
 )
 
 // Discover 找出工作区里的 schema 文件。

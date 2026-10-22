@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	linkpkg "github.com/darcyjoven/bdl-lsp/internal/link"
 	"github.com/darcyjoven/bdl-lsp/internal/wsindex"
+	linkpkg "github.com/darcyjoven/bdl-lsp/link"
 	"go.lsp.dev/protocol"
 )
 

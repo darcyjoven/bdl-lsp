@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	"go.lsp.dev/protocol"
 )
 

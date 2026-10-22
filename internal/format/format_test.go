@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // fmtOnce 解析并格式化一次（失败终止测试）。

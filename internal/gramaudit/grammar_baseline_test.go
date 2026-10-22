@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // TestCorpusGrammarBaseline 断言真实语料里出错的文件没有变多。

@@ -18,7 +18,7 @@ import (
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/format"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
+	"github.com/darcyjoven/bdl-lsp/parser"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
 )

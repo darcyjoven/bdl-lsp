@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
+	"github.com/darcyjoven/bdl-lsp/builtin"
+	"github.com/darcyjoven/bdl-lsp/index"
 )
 
 // Kind 是补全项种类，映射到 LSP CompletionItemKind。

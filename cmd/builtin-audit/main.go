@@ -34,11 +34,11 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
+	"github.com/darcyjoven/bdl-lsp/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 func main() {

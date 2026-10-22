@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/globals"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
 	ts "github.com/tree-sitter/go-tree-sitter"
 	"go.lsp.dev/jsonrpc2"

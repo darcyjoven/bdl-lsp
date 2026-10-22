@@ -26,10 +26,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
-	"github.com/darcyjoven/bdl-lsp/internal/parser"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/parser"
 )
 
 // maxPerFiles 是工作区 .per 索引的文件数上限（防误把超大目录全扫）。

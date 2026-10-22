@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/darcyjoven/bdl-lsp/internal/builtin"
-	"github.com/darcyjoven/bdl-lsp/internal/index"
+	"github.com/darcyjoven/bdl-lsp/builtin"
+	"github.com/darcyjoven/bdl-lsp/index"
 )
 
 // labels 提取结果里的 Label 列表，便于断言。
