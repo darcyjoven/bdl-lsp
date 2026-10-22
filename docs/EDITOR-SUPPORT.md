@@ -96,9 +96,9 @@ grammar/缩进等编辑行为，不承载 LSP 配置。`settings` 会在服务�
 | 能力 | 根因 | 替代方案 |
 |---|---|---|
 | 语义高亮 | Zed 的渲染走 Tree-sitter query；截至本版本不消费 LSP semantic tokens | `highlights.scm` 覆盖 300/76 个关键字；自定义符号靠 `outline.scm` + 悬停 |
-| 链接资料视图 | 需要 VSCode `TreeDataProvider` 与自定义 LSP 请求（`bdl/linkTree` 等） | 用 `bdl-lsp link status` 看统计；跳转仍可通过 LSP |
-| 部署诊断 | Zed 扩展不能执行任意命令，也没有 Problems 面板注入 API | `.zed/tasks.json` 调 `bdl-lsp deploy`，看终端输出（见 [DEPLOY-ZED](DEPLOY-ZED.md)） |
-| 一键部署当前文件 | VSCode 有 `bdl.deployCurrentFile` 命令 | Zed 用 task：`bdl-lsp deploy -workspace "$ZED_WORKTREE_ROOT" "$ZED_FILE"` |
+| 链接资料视图 | 需要 VSCode `TreeDataProvider` 与自定义 LSP 请求（`bdl/linkTree` 等） | 用 `tiptop link status` 看统计；跳转仍可通过 LSP |
+| 部署诊断 | Zed 扩展不能执行任意命令，也没有 Problems 面板注入 API | `.zed/tasks.json` 调 `tiptop deploy`，看终端输出（见 [DEPLOY-ZED](DEPLOY-ZED.md)） |
+| 一键部署当前文件 | VSCode 有 `bdl.deployCurrentFile` 命令 | Zed 用 task：`tiptop deploy -workspace "$ZED_WORKTREE_ROOT" "$ZED_FILE"` |
 
 > 如果未来 Zed 扩展 API 支持任意命令或 pull diagnostics，优先补：
 > 部署诊断发布 → 链接资料视图 → semantic tokens。不要为了"对齐"在

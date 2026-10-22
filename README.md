@@ -10,15 +10,17 @@
 - 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化）
 - 跨文件校验：4GL 中使用的表单字段是否真的存在于对应 `.per`
 - `.per` 内部一致性校验
-- 部署到服务器并调用 `fglform` / `fglcomp` 编译，编译结果回传为诊断
+- 读取 `<项目根>/.link/` 链接资料，给出跨文件函数可见性与导航
+- 部署到服务器并调用 `fglform` / `fglcomp` 编译、编译结果回传为诊断（**自 0.3.2 起由 [tiptop](https://github.com/darcyjoven/tiptop) 执行**）
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.1`）：语言智能、GLOBALS、字段/表单、
-> 部署、工作区索引、链接资料、内置符号、忽略列表均已落地。剩下的是真实环境验证。
+> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.3` / `tiptop 0.1.1` / `vscode-bdl 0.5.1`）：语言智能、GLOBALS、字段/表单、
+> 工作区索引、内置符号、忽略列表均已落地；链接资料的采集/导入与部署已分离到 tiptop。
+> 剩下的是真实环境验证，见 [PENDING.md](docs/PENDING.md)。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
 > 见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)；
 > P3b：4GL 字段存在性校验与 .per 内部一致性，见 [docs/PLAN-P3B-FIELD.md](docs/PLAN-P3B-FIELD.md)。
-> 已确认：三个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
+> 已确认：四个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
 
@@ -26,9 +28,10 @@
 
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
-| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | 已初始化，remote 已配置 |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp`） | **v0.4.0 可用**，e2e 36/36 |
-| `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**，query 校验通过 |
+| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | **v0.3.3 可用** |
+| `tiptop/` | `git@github.com:darcyjoven/tiptop.git` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI | **v0.1.1 可用** |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp` 与 `tiptop`） | **v0.5.1 可用**，e2e 38/38 |
+| `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**（暂停） |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |
 
@@ -36,7 +39,7 @@
 
 - `bdl-lsp` 是 LSP 二进制的归属仓库；Release/无感下载暂不排期，开发期用本地构建路径。
 - 本地目录名与远程仓库名不同：`vscode-extension` → `vscode-bdl`，`zed-extension` → `zed-bdl`。
-- 三个新仓库均已 `git init -b main` 并完成首次提交；三个仓库的 `origin` 均已配置并完成首次 push。
+- 四个仓库均已 `git init -b main`、配置 `origin` 并完成 push。
 
 ## 文档
 
@@ -52,7 +55,7 @@
 - [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
 - **[生产项目工作区搭建](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/PROJECT-SETUP.md)** —— 从 `/u1/toppord` 打包 → Git → 链接资料 → 部署测试
 - 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)｜[P6 补全](docs/PLAN-P6-COMPLETION.md)｜[P6 重命名](docs/PLAN-P6-RENAME.md)｜[P6 CodeAction](docs/PLAN-P6-CODEACTION.md)｜[P6 语义高亮](docs/PLAN-P6-SEMTOK.md)｜[P6 record 成员](docs/PLAN-P6-RECORDMEMBER.md)
-- 部署用法：由 [tiptop](https://github.com/darcyjoven/tiptop) 提供；[示例配置](examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
+- 部署用法：由 [tiptop](https://github.com/darcyjoven/tiptop) 提供；[示例配置](../tiptop/examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
 - 分离计划（已完成）：[PLAN-SEPARATION.md](docs/PLAN-SEPARATION.md)
 
 ## 目录约定
@@ -130,7 +133,7 @@ bash scripts/corpus-smoke.sh 60
 | GLOBALS 模组全局变量（跨文件跳转/来源/警告） | ✅ P3a |
 | 字段校验（4GL ↔ `.per`） | ✅ P3b |
 | 4GL 格式化（`.per` 不格式化） | ✅ P4 |
-| 部署 + 远程编译（CLI / VSCode） | ✅ P5 |
+| 部署 + 远程编译 | ✅ P5（**自 0.3.2 由 [tiptop](https://github.com/darcyjoven/tiptop) 提供**） |
 | 代码补全（关键字/符号/表单字段） | ✅ P6 |
 | 重命名（仅当前文件） | ✅ P6 |
 | Code Action（字段拼错快速修复） | ✅ P6 |
@@ -138,10 +141,10 @@ bash scripts/corpus-smoke.sh 60
 | record `BY NAME` 成员校验（默认 off） | ✅ P6 |
 | 工作区符号索引（跨文件跳转/引用/符号搜索） | ✅ P6 |
 | 数据库 schema 索引（`LIKE t.*` 成员、列补全） | ✅ P6 |
-| 链接资料（导入/状态/跨文件可见性/TreeView） | ✅ P7 |
+| 链接资料（跨文件可见性 / TreeView / `link-data-*`；**导入与状态在 tiptop**） | ✅ P7 |
 | 内置符号表（97 条，可配置/热更新） | ✅ P7 |
 | 忽略列表（文件/字段/表单 glob，含 `**`） | ✅ P8 |
-| 部署当前文件（VSCode 命令 / Zed task） | ✅ P8 |
+| 部署当前文件（VSCode 命令 / Zed task，调用 `tiptop deploy`） | ✅ P8 |
 
 性能（7138 行 / 329 KB）：`didOpen` 133 ms，`didChange` 往返 6.0 ms（含字段校验防抖）。
 

@@ -1,28 +1,28 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-23（第十二轮：**VSCode 平台包内置 bdl-lsp + GitHub 矩阵构建 win/linux/mac**）
+> 更新时间：2026-10-23（第十三轮：**`link`/`deploy` 分离到 tiptop**，并清理分离收尾残留 [`PENDING.md` §A](PENDING.md)）
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
+> **还剩什么**看 [PENDING.md](PENDING.md)（唯一清单）。
 >
-> 版本：`bdl-lsp` **0.3.1**（修 GLOBALS 索引串味）/ `vscode-extension` **0.4.0** / `zed-extension` **0.1.1**。
+> 版本：`bdl-lsp` **0.3.3**（分离收尾清理）/ `tiptop` **0.1.1**（自带 CI）/ `vscode-bdl` **0.5.1** / `zed-bdl` **0.1.1**（暂停）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
-> 三个仓库各自独立记版本，不要求一致。
+> 各仓库（含 tiptop）独立记版本，不要求一致。
 
 ---
 
 ## 0. 下一步就做这个
 
-**P1–P8 全部完成**。代码侧没有"必须做"的项了；剩下的都需要真实环境或使用反馈：
+**P1–P8 全部完成，代码侧没有"必须做"的功能项**。剩下的三类见 [PENDING.md](PENDING.md)：
 
-1. **Windows 实机验证**（最高价值）：`scripts\build.ps1`、`scripts\e2e-vscode.ps1`、
-   GLOBALS 路径（`axmt620.4gl`）、部署 scp 回退。CI 的 windows job 只证明能编译。
-2. **Zed GUI 验证**：dev extension 加载、outline 层级、LSP 启动。
-3. **真实 Genero 服务器**：`fglcomp`/`fglform` 编译诊断的行号映射。
-4. **`record-member-unknown` 默认级别**：开启后全语料 24 条（[PLAN-P6-SCHEMA.md](PLAN-P6-SCHEMA.md) §4.1），等使用反馈再定。
-5. **P7-D 分片**：链接资料 > 8 MB 才触发（当前 415 KB）。
+1. **§A 分离收尾残留**（文档/脚本/CI，纯收尾，做完分离才算闭合）；
+2. **§B 需要机器或真实环境的验证**：Windows 实机（最高价值：`scripts\build.ps1`、
+   e2e、GLOBALS 路径 `axmt620.4gl`、部署 scp 回退）、macOS 实机、Zed GUI、
+   真实 Genero 服务器（`fglcomp`/`fglform` 编译诊断行号映射）；
+3. **§C 发布**：GitHub Release、给 bdl-lsp 打 tag、去掉 tiptop `go.mod` 的 `replace`。
 
-完整清单见 [TODO.md](TODO.md)：40 项未勾选，**"可做"档为 0**，其中 21 项要
-Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
-编辑器差异见 [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)。
+等使用反馈的决策：`record-member-unknown` 默认级别（开启后全语料 24 条）、P7-D 分片（当前 415 KB）。
+
+测试命令见 [TESTING.md](TESTING.md)，编辑器差异见 [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)。
 
 **诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
 `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md`，再跑 `make lint`
@@ -49,23 +49,25 @@ Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
 | 部署当前文件 | VSCode `bdl.deployCurrentFile` + Zed task `$ZED_FILE`（复核 + 文档） |
 | 编辑器差异 | [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)：语义高亮、pull diagnostics、配置外壳、链接视图、部署 |
 | 稳定性修复 | `parseMu` 串行化请求与防抖重算，修掉偶发 `ts_query_cursor_next_match` SIGSEGV（坑 #31） |
-| 链接导入进度 | `link import/sync` 扫描源码时每 400 个文件向 stderr 打一行进度（0.2.3） |
+| 链接导入进度 | `tiptop link import/sync` 扫描源码时每 400 个文件向 stderr 打一行进度（0.2.3，代码现已随分离移到 tiptop） |
 | 未保存文件崩溃 | `bdl/linkTree` / `bdl/linkReferences` 先判 `file:` scheme；`untitled:` 不再让 `Filename()` panic（0.2.4） |
 
 ## 1. 一句话状态
 
 **P1–P8 全部功能已完成并推送**：语言智能（诊断/悬停/跳转/补全/重命名/格式化）、
-GLOBALS、字段/表单、部署、索引、链接资料、内置符号、忽略列表、编辑器文档齐备。
+GLOBALS、字段/表单、索引、内置符号、忽略列表、编辑器文档齐备。链接资料的采集与
+部署已于 `bdl-lsp 0.3.2` 分离到 **tiptop**（LSP 仍读取 `<项目>/.link/` 资料）。
 剩下的是**需要真实环境的验证**（Windows / Zed GUI / 真实 Genero 服务器 / macOS）
 和几个等使用反馈的决策，不再有"现在就能动手"的代码项。
 
-## 2. 三个仓库（都已推送，工作树干净）
+## 2. 四个仓库（都已推送，工作树干净）
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.1` | Go LSP 服务器 + CLI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.4.0` | VSCode 插件（平台包内置 `bdl-lsp`；设置分基础/链接资料/部署三层，链接与部署各有总开关） |
-| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件 |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.3` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
+| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.1` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.1` | VSCode 插件（平台包内置 `bdl-lsp` 与 `tiptop`；部署改调 tiptop） |
+| `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件（**暂停**） |
 
 > HEAD 不写死——每轮都变（这份文档已因此过期过两次）。用
 > `git -C /code/workspace/<repo> log -1 --oneline` 现查。
@@ -168,15 +170,8 @@ link.dataDir                        .link
 link.moduleRoots                    []          （空 = 自动探测 tiptop/topcust）
 link.globalModules                  [sub lib qry]
 link.maxAgeDays                     7           （0 = 不提示过期）
-link.sync.enable                    false       ← P7-D-3，默认关闭
-link.sync.source                    golang      （golang/command/file）
-link.sync.interval                  0           （秒，0 = 只启动时同步）
-link.sync.onStart                   false
-link.sync.command                   ""          （source=command）
-link.sync.file                      ""          （source=file；空 = .link/gal_file.csv）
-link.sync.db.host/port/service/user 1521…       （source=golang；密码见下）
-  密码：环境变量 BDL_ORA_PASSWORD > <项目>/.link/secrets.json（必须 0600）
-deploy.target                       ""          （VSCode 命令使用）
+   ↳ 没有 sync.* 配置：采集已于 0.3.2 移出到 tiptop（`tiptop link sync`）
+deploy.target                       ""          （VSCode 扩展设置，非 LSP 配置；deploy 由 tiptop 执行）
 ```
 
 旧专用诊断键（`syntaxDiagnostics`、`missingDiagnostics`、`fieldDiagnostics`、
@@ -428,7 +423,7 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 |---|---|---|---|
 | A | Windows 实机（构建 / e2e / GLOBALS 路径 / scp 部署） | Windows 10/11 + MinGW + VSCode | [TESTING](TESTING.md) §5 |
 | B | Zed GUI（dev extension、outline、LSP 启动） | 有显示器的机器 | `make zed-check` + 手工 |
-| C | 真实 Genero 服务器（远程编译诊断行号） | SSH + `fglcomp`/`fglform` | `deploy -dry-run` → `deploy` |
+| C | 真实 Genero 服务器（远程编译诊断行号） | SSH + `fglcomp`/`fglform` | `tiptop deploy -dry-run` → `tiptop deploy` |
 | D | `record-member-unknown` 默认级别 | 真实使用反馈 | [PLAN-P6-SCHEMA](PLAN-P6-SCHEMA.md) §4.1 |
 | E | P7-D 分片（资料 > 8 MB） | 更大的真实链接导出 | [PLAN-P7](PLAN-P7.md) |
 | F | macOS 构建/验证 | macOS 机器 | [TESTING](TESTING.md) §5 |

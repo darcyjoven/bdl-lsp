@@ -30,9 +30,9 @@ import (
 // version 由 -ldflags "-X main.version=..." 注入。
 //
 // 版本策略（用户 2026-10-21 定）：从 0.1.1 起算；每完成一轮完整改动
-// 并提交，就 +1。三个仓库（bdl-lsp / vscode-extension / zed-extension）
+// 并提交，就 +1。各仓库（bdl-lsp / tiptop / vscode-extension / zed-extension）
 // 各自独立记版本，不要求一致。
-var version = "0.3.2"
+var version = "0.3.3"
 
 func main() {
 	os.Exit(run(os.Args[1:]))

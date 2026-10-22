@@ -169,8 +169,9 @@ make regress               # 全量解析回归（慢）
 make diag-audit            # 逐诊断码计数（降噪基线）
 make builtin-audit         # 内置符号表缺口（LIMIT/SHOW 可调）
 make grammar-audit         # 语法缺口（TOP/JSON）
-make link-audit            # 链接资料导入复跑
-make link-status           # 已有链接资料统计
+# 链接资料（属于 tiptop，不在本仓库）：
+../tiptop/artifacts/bin/tiptop link import -csv <导出.csv> -root /code/workspace/tiptop-gp
+../tiptop/artifacts/bin/tiptop link status -root /code/workspace/tiptop-gp
 
 go run ./cmd/fmt-audit     # 格式化幂等 + 新增 ERROR
 go run ./cmd/field-audit   # 字段校验
@@ -188,9 +189,14 @@ make bench                 # python3 scripts/lsp-bench.py（didOpen/didChange）
 ```bash
 ./artifacts/bin/bdl-lsp version
 ./artifacts/bin/bdl-lsp check testdata/sample.4gl testdata/sample.per
-./artifacts/bin/bdl-lsp deploy -list -workspace /path/to/ws
-./artifacts/bin/bdl-lsp deploy -dry-run -workspace /path/to/ws
-./artifacts/bin/bdl-lsp deploy -workspace /path/to/ws path/to/file.4gl   # 当前文件
+```
+
+部署单独验证（`deploy` 自 0.3.2 起在 tiptop）：
+
+```bash
+../tiptop/artifacts/bin/tiptop deploy -list -workspace /path/to/ws
+../tiptop/artifacts/bin/tiptop deploy -dry-run -workspace /path/to/ws
+../tiptop/artifacts/bin/tiptop deploy -workspace /path/to/ws path/to/file.4gl   # 当前文件
 ```
 
 ---
@@ -206,7 +212,7 @@ make bench                 # python3 scripts/lsp-bench.py（didOpen/didChange）
 | 改 config 键 | `go test ./internal/config/` + VSCode `package.json` + `make diagnostics-check` |
 | 改 VSCode 扩展 | `npm run typecheck` + `make e2e-vscode` |
 | 改 Zed query / 清单 | `make zed-check` |
-| 改部署 | `go test ./internal/deploy/ ./internal/deploycli/` + `deploy -dry-run` |
+| 改部署（在 tiptop） | `cd ../tiptop && make lint && go test ./...` + `tiptop deploy -dry-run` |
 | 改索引 | `go test ./internal/wsindex/ ./internal/server/` + `make bench` |
 | 只改文档 | 无需跑测试；但要更新 [TODO](TODO.md) 勾选与 [HANDOVER](HANDOVER.md) 状态 |
 
@@ -218,9 +224,9 @@ make bench                 # python3 scripts/lsp-bench.py（didOpen/didChange）
 |---|---|---|
 | Windows 构建 + 运行 | Windows 10/11 + MinGW-w64 | CI `windows` job；`scripts\build.ps1 -Test -Check` |
 | Windows e2e / URI 编码 | Windows + VSCode | `scripts\e2e-vscode.ps1`；打开 `axmt620.4gl` 确认无 `globals-file-not-found` |
-| Windows 部署（scp 回退） | Windows + 真实 SSH | `deploy -dry-run` → `deploy`，确认自动回退 |
+| Windows 部署（scp 回退） | Windows + 真实 SSH | `tiptop deploy -dry-run` → `tiptop deploy`，确认自动回退 |
 | Zed 加载扩展 | 有显示器的 Linux/macOS/Windows | `zed: install dev extension`，确认高亮/大纲/LSP 状态 |
-| 远程编译诊断 | 真实 Genero 服务器（`fglcomp`/`fglform`） | `deploy` 后看 Problems 面板行号映射 |
+| 远程编译诊断 | 真实 Genero 服务器（`fglcomp`/`fglform`） | `tiptop deploy` 后看 Problems 面板行号映射 |
 | 大仓库性能 | 15k 文件级项目 | `make bench`、索引日志耗时 < 60s |
 
 这些项目的代码路径已就绪，但**没有自动化证据**；不要把它们标成"已验证"。

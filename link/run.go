@@ -29,8 +29,8 @@ func builtinNames() map[string]bool {
 
 // ImportRequest 是一次"CSV → links.jsonl"的完整导入请求。
 //
-// 让 CLI 与审计工具共用同一段逻辑：`bdl-lsp link import` 与
-// `cmd/link-audit` 必须给出**完全一致**的数字，否则用户没法拿审计结果
+// 让 tiptop 的 CLI 与审计工具共用同一段逻辑：`tiptop link import` 与
+// （已移除的）`cmd/link-audit` 必须给出**完全一致**的数字，否则用户没法拿审计结果
 // 去核对 CLI 的输出。
 type ImportRequest struct {
 	// CSVPath 是 DS.GAL_FILE 导出的 CSV。
@@ -193,7 +193,7 @@ func TopChains(idx *Index, n int) []*Chain {
 	return chains
 }
 
-// Status 汇总一份已加载的链接资料（CLI `link status` 用）。
+// Status 汇总一份已加载的链接资料（`tiptop link status` 用）。
 type Status struct {
 	DataDir       string
 	Present       bool

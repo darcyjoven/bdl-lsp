@@ -6,7 +6,11 @@
 > 约定：中文文档、测试脚本、中间产物、日志统一放在 `bdl-lsp/`。  
 > v0.2 变更：纳入 Q1（仓库远程）、Q2（rsync 主/scp 备）、Q3（warning 默认）、Q6（v1 Linux+Windows、macOS 后续）；补充环境配置与本地发布拓扑。  
 > v0.3 变更：`bdl-lsp` 增加远程与独立 Release（Q9）、恢复 Q4–Q9。  
-> v0.4 变更：Zed 扩展 id 定为 `4gl-full`；Genero 5.0 支持与发布/自动下载实现**暂不排期**；本轮先完成环境、push 与 P1 详细计划。
+> v0.4 变更：Zed 扩展 id 定为 `4gl-full`；Genero 5.0 支持与发布/自动下载实现**暂不排期**；本轮先完成环境、push 与 P1 详细计划。  
+> **v0.5 变更（2026-10-23）**：链接资料的采集/导入/状态（`link`）与部署（`deploy`）已于
+> `bdl-lsp 0.3.2` 分离到 **tiptop** 仓库。本文 §4 架构章节与 §12.1 目录树仍按分离前的
+> 规划绘制，**实际 `bdl-lsp` 只有 `serve` / `check` / `version`**；涉及之处已就近标注，现行命令为
+> `tiptop link import|status|sync` 与 `tiptop deploy`。完整分离范围见 [PLAN-SEPARATION.md](PLAN-SEPARATION.md)。
 
 ---
 
@@ -155,7 +159,7 @@ GitHub Release
 ┌────────────────────┐        stdio / JSON-RPC 2.0        │   └─ tree-sitter-per         │
 │ Zed 扩展 (Rust/WASM)│ ────────────────────────────────► │  workspace index / cache     │
 │ - grammar + queries │                                   │  features: nav / diag / fmt  │
-│ - LSP 启动/下载     │                                   │  deploy driver               │
+│ - LSP 启动/下载     │                                   │  deploy driver→tiptop        │
 └────────────────────┘                                   └──────────────┬───────────────┘
                                                                         │ ssh + rsync（主）/ scp（备）
                                                                         ▼
@@ -169,7 +173,7 @@ GitHub Release
 
 | 层 | 包（规划） | 职责 |
 |---|---|---|
-| 入口 | `cmd/bdl-lsp` | 参数解析、stdio/TCP、`deploy` 子命令、版本 |
+| 入口 | `cmd/bdl-lsp` | 参数解析、stdio/TCP、`serve`/`check`/`version`、版本 |
 | 传输 | `internal/server` | JSON-RPC 分发、生命周期、能力协商、取消、panic 兜底 |
 | 文档 | `internal/document` | didOpen/didChange/didClose、增量编辑、行列索引、脏标记 |
 | 解析 | `internal/parser` | parser 池、Tree-sitter 绑定、查询编译、错误统计 |
@@ -178,7 +182,7 @@ GitHub Release
 | 功能 | `internal/features` | definition/references/hover/symbols/completion/diagnostics/semantic tokens |
 | 校验 | `internal/validate` | 4GL 字段存在性、`.per` 内部一致性 |
 | 格式化 | `internal/format` | 4GL 格式化（缩进 + 关键字大小写）、幂等与安全守卫；`.per` 不格式化 |
-| 部署 | `internal/deploy` | 配置、上传、远程编译、输出解析 |
+| 部署 | ~~`internal/deploy`~~ | **0.3.2 移出**：现为 tiptop `internal/deploy`（配置、上传、远程编译、输出解析） |
 | 配置 | `internal/config` | LSP 设置、工作区配置、默认值 |
 | 日志 | `internal/logging` | `slog`、文件/ stderr、脱敏 |
 
@@ -258,6 +262,11 @@ GitHub Release
 - 发布可重复：固定 Go/grammar revision、`-trimpath`、校验和、失败不覆盖已有 Release。
 
 ### D6. 部署复用同一个二进制，传输以 rsync 为主、scp 为备
+
+> **2026-10-23 调整**：本条下半部分已不再成立——`deploy` 于 `bdl-lsp 0.3.2`
+> 移出，不再是 bdl-lsp 的 CLI 子命令，而是 **tiptop** 仓库的 `tiptop deploy`
+> （独立二进制）。原始决策文本保留如下，仅作记录；配置格式
+> （`.bdl-lsp/deploy.json`）与传输策略（rsync 主 / scp 备）不变。
 
 - `bdl-lsp deploy ...` 作为 CLI 子命令；LSP 的 `workspace/executeCommand` 内部复用 `internal/deploy`。
 - 传输：优先 `rsync -az`（默认不 `--delete`）；目标机/客户端无 rsync 或失败时回退 `scp`。
@@ -446,7 +455,8 @@ GitHub Release
 | 配置 | `settings.json` + LSP configuration | `settings.json` + 初始化选项/工作区配置 |
 | 测试 | `@vscode/test-electron` | `cargo check` + 手工 dev extension 检查 |
 
-Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Code Action），同时提供 `bdl-lsp deploy` CLI，Zed 用户在 `.zed/tasks.json` 中调用。文档中给出模板。
+Zed 的部署入口设计为：LSP 提供 `workspace/executeCommand`（可选 Code Action），同时提供 `tiptop deploy` CLI，Zed 用户在 `.zed/tasks.json` 中调用。文档中给出模板。
+（`deploy` 自 `bdl-lsp 0.3.2` 起由 tiptop 提供，不再是 bdl-lsp 的子命令。）
 
 ### 7.6 性能与缓存
 
@@ -669,7 +679,7 @@ bdl-lsp/
 ├── go.mod / go.sum
 ├── Makefile
 ├── .gitignore
-├── cmd/bdl-lsp/              # main、deploy 子命令
+├── cmd/bdl-lsp/              # main、serve/check/version 子命令（deploy 已于 0.3.2 移出）
 ├── internal/
 │   ├── server/               # JSON-RPC/LSP 分发与生命周期
 │   ├── document/             # 文档存储、增量同步
@@ -680,7 +690,7 @@ bdl-lsp/
 │   ├── features/             # definition/references/hover/symbols/...
 │   ├── validate/             # 字段存在性、per 校验
 │   ├── format/               # 格式化
-│   ├── deploy/               # 部署/远程编译
+│   ├── deploy/               # 部署/远程编译（0.3.2 移出 → tiptop/internal/deploy）
 │   ├── config/               # 配置与默认值
 │   └── logging/              # 日志
 ├── queries/                  # .scm（嵌入二进制）

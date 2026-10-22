@@ -5,6 +5,12 @@
 > 状态：**规划完成，待执行**。P7-A（两个已确认 BUG）为下一轮首先处理项。  
 > 上游文档：[HANDOVER.md](HANDOVER.md)（接手）· [TODO.md](TODO.md)（待办）· [PLAN.md](PLAN.md)（总规划）  
 > 约定：本文所有"已验证"结论均附实测证据；未验证的一律标 **假设（需确认）**。
+>
+> **2026-10-23 注**：本篇是当时的规划/实现记录。链接资料与部署已于
+> `bdl-lsp 0.3.2` 移到 **tiptop**——下文 `bdl-lsp link import|status|sync`、
+> `bdl-lsp deploy`、`cmd/link-audit` 均应按 tiptop 的对应实现阅读（其中
+> `cmd/link-audit` 未随之迁移，审计数字已固化在本文）。正文不改写。
+> 见 [PLAN-SEPARATION.md](PLAN-SEPARATION.md) 与 [PENDING.md](PENDING.md) §A。
 
 ---
 

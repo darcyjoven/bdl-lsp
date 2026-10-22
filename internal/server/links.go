@@ -134,7 +134,7 @@ func (s *Server) visibleLinkFunctions(path string, hasMain bool) (set map[string
 
 // maybeReloadLinks 在 links.jsonl 变化后重载（2s 节流），返回是否重载。
 //
-// 场景：用户跑完 `bdl-lsp link import` 就切回编辑器，期望马上生效，
+// 场景：用户跑完 `tiptop link import` 就切回编辑器，期望马上生效，
 // 而不是重启窗口。
 func (s *Server) maybeReloadLinks() bool {
 	if s == nil || s.links == nil || !s.settings().LinkEnabled() {
@@ -231,7 +231,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 			Range:    protocol.Range{},
 			Severity: protocol.DiagnosticSeverityWarning,
 			Source:   "bdl-lsp",
-			Message:  fmt.Sprintf("链接资料无法加载：%v；function-not-found 已停用。请重新运行 `bdl-lsp link import`", loadErr),
+			Message:  fmt.Sprintf("链接资料无法加载：%v；function-not-found 已停用。请重新运行 `tiptop link import`", loadErr),
 			Code:     string(diag.CodeLinkDataInvalid),
 		}})
 		return
@@ -259,7 +259,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 		Range:    protocol.Range{},
 		Severity: severity,
 		Source:   "bdl-lsp",
-		Message: fmt.Sprintf("链接资料已 %d 天未更新（生成于 %s）。过期资料会让 function-not-found 误报，建议重新运行 `bdl-lsp link import`",
+		Message: fmt.Sprintf("链接资料已 %d 天未更新（生成于 %s）。过期资料会让 function-not-found 误报，建议重新运行 `tiptop link import`",
 			int(age.Hours()/24), meta.GeneratedAt),
 		Code: string(diag.CodeLinkDataStale),
 	}})

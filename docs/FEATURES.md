@@ -4,6 +4,12 @@
 > 日期：2026-10-22  
 > 用途：作为功能验收基线；后续按本文件逐项确认“已做/未做/不做”。  
 > 来源标记：**🧑 用户提供** = 用户原始需求明确要求；**🔀 用户方向 + 协助细化** = 用户提出方向，由规划补充为可执行功能；**🤖 协助规划** = 依据语言与编辑器常规能力补充。
+>
+> **归属注记（2026-10-23 补）**：链接资料的采集/导入与部署自 `bdl-lsp 0.3.2`
+> 起移到 tiptop。下表 #39 / #39b / #39c / #47 / #48 / #54 里的命令现由 tiptop 提供
+> （`tiptop link import|status|sync`、`tiptop deploy`）；#39c 的 `bdl.link.sync.*`
+> 设置项已随分离**删除**。bdl-lsp 侧仍负责**读取**
+> `<项目>/.link/` 资料并给出索引、可见性、`link-data-*` 诊断与链接资料视图。
 
 ---
 
@@ -109,14 +115,14 @@
 | 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
 | 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（13 个码）；默认 warning；拼错记 warn；旧专用键已删除 | P7-B（✅ 0.1.2） |
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
-| 39 | 程序链接资料索引 | `bdl-lsp link import/status`；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
+| 39 | 程序链接资料索引 | `tiptop link import/status`（tiptop；bdl-lsp 只读取资料）；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
 | 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
 | 38f | 数据库 schema 索引（P6） | 解析工作区 3127 个 `.sch`（2879 表，118 ms，`initialize` 同步）；`RECORD LIKE t.*` 记录成员可校验（开启 `diagnostics.record-member-unknown` 后语料仅剩 24 条），`rec.` 补全给出表的全部列 | P6（✅ 0.2.1） |
 | 38e | 工作区符号索引（P6） | 后台索引全工作区（7756 文件 24.7 s，增量 22 ms）并持久化快照；`workspace/symbol` / 跳转 / 引用覆盖未打开文件。可达模组（本模组 + sub/lib/qry）+ 唯一命中两条保守规则 | P6（✅ 0.2.0） |
 | 38d | 诊断码表防漂移（P7-B 收尾） | `make diagnostics-check` 校验注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode `package.json`（存在性、type=object、级别枚举）；文档由 `make diagnostics-write` 生成，并入 `make lint` | P7-B（✅ 0.1.9） |
 | 39d | 链接资料视图（P7-E） | 自定义请求 `bdl/linkTree` / `bdl/linkReferences`；VSCode 独立 TreeView「链接资料」（程序 → 链内文件三级，点击跳转）+ 反查引用程序（默认不查、分页 50）；实测最大链组装 3.4 ms | P7-E（✅ 0.1.7） |
-| 39b | 采集通道（P7-D-3） | `bdl-lsp link sync -source golang|command|file`：纯 Go 直连 Oracle（`go-ora`，无需客户端）/ 命令 stdout / 已导出的 CSV。密码只从环境变量或 `.link/secrets.json`(0600) 取 | P7-D-3（✅ 0.1.6） |
-| 39c | 后台自动同步 | `bdl.link.sync.*`（默认**全关**）：`onStart` 启动时跑一次、`interval` 定时；失败指数退避上限 1 h；成功后自动重载资料并补发诊断 | P7-D-3（✅ 0.1.6） |
+| 39b | 采集通道（P7-D-3） | `tiptop link sync -source golang|command|file`：纯 Go 直连 Oracle（`go-ora`，无需客户端）/ 命令 stdout / 已导出的 CSV。密码只从环境变量或 `.link/secrets.json`(0600) 取 | P7-D-3（✅ 0.1.6） |
+| 39c | 后台自动同步（**已移除**） | 原 `bdl.link.sync.*`（默认**全关**，`onStart`/`interval` 定时）；**自 0.3.2 随采集一并移出扩展**，改由 `tiptop link sync` 在命令行执行 | P7-D-3（✅ 0.1.6 → ❌ 0.3.2 移除） |
 | 39a | 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义的名字 → 视为存在并记进 `links.meta.json`；候选 >2000 个则**不启用** | P7-D-2（✅ 0.1.5） |
 | 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
 | 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
@@ -125,14 +131,14 @@
 | 44 | `function-not-found` | 函数调用点找不到定义。P7-C（内置侧）+ P7-D（链接侧）+ P7-D-2（外部函数过滤）全部落地后全量语料只剩 0.09 条/文件，**0.1.5 起默认 warning**；没有链接资料时不产生任何诊断 | P7-B → P7-D-2（✅ 0.1.5，默认开） |
 | 45 | 内置符号可配置/可更新 | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.enable/paths/disable` | P7-C-1（✅ 0.1.3） |
 | 46 | 内置符号缺口审计 | `cmd/builtin-audit` + `make builtin-audit` / `make builtin-check`：按频次+文件数列出"不在表里"的名字，带内置/用户粗判；`-check` 进 `make lint` | P7-C-1（✅ 0.1.3） |
-| 47 | 程序链接资料导入 | `bdl-lsp link import -csv <导出.csv>`：CSV（UTF-8 BOM、`gal04='Y'` 过滤、组内去重）→ `<root>/.link/links.jsonl` + `links.meta.json`，原子写入；判定 MAIN 用语法树 + 文本兜底（兼容 `{ MAIN }` 写法） | P7-D（✅ 0.1.4） |
-| 48 | 链接资料状态 | `bdl-lsp link status`：链/orphan/ambiguous/文件数、生成时间与天数、缺失文件数、模组根、全局模组；过期时提示重新导入 | P7-D（✅ 0.1.4） |
+| 47 | 程序链接资料导入 | `tiptop link import -csv <导出.csv>`：CSV（UTF-8 BOM、`gal04='Y'` 过滤、组内去重）→ `<root>/.link/links.jsonl` + `links.meta.json`，原子写入；判定 MAIN 用语法树 + 文本兜底（兼容 `{ MAIN }` 写法） | P7-D（✅ 0.1.4） |
+| 48 | 链接资料状态 | `tiptop link status`：链/orphan/ambiguous/文件数、生成时间与天数、缺失文件数、模组根、全局模组；过期时提示重新导入 | P7-D（✅ 0.1.4） |
 | 49 | 函数跨文件可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则，含它们自己）。**只放大函数，变量可见性不变（R2）** | P7-D（✅ 0.1.4） |
 | 50 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成才判定；资料缺失/链里有磁盘上不存在的文件/索引未就绪 → **一律不报**（宁可漏报不可误报） | P7-D（✅ 0.1.4） |
 | 51 | 链接资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）· `link-data-stale`（超 `maxAgeDays` 未更新 → hint）；都落在 `.link/` 里的文件上，不污染源码 | P7-D（✅ 0.1.4） |
 | 52 | 链接配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays`；资料目录与内置表一样按 mtime 热重载（2s 节流），导入后无需重启编辑器 | P7-D（✅ 0.1.4） |
 | 53 | **忽略列表** | `bdl.ignore.files/fields/forms`（glob，支持 `**`）：文件命中 → 不发布任何诊断且排除出工作区索引；字段命中 → 只屏蔽 `field-not-in-form`；表单命中 → 屏蔽该表单的字段类诊断。配置热更新立即生效；忽略不关闭解析/悬停/导航 | P8（✅ 0.2.2） |
-| 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `deploy`；Zed 用 task `$ZED_FILE`（见 [DEPLOY-ZED](DEPLOY-ZED.md)）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
+| 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `tiptop deploy`；Zed 用 task `$ZED_FILE`（见 [DEPLOY-ZED](DEPLOY-ZED.md)）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
 | 55 | **GLOBALS 索引按文档隔离** | 符号查找、变量来源检查、函数可见性只看**当前文档**引入的 `.global`；文档关闭/删除导入行时清掉缓存；同一 `.global` 引入两次按定义位置去重。修掉"同时打开多个文档时来源重复、变量来源诊断随开着哪些文件而变" | P3a 收尾（✅ 0.3.1） |
 
 ---

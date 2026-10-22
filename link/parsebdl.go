@@ -103,7 +103,7 @@ func parseFile(pool *parser.Pool, path string) (*index.FileIndex, error) {
 
 // HasMainInSource 报告一份源码文本是否含 MAIN（不需要文件存在）。
 //
-// CLI 的 `link import --from-lsp` 之类场景用不上，但 server 侧判断
+// tiptop 的 `link import` 之类场景用不上，但 server 侧判断
 // "当前文档有没有 MAIN"用的是 index 里已有的索引，不走这里。
 func HasMainInSource(pool *parser.Pool, src []byte) (bool, error) {
 	tree, err := pool.Parse(parser.LangBDL, src, nil)

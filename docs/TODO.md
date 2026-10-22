@@ -6,7 +6,8 @@
 >
 > 更新：2026-10-23（**0.3.0 设置与文档轮**：设置按“默认即可 / 不配置不可用 /
 > 按项目调整”分组，删除六个旧诊断键，新增 VSCode / Zed 用户手册与截图位）
-> 当前阶段：**P1–P8 全部已完成**。
+> 当前阶段：**P1–P8 全部已完成**（0.3.1 GLOBALS 按文档隔离 · 0.3.2 `link`/`deploy`
+> 分离到 tiptop · vscode-bdl 0.5.0 部署改调 tiptop · CI 四平台一键打包）。
 > **下一步候选**（都需要真实环境或使用反馈）：
 > ① Windows 实机 / Zed GUI / 真实 Genero 服务器验证；
 > ② record-member 默认级别（等使用反馈）；
@@ -387,6 +388,11 @@
 
 ## 5. 工程骨架（P1）
 
+> **归属注记（2026-10-23 补）**：本节及以下历史勾选里出现的 `bdl-lsp deploy` /
+> `bdl-lsp link import|status|sync` 记录的是**当时的实现**；这些命令已于
+> `bdl-lsp 0.3.2` 移到 tiptop，现为 `tiptop deploy` / `tiptop link ...`。
+> 历史勾选按阶段记录，保持原样不改写。
+
 ### bdl-lsp
 
 Block 1 已完成：
@@ -521,6 +527,11 @@ Block P2 已完成：
 ---
 
 ## 6. 功能 Backlog（按优先级）
+
+> **归属注记（2026-10-23 补）**：本节里 `bdl-lsp link import|status|sync`、
+> `bdl-lsp deploy` 与 `cmd/link-audit` 等条目标注的是**当时的归属**；自
+> `bdl-lsp 0.3.2` 起链接资料与部署已移到 tiptop（见 [PLAN-SEPARATION.md](PLAN-SEPARATION.md)）。
+> 历史勾选保持原样，仅在此说明现行归属。
 
 ### GLOBALS 模组全局变量（P3a ✅ 已完成 2026-10-20）
 

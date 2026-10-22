@@ -1,4 +1,4 @@
-.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit grammar-audit diagnostics-check diagnostics-write bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check link-audit link-status e2e-vscode zed-check zed-check-windows
+.PHONY: all build build-ps test test-race vet fmt lint check corpus regress diag-audit grammar-audit diagnostics-check diagnostics-write bench clean help grammars grammars-check keywords keywords-check manifest-check builtin-audit builtin-check e2e-vscode zed-check zed-check-windows
 
 GO ?= go
 
@@ -93,13 +93,10 @@ diagnostics-check:
 diagnostics-write:
 	@$(GO) run ./cmd/diagnostics-check -write -doc docs/DIAGNOSTICS.md -vscode ../vscode-extension/package.json
 
-## link-audit: 程序链接资料（P7-D）——用真实 CSV 复跑导入并核对统计
-link-audit: build
-	@$(GO) run ./cmd/link-audit -csv $(or $(CSV),artifacts/link/link.csv) -root $(or $(ROOT),/code/workspace/tiptop-gp) $(if $(WRITE),-write,)
-
-## link-status: 查看已有链接资料的统计（不解析源码）
-link-status: build
-	@./$(BIN) link status -root $(or $(ROOT),/code/workspace/tiptop-gp)
+# 链接资料的导入与统计自 0.3.2 起属于 tiptop，不在本仓库：
+#   tiptop link import -csv <导出.csv> [-root <项目根>]
+#   tiptop link status [-root <项目根>]
+# 原先的 `make link-audit` / `make link-status` 随 `cmd/link-audit` 一起移除。
 
 ## builtin-check: 校验内置符号数据文件（格式/排序/重名/kind）
 builtin-check:

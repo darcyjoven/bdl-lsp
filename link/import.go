@@ -314,7 +314,7 @@ const MaxStoredExternals = 500
 // buildExternals 统计"被调用但从无定义"的函数，写进 meta。
 //
 // 用户定的口径：这类名字大概率是**语料快照缺少的库函数**（不是用户写错），
-// 只要不是太多就忽略，但要**记录下来**——`bdl-lsp link status` 会列出来，
+// 只要不是太多就忽略，但要**记录下来**——`tiptop link status` 会列出来，
 // 出问题时能一眼看到"哪些函数被当成外部函数放过了"。
 func buildExternals(res *ImportResult, scans *scanSet, opts ImportOptions) {
 	minFiles := opts.ExternalsMinFiles

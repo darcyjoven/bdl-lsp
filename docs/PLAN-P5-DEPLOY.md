@@ -4,7 +4,12 @@
 > 日期：2026-10-21  
 > 状态：**CLI 已完成并实测**（验收输出见 §5）；VSCode 命令 / Zed tasks 见 §7。  
 > 上游：[粗略计划](PLAN.md) §7.4｜[P4 记录](PLAN-P4-FORMAT.md)｜[待办](TODO.md)  
-> 示例配置：[examples/deploy.json](../examples/deploy.json)
+> 示例配置：[tiptop/examples/deploy.json](../../tiptop/examples/deploy.json)（原在本仓库，随 0.3.2 分离移出）
+>
+> **2026-10-23 注**：本篇是当时的实现记录。`deploy` 已于 `bdl-lsp 0.3.2`
+> 移到 **tiptop**（现为 `tiptop deploy`）；下文出现的 `bdl-lsp deploy` 均应按
+> `tiptop deploy` 阅读，正文不改写。见 [PLAN-SEPARATION.md](PLAN-SEPARATION.md)
+> 与 [PENDING.md](PENDING.md) §A4。
 
 ---
 
