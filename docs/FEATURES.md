@@ -133,6 +133,7 @@
 | 52 | 链接配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays`；资料目录与内置表一样按 mtime 热重载（2s 节流），导入后无需重启编辑器 | P7-D（✅ 0.1.4） |
 | 53 | **忽略列表** | `bdl.ignore.files/fields/forms`（glob，支持 `**`）：文件命中 → 不发布任何诊断且排除出工作区索引；字段命中 → 只屏蔽 `field-not-in-form`；表单命中 → 屏蔽该表单的字段类诊断。配置热更新立即生效；忽略不关闭解析/悬停/导航 | P8（✅ 0.2.2） |
 | 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `deploy`；Zed 用 task `$ZED_FILE`（见 [DEPLOY-ZED](DEPLOY-ZED.md)）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
+| 55 | **GLOBALS 索引按文档隔离** | 符号查找、变量来源检查、函数可见性只看**当前文档**引入的 `.global`；文档关闭/删除导入行时清掉缓存；同一 `.global` 引入两次按定义位置去重。修掉"同时打开多个文档时来源重复、变量来源诊断随开着哪些文件而变" | P3a 收尾（✅ 0.3.1） |
 
 ---
 
