@@ -94,6 +94,10 @@ func (s *Server) ConfigureBuiltins(root string, paths, disable []string) error {
 func (s *Server) AuditFile(ctx context.Context, uri string, lang parser.Lang, text string) []protocol.Diagnostic {
 	doc := s.docs.Open(uri, lang, 1, text)
 	defer s.docs.Close(uri)
+	// 审计是"一个文件一个文件"跑的：每个文件审计完必须清掉它的
+	// GLOBALS 解析结果，否则后一个文件会借用前一个文件的导入，
+	// 统计出来的诊断分布是错的（这正是 P3a 收尾修掉的串味问题）。
+	defer s.forgetGlobalsEntries(uri)
 
 	tree, err := s.pool.ParseWith(ctx, lang, doc.Text(), nil, parser.ParseOptions{})
 	if err != nil {

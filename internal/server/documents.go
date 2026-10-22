@@ -161,6 +161,10 @@ func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error
 	s.indexes.drop(uri)
 	s.clearSourceDiags(uri)
 	s.clearFieldDiags(uri)
+	// P3a 收尾：文档关闭后清掉它的 GLOBALS 解析结果。
+	// 不清会留下悬空条目——别的文档会借用它的导入结果，
+	// 表现为"关掉某个文件后诊断/跳转结果就变了"。
+	s.forgetGlobalsEntries(uri)
 	s.logger.Debug("didClose", "uri", uri)
 	// 关闭时清空诊断，避免编辑器残留。
 	s.publish(ctx, uri, 0, nil, nil)

@@ -310,13 +310,13 @@ func (s *Server) hoverGlobalsImported(doc *document.Document, idx *textpos.Index
 	if s.globalsRes == nil {
 		return nil
 	}
-	locs, sources := s.globalsDefinitions(word)
+	locs, sources := s.globalsDefinitions(doc.URI, word)
 	if len(locs) == 0 {
 		return nil
 	}
 
 	// 从对应 entry 取类型文本：重新查一遍带类型（sources 与 locs 对齐）
-	typeLines := s.globalsTypeLines(word)
+	typeLines := s.globalsTypeLines(doc.URI, word)
 
 	var sb strings.Builder
 	sb.WriteString("```bdl\n")

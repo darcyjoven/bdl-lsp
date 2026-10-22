@@ -45,11 +45,23 @@ func (s *Server) newGlobalsResolver(rootPath string) {
 // 副作用：更新 Resolver 的反向依赖表（供 refreshImporters 与跳转使用）。
 // 配置为 off 时仍然执行解析——跳转/悬停依赖解析结果，只有诊断被关闭。
 func (s *Server) globalsChecks(ctx context.Context, doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
-	if s.globalsRes == nil || fi == nil || len(fi.GlobalsImports) == 0 {
+	if s.globalsRes == nil || fi == nil {
+		// 解析失败（fi 为 nil）时也要清掉旧结果：否则文档解析出错期间
+		// 仍会"看得见"上一次成功解析的 GLOBALS 符号。
+		if doc != nil {
+			s.forgetGlobalsEntries(doc.URI)
+		}
 		return nil
 	}
 	if doc.Lang != parser.LangBDL {
 		return nil // .per 没有 GLOBALS 语法
+	}
+	if len(fi.GlobalsImports) == 0 {
+		// 文档已经没有 GLOBALS 导入了（用户删掉了那几行）。
+		// 必须清掉旧结果：否则这个文档会继续"看得见"已删除的
+		// .global 里的符号，来源标注也还指向它。
+		s.forgetGlobalsEntries(doc.URI)
+		return nil
 	}
 
 	settings := s.settings()
@@ -83,75 +95,124 @@ func (s *Server) globalsChecks(ctx context.Context, doc *document.Document, fi *
 	return diags
 }
 
-// globalsDefinitions 在 GLOBALS 引入里查符号定义（跳转用，P3a T4）。
+// globalsDefinitions 在**当前文档**的 GLOBALS 引入里查符号定义（跳转用，P3a T4）。
 //
 // 返回跨文件 Location 列表与来源描述（悬停用）。
 // 跳过函数/报表类符号：.global 文件里不放函数（语料 57 个文件均无），
 // 且函数调用名不该被导入解析劫持。
-func (s *Server) globalsDefinitions(word string) (locs []protocol.Location, sources []string) {
-	s.globalsMu.RLock()
-	entries := s.globalsEntries
-	s.globalsMu.RUnlock()
+//
+// 为什么必须限定"当前文档"（P3a 收尾修复）：
+//
+//	globalsEntries 是 docURI → 解析结果 的全局表。旧实现遍历**整张表**，
+//	于是同时打开两个文档时，一个文档会借用另一个文档的 GLOBALS 导入：
+//	  - 两个文档都引用同一个 .global → 同一符号被列出多份来源
+//	    （悬停里出现两条一模一样的 "top.global:2"）；
+//	  - 两个文档引用**不同**的 .global → 变量来源检查会拿到别的文档的
+//	    符号集合，导致 "无法确定变量来源" 该报的不报、不该报的也不报。
+//
+//	症状随"当前开着哪些文件"变化：关掉另一个文档或重启 VSCode 就正常，
+//	用户完全无法复现规律。正确做法是只看当前文档自己的导入。
+func (s *Server) globalsDefinitions(docURI, word string) (locs []protocol.Location, sources []string) {
+	entries := s.globalsEntriesOf(docURI)
 	if len(entries) == 0 {
 		return nil, nil
 	}
 
 	lower := strings.ToLower(word)
-	for _, docEntries := range entries {
-		for _, e := range docEntries {
-			if e.Status != globals.StatusResolved || e.Index == nil {
+	// 按"定义位置"去重：同一个 .global 被引入两次（例如
+	// GLOBALS "a.global" + GLOBALS "./a.global"），或两个 .global
+	// 引入的是同一个物理文件，符号表里会出现两份同样的定义。
+	// 不去重的话悬停会列出两条一模一样的来源。
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e.Status != globals.StatusResolved || e.Index == nil {
+			continue
+		}
+		for _, sym := range e.Index.Symbols {
+			if sym.Lower != lower || sym.Scope != index.ScopeGlobals {
 				continue
 			}
-			for _, sym := range e.Index.Symbols {
-				if sym.Lower != lower || sym.Scope != index.ScopeGlobals {
-					continue
-				}
-				switch sym.Kind {
-				case index.KindFunction, index.KindReport, index.KindMain:
-					continue
-				}
-				locs = append(locs, protocol.Location{
-					URI:   protocol.DocumentURI(e.URI),
-					Range: byteRange(e.Lines, sym.StartByte, sym.EndByte),
-				})
-				line, _ := e.Lines.Position(int(sym.StartByte))
-				sources = append(sources, fmt.Sprintf("%s:%d", e.Path, line+1))
+			switch sym.Kind {
+			case index.KindFunction, index.KindReport, index.KindMain:
+				continue
 			}
+			key := fmt.Sprintf("%s:%d", e.URI, sym.StartByte)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			locs = append(locs, protocol.Location{
+				URI:   protocol.DocumentURI(e.URI),
+				Range: byteRange(e.Lines, sym.StartByte, sym.EndByte),
+			})
+			line, _ := e.Lines.Position(int(sym.StartByte))
+			sources = append(sources, fmt.Sprintf("%s:%d", e.Path, line+1))
 		}
 	}
 	return locs, sources
 }
 
+// globalsEntriesOf 返回某个文档自己的 GLOBALS 解析结果。
+//
+// 返回的是**快照副本**（切片头拷贝）：调用方在锁外遍历，
+// 不能直接持有 map 里的切片（并发写入会与遍历竞争）。
+func (s *Server) globalsEntriesOf(docURI string) []globals.Entry {
+	s.globalsMu.RLock()
+	defer s.globalsMu.RUnlock()
+	entries := s.globalsEntries[docURI]
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]globals.Entry, len(entries))
+	copy(out, entries)
+	return out
+}
+
+// forgetGlobalsEntries 在文档关闭时清掉它的 GLOBALS 解析结果。
+//
+// 不清会留下悬空条目：文档关闭后，别的文档仍会借用它的导入结果
+// （见 globalsDefinitions 的注释）。这正是"关掉文件/重启 VSCode 后
+// 结果才变"的另一个来源。
+func (s *Server) forgetGlobalsEntries(docURI string) {
+	s.globalsMu.Lock()
+	delete(s.globalsEntries, docURI)
+	s.globalsMu.Unlock()
+}
+
 // globalsSourceLines 返回悬停用的来源描述（不带跳转，轻量）。
-func (s *Server) globalsSourceLines(word string) []string {
-	_, sources := s.globalsDefinitions(word)
+func (s *Server) globalsSourceLines(docURI, word string) []string {
+	_, sources := s.globalsDefinitions(docURI, word)
 	return sources
 }
 
 // globalsTypeLines 返回 GLOBALS 命中符号的类型文本（悬停用）。
 //
 // 与 globalsDefinitions 的 sources 顺序对齐（同一遍历顺序）。
-func (s *Server) globalsTypeLines(word string) []string {
-	s.globalsMu.RLock()
-	entries := s.globalsEntries
-	s.globalsMu.RUnlock()
+func (s *Server) globalsTypeLines(docURI, word string) []string {
+	entries := s.globalsEntriesOf(docURI)
 
 	lower := strings.ToLower(word)
 	var out []string
-	for _, docEntries := range entries {
-		for _, e := range docEntries {
-			if e.Status != globals.StatusResolved || e.Index == nil {
+	// 与 globalsDefinitions 同样的去重键：两份 sources 必须与两份 typeLines 一一对应。
+	seen := map[string]bool{}
+	for _, e := range entries {
+		if e.Status != globals.StatusResolved || e.Index == nil {
+			continue
+		}
+		for _, sym := range e.Index.Symbols {
+			if sym.Lower != lower || sym.Scope != index.ScopeGlobals {
 				continue
 			}
-			for _, sym := range e.Index.Symbols {
-				if sym.Lower == lower && sym.Scope == index.ScopeGlobals {
-					switch sym.Kind {
-					case index.KindFunction, index.KindReport, index.KindMain:
-						continue
-					}
-					out = append(out, sym.TypeText)
-				}
+			switch sym.Kind {
+			case index.KindFunction, index.KindReport, index.KindMain:
+				continue
 			}
+			key := fmt.Sprintf("%s:%d", e.URI, sym.StartByte)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, sym.TypeText)
 		}
 	}
 	return out
@@ -443,28 +504,26 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 	for _, sym := range fi.Symbols {
 		known[sym.Lower] = true
 	}
-	s.globalsMu.RLock()
-	entries := s.globalsEntries
-	s.globalsMu.RUnlock()
+	// 只看**当前文档**的 GLOBALS 引入（见 globalsDefinitions 的注释）：
+	// 借用别的文档的导入会让"变量来源"诊断随开着哪些文件而变。
+	entries := s.globalsEntriesOf(doc.URI)
 
 	hasUnresolvable := false
 	hasNotFound := false
 	var notFoundLiteral string
-	for _, docEntries := range entries {
-		for _, e := range docEntries {
-			switch e.Status {
-			case globals.StatusUnresolvable:
-				hasUnresolvable = true
-			case globals.StatusNotFound:
-				hasNotFound = true
-				if notFoundLiteral == "" {
-					notFoundLiteral = e.Import.Literal
-				}
-			case globals.StatusResolved:
-				if e.Index != nil {
-					for _, sym := range e.Index.Symbols {
-						known[sym.Lower] = true
-					}
+	for _, e := range entries {
+		switch e.Status {
+		case globals.StatusUnresolvable:
+			hasUnresolvable = true
+		case globals.StatusNotFound:
+			hasNotFound = true
+			if notFoundLiteral == "" {
+				notFoundLiteral = e.Import.Literal
+			}
+		case globals.StatusResolved:
+			if e.Index != nil {
+				for _, sym := range e.Index.Symbols {
+					known[sym.Lower] = true
 				}
 			}
 		}
@@ -554,20 +613,16 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 			knownFn[sym.Lower] = true
 		}
 	}
-	// GLOBALS 引入的符号里的函数定义也算已知
-	s.globalsMu.RLock()
-	entries := s.globalsEntries
-	s.globalsMu.RUnlock()
-	for _, docEntries := range entries {
-		for _, e := range docEntries {
-			if e.Status != globals.StatusResolved || e.Index == nil {
-				continue
-			}
-			for _, sym := range e.Index.Symbols {
-				switch sym.Kind {
-				case index.KindFunction, index.KindReport:
-					knownFn[sym.Lower] = true
-				}
+	// GLOBALS 引入的符号里的函数定义也算已知。
+	// 只看**当前文档**的导入（见 globalsDefinitions 的注释）。
+	for _, e := range s.globalsEntriesOf(doc.URI) {
+		if e.Status != globals.StatusResolved || e.Index == nil {
+			continue
+		}
+		for _, sym := range e.Index.Symbols {
+			switch sym.Kind {
+			case index.KindFunction, index.KindReport:
+				knownFn[sym.Lower] = true
 			}
 		}
 	}

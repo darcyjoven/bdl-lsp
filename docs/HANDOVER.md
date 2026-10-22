@@ -3,7 +3,7 @@
 > 更新时间：2026-10-23（第十二轮：**VSCode 平台包内置 bdl-lsp + GitHub 矩阵构建 win/linux/mac**）
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.3.0** / `vscode-extension` **0.4.0**（设置分三层 + 链接/部署总开关）/ `zed-extension` **0.1.1**（本轮不改 Zed）。
+> 版本：`bdl-lsp` **0.3.1**（修 GLOBALS 索引串味）/ `vscode-extension` **0.4.0** / `zed-extension` **0.1.1**。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -63,7 +63,7 @@ GLOBALS、字段/表单、部署、索引、链接资料、内置符号、忽略
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.0` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.1` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.4.0` | VSCode 插件（平台包内置 `bdl-lsp`；设置分基础/链接资料/部署三层，链接与部署各有总开关） |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件 |
 
@@ -394,6 +394,30 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     整个 LSP 进程退出（用户看到 "Server process exited with code 2"）。
     所有"从客户端取 URI 再转路径"的入口都要先 `url.Parse` 判 `file:`；
     客户端也应在 `activeUri` 里跳过非 `file:`，双保险。不要靠 recover 掩盖。
+
+35. **按文档缓存的东西，查询时必须按文档取**（0.3.1 踩，用户报"重开 VSCode
+    就好了"）：
+    `globalsEntries` 是 `docURI → 解析结果` 的全局表。旧实现查符号时遍历
+    **整张表**，于是同时打开两个文档时，一个文档会借用另一个文档的
+    GLOBALS 导入：
+      - 两个文档都引用同一个 `.global` → 悬停里出现两条一模一样的
+        `"top.global:2"`，跳转给出重复位置；
+      - 两个文档引用**不同**的 `.global` → 变量来源检查拿到别的文档的
+        符号集合，"无法确定变量来源"该报的不报。
+
+    症状随"当前开着哪些文件"变化：关掉另一个文件、重启 VSCode、
+    重新加载窗口就正常，用户完全无法复现规律——所以**不要**用
+    "重启就好了"来解释问题，要去找"状态依赖了不该依赖的东西"。
+
+    修法三件套（`internal/server/globals.go`）：
+      1. 查符号只看**当前文档**的 entries（`globalsEntriesOf(docURI)`）；
+      2. 文档关闭（`didClose`）时清掉它的条目（`forgetGlobalsEntries`）；
+      3. 文档不再有 GLOBALS 导入时也清掉（删掉导入行后的陈旧状态）。
+    另外：同一个 `.global` 被引入两次（路径写法不同但指向同一文件）时，
+    按"定义位置"去重，否则悬停仍会列两条一样的来源。
+
+    审计工具（`cmd/diag-audit`）逐文件跑，`AuditFile` 里也必须
+    `defer s.forgetGlobalsEntries(uri)`，否则统计分布是错的。
 
 ## 8. 下一步候选（按建议顺序）
 

@@ -169,7 +169,8 @@ func (s *Server) resolveDefinition(doc *document.Document, fi *index.FileIndex, 
 	}
 
 	// 5) GLOBALS 引入（跨文件：Location 的 URI 指向 .global 文件）
-	if locs, _ := s.globalsDefinitions(word); len(locs) > 0 {
+	// 只查**当前文档**的导入：别的文档引入的 .global 与本文件无关。
+	if locs, _ := s.globalsDefinitions(doc.URI, word); len(locs) > 0 {
 		return locs
 	}
 
