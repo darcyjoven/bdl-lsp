@@ -482,6 +482,7 @@ cd ../tiptop && source ../bdl-lsp/scripts/dev-env.sh && make build
 
 | 文档 | 内容 |
 |---|---|
+| **[PENDING](PENDING.md)** | **未完成事项（唯一清单）**：分离收尾、验证缺口、发布项 |
 | [README](../README.md) | 仓库总览、快速开始、能力表 |
 | [PLAN](PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
 | [FEATURES](FEATURES.md) | 功能基线清单（编号 1–40）+ 阶段映射 |
