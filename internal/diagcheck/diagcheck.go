@@ -83,19 +83,51 @@ func CheckDoc(path string, specs []diag.Spec) []Problem {
 }
 
 // vscodeConfig 是 package.json 里我们关心的部分。
+//
+// contributes.configuration 有两种形态：单个对象（旧）或对象数组（分节，
+// CSS 语言插件那种多个 title 的层次）。两种都要能读：分节是现在的形态，
+// 单对象保留兼容，校验逻辑不必关心设置属于哪一节。
 type vscodeConfig struct {
 	Contributes struct {
-		Configuration struct {
-			Properties map[string]struct {
-				Type                 string   `json:"type"`
-				Default              any      `json:"default"`
-				Enum                 []string `json:"enum"`
-				AdditionalProperties struct {
-					Enum []string `json:"enum"`
-				} `json:"additionalProperties"`
-			} `json:"properties"`
-		} `json:"configuration"`
+		Configuration json.RawMessage `json:"configuration"`
 	} `json:"contributes"`
+}
+
+// vscodeProp 是单个设置项里我们关心的字段。
+type vscodeProp struct {
+	Type                 string   `json:"type"`
+	Default              any      `json:"default"`
+	Enum                 []string `json:"enum"`
+	AdditionalProperties struct {
+		Enum []string `json:"enum"`
+	} `json:"additionalProperties"`
+}
+
+// vscodeConfigSection 是 contributes.configuration 的一种形态。
+type vscodeConfigSection struct {
+	Properties map[string]vscodeProp `json:"properties"`
+}
+
+// vscodeConfigurationProps 把单对象/数组两种形态的 properties 合并出来。
+func vscodeConfigurationProps(raw json.RawMessage) (map[string]vscodeProp, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var sections []vscodeConfigSection
+	if err := json.Unmarshal(raw, &sections); err == nil {
+		props := map[string]vscodeProp{}
+		for _, sec := range sections {
+			for k, v := range sec.Properties {
+				props[k] = v
+			}
+		}
+		return props, nil
+	}
+	var single vscodeConfigSection
+	if err := json.Unmarshal(raw, &single); err != nil {
+		return nil, fmt.Errorf("configuration 既不是对象也不是数组: %w", err)
+	}
+	return single.Properties, nil
 }
 
 // CheckVSCode 校验 VSCode `package.json` 的设置项。
@@ -114,7 +146,10 @@ func CheckVSCode(path string, specs []diag.Spec) ([]Problem, error) {
 	if err := json.Unmarshal(raw, &pkg); err != nil {
 		return nil, fmt.Errorf("解析 %s: %w", path, err)
 	}
-	props := pkg.Contributes.Configuration.Properties
+	props, err := vscodeConfigurationProps(pkg.Contributes.Configuration)
+	if err != nil {
+		return nil, fmt.Errorf("解析 %s 的 configuration: %w", path, err)
+	}
 	var probs []Problem
 	add := func(format string, args ...any) {
 		probs = append(probs, Problem{Source: path, Detail: fmt.Sprintf(format, args...)})

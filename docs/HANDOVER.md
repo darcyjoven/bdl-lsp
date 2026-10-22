@@ -3,7 +3,7 @@
 > 更新时间：2026-10-23（第十二轮：**VSCode 平台包内置 bdl-lsp + GitHub 矩阵构建 win/linux/mac**）
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.3.0** / `vscode-extension` **0.3.0**（平台包内置语言服务器）/ `zed-extension` **0.1.1**（本轮不改 Zed）。
+> 版本：`bdl-lsp` **0.3.0** / `vscode-extension` **0.4.0**（设置分三层 + 链接/部署总开关）/ `zed-extension` **0.1.1**（本轮不改 Zed）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -64,7 +64,7 @@ GLOBALS、字段/表单、部署、索引、链接资料、内置符号、忽略
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
 | `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.0` | Go LSP 服务器 + CLI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.3.0` | VSCode 插件（平台包内置 `bdl-lsp`；`.github/workflows/bundle-vsix.yml` 矩阵构建 win/linux/mac） |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.4.0` | VSCode 插件（平台包内置 `bdl-lsp`；设置分基础/链接资料/部署三层，链接与部署各有总开关） |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件 |
 
 > HEAD 不写死——每轮都变（这份文档已因此过期过两次）。用

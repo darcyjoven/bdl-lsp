@@ -10,6 +10,49 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 )
 
+// TestVSCodeConfigurationPropsAcceptsSections 覆盖两种清单形态：
+// 旧的单对象，以及现在用的分层数组（CSS 语言插件那种多 title）。
+func TestVSCodeConfigurationPropsAcceptsSections(t *testing.T) {
+	single := `{"contributes":{"configuration":{"properties":{
+		"bdl.diagnostics":{"type":"object","default":{},"enum":["off","error","warning","information","hint"]}
+	}}}}`
+	array := `{"contributes":{"configuration":[
+		{"title":"基础","properties":{
+			"bdl.diagnostics":{"type":"object","default":{},"enum":["off","error","warning","information","hint"]}
+		}},
+		{"title":"部署","properties":{
+			"bdl.deploy.enable":{"type":"boolean","default":true}
+		}}
+	]}}`
+	for name, raw := range map[string]string{"单对象": single, "分层数组": array} {
+		t.Run(name, func(t *testing.T) {
+			var pkg vscodeConfig
+			if err := json.Unmarshal([]byte(raw), &pkg); err != nil {
+				t.Fatalf("解析失败: %v", err)
+			}
+			props, err := vscodeConfigurationProps(pkg.Contributes.Configuration)
+			if err != nil {
+				t.Fatalf("取 properties 失败: %v", err)
+			}
+			if _, ok := props["bdl.diagnostics"]; !ok {
+				t.Error("缺 bdl.diagnostics")
+			}
+		})
+	}
+	// 分层数组时 deploy.enable 应能读到
+	var pkg vscodeConfig
+	if err := json.Unmarshal([]byte(array), &pkg); err != nil {
+		t.Fatal(err)
+	}
+	props, err := vscodeConfigurationProps(pkg.Contributes.Configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := props["bdl.deploy.enable"]; !ok {
+		t.Error("分层数组里应能读到 bdl.deploy.enable")
+	}
+}
+
 func TestDocStable(t *testing.T) {
 	a := Doc(diag.Specs())
 	if a != Doc(diag.Specs()) {
