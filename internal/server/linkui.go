@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 
 	"github.com/darcyjoven/bdl-lsp/internal/link"
 	"go.lsp.dev/jsonrpc2"
@@ -64,6 +65,12 @@ func (s *Server) linkTreeFor(uriStr string) *link.LinkTree {
 	res := s.links.resolver
 	s.links.mu.RUnlock()
 	if res == nil {
+		return &link.LinkTree{}
+	}
+	// untitled:/vscode-notebook: 等不是文件 URI，Filename() 会 panic。
+	// 未保存的新文件也会发 bdl/linkTree，这里必须先按 scheme 拒绝。
+	u, err := url.Parse(uriStr)
+	if err != nil || u.Scheme != uri.FileScheme {
 		return &link.LinkTree{}
 	}
 	path := uri.URI(uriStr).Filename()

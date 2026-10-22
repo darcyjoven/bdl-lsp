@@ -1,9 +1,9 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-22（第十轮：**P8 收尾 + 0.2.3 链接导入进度**）  
+> 更新时间：2026-10-22（第十轮：**P8 收尾 + 0.2.3 导入进度 + 0.2.4 untitled 崩溃修复**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.2.3** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
+> 版本：`bdl-lsp` **0.2.4** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -50,6 +50,7 @@ Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
 | 编辑器差异 | [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)：语义高亮、pull diagnostics、配置外壳、链接视图、部署 |
 | 稳定性修复 | `parseMu` 串行化请求与防抖重算，修掉偶发 `ts_query_cursor_next_match` SIGSEGV（坑 #31） |
 | 链接导入进度 | `link import/sync` 扫描源码时每 400 个文件向 stderr 打一行进度（0.2.3） |
+| 未保存文件崩溃 | `bdl/linkTree` / `bdl/linkReferences` 先判 `file:` scheme；`untitled:` 不再让 `Filename()` panic（0.2.4） |
 
 ## 1. 一句话状态
 
@@ -385,6 +386,13 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
     P8 改打 `v1.0.1` / `v1.0.0` 并 push，`go mod tidy` 才能拉到。
     升 grammar 的完整顺序：commit → push → **tag + push tag** → 改 bdl-lsp
     `go.mod` → `go mod tidy` → 改 Zed `extension.toml` 的 40 位 SHA。
+
+34. **自定义请求的 URI 必须先判 scheme**（0.2.4 踩，服务器直接退出）：
+    VSCode 会为未保存的新文件发 `untitled:` URI；`go.lsp.dev/uri` 的
+    `Filename()` 对非 `file:` scheme **直接 panic**，jsonrpc2 不 recover，
+    整个 LSP 进程退出（用户看到 "Server process exited with code 2"）。
+    所有"从客户端取 URI 再转路径"的入口都要先 `url.Parse` 判 `file:`；
+    客户端也应在 `activeUri` 里跳过非 `file:`，双保险。不要靠 recover 掩盖。
 
 ## 8. 下一步候选（按建议顺序）
 

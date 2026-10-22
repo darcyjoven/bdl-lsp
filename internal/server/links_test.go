@@ -513,4 +513,18 @@ func TestLinkTreeRequest(t *testing.T) {
 	if total, _ := res["refTotal"].(float64); total != 2 {
 		t.Errorf("refTotal = %v，期望 2", res["refTotal"])
 	}
+
+	// 3) untitled: 不是文件 URI。曾因 uri.Filename() 直接 panic，
+	//    把整个语言服务器带崩；现在应返回 found=false，不崩。
+	h.send(fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":13,"method":"%s","params":{"textDocument":{"uri":"untitled:Untitled-1"}}}`,
+		"bdl/linkTree"))
+	msg = h.readMessage(5 * time.Second)
+	res, _ = msg["result"].(map[string]any)
+	if res == nil {
+		t.Fatalf("untitled 请求没有 result：%v", msg)
+	}
+	if found, _ := res["found"].(bool); found {
+		t.Errorf("untitled 不应命中链接资料：%v", res)
+	}
 }
