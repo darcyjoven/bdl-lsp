@@ -17,7 +17,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 	"github.com/darcyjoven/bdl-lsp/internal/document"
 	"github.com/darcyjoven/bdl-lsp/internal/form"
@@ -73,8 +72,7 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 		s.formRes.AddEdge(doc.URI, p)
 	}
 
-	level := s.settings().FieldDiagnostics
-	severity, enabled := diag.SeverityFor(diag.CodeFieldNotInForm, s.settings(), level)
+	severity, enabled := diag.SeverityFor(diag.CodeFieldNotInForm, s.settings())
 	if !enabled {
 		return
 	}
@@ -150,18 +148,16 @@ func (s *Server) clearFieldDiags(uri string) {
 //  2. 布局 tag 未定义（LAYOUT 的 [tag] 在 ATTRIBUTES 里没有）；
 //  3. SCREEN RECORD 引用不存在的 item。
 //
-// 级别：三个码各自可被 `bdl.diagnostics.<code>` 覆盖，缺省沿用旧的
-// fieldDiagnostics 键（同一组表单质量检查）。
+// 级别：三个码各自可被 `bdl.diagnostics.<code>` 覆盖，缺省用注册表默认。
 func (s *Server) perInternalChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
 	if doc == nil || fi == nil || doc.Lang != parser.LangPer {
 		return nil
 	}
 
 	settings := s.settings()
-	legacy := settings.FieldDiagnostics
-	dupSev, dupOn := diag.SeverityFor(diag.CodeFormDuplicateItem, settings, legacy)
-	tagSev, tagOn := diag.SeverityFor(diag.CodeFormLayoutTagUndefined, settings, legacy)
-	scrSev, scrOn := diag.SeverityFor(diag.CodeFormScreenRecordUndefined, settings, legacy)
+	dupSev, dupOn := diag.SeverityFor(diag.CodeFormDuplicateItem, settings)
+	tagSev, tagOn := diag.SeverityFor(diag.CodeFormLayoutTagUndefined, settings)
+	scrSev, scrOn := diag.SeverityFor(diag.CodeFormScreenRecordUndefined, settings)
 	if !dupOn && !tagOn && !scrOn {
 		return nil // 三条全关：连索引都省了
 	}
@@ -282,10 +278,4 @@ func (s *Server) perChecks(doc *document.Document, issues *[]protocol.Diagnostic
 		return
 	}
 	*issues = append(*issues, s.perInternalChecks(doc, fi)...)
-}
-
-// fieldDiagsEnabled 报告字段校验是否开（热更新重建判断用）。
-func fieldDiagsEnabled(settings config.Settings) bool {
-	_, ok := toSeverity(settings.FieldDiagnostics)
-	return ok
 }

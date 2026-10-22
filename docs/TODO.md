@@ -1,13 +1,13 @@
 # 待办与待确认
 
-> 更新：2026-10-22（**P8 收尾完成**：TESTING.md、grammar tag 去 replace、
-> 忽略列表、部署当前文件复核、编辑器能力差异、go-tree-sitter v0.25，`bdl-lsp 0.2.2`）  
-> 当前阶段：**P1–P8 全部已完成**。  
+> 更新：2026-10-23（**0.3.0 设置与文档轮**：设置按“默认即可 / 不配置不可用 /
+> 按项目调整”分组，删除六个旧诊断键，新增 VSCode / Zed 用户手册与截图位）
+> 当前阶段：**P1–P8 全部已完成**。
 > **下一步候选**（都需要真实环境或使用反馈）：
 > ① Windows 实机 / Zed GUI / 真实 Genero 服务器验证；
 > ② record-member 默认级别（等使用反馈）；
 > ③ P7-D 分片（链接资料 > 8 MB 才触发）。
-> 见 [PLAN-P7.md](PLAN-P7.md) 与 [TESTING.md](TESTING.md) §5。  
+> 见 [PLAN-P7.md](PLAN-P7.md) 与 [TESTING.md](TESTING.md) §5。
 > 完整阶段见 [PLAN.md](PLAN.md)，环境细节见 [ENVIRONMENT.md](ENVIRONMENT.md)。完成后勾选，不删除历史。
 >
 > **新会话接手先读 [HANDOVER.md](HANDOVER.md)**（状态 / 基线 / 坑 / 下一步）。
@@ -215,9 +215,9 @@
 ### B-4 后续待办（原有 P7-B 内容）—— ✅ 全部完成（详见 PLAN-P7 §10.5）
 
 - [x] `internal/diag/registry.go`：11 个诊断码集中注册，级别统一解析
-      （`SeverityFor` 优先级：`bdl.diagnostics.<code>` > 旧专用键 > 注册表默认）。
-- [x] 新增 `bdl.diagnostics.<code>` 配置（`config.Settings.Diagnostics`，
-      增量合并；`syntaxDiagnostics` 默认同步改为 `warning`）。
+      （`SeverityFor` 优先级：`bdl.diagnostics.<code>` > 注册表默认）。
+- [x] 新增 `bdl.diagnostics.<code>` 配置（`config.Settings.Diagnostics`；
+      0.3.0 起按完整对象覆盖，旧专用键已删除）。
 - [x] 拼错保护：`didChangeConfiguration` 里对未注册的码记 warn；
       MISSING 的 `missing-<kind>` 是动态码，按前缀放行。
 - [x] **修调用点误报**：补 `(expression name:)`（`IF fn() THEN`）；
@@ -249,7 +249,7 @@
       的字段）。
 - [x] `make diagnostics-check` 防漂移：`internal/diag.Specs()` 是唯一来源，
       生成 `docs/DIAGNOSTICS.md`（`make diagnostics-write`）并校验 VSCode
-      `package.json` 的 `bdl.diagnostics` 枚举 + 六个老键的 `default`/`enum`；
+      `package.json` 的 `bdl.diagnostics` 类型 + 级别枚举；
       并入 `make lint`。故意改坏一个默认值即失败（有单测钉住）。
 
 ## 0. 已确认决策
@@ -715,9 +715,9 @@ Block P2 已完成：
 
 ## 6.1 P7 Backlog（2026-10-21 立项）
 
-> 完整设计：[PLAN-P7.md](PLAN-P7.md)。执行顺序 P7-A → B → C → D → E。  
+> 完整设计：[PLAN-P7.md](PLAN-P7.md)。执行顺序 P7-A → B → C → D → E。
 > 立项依据（实测 24 个 `.4gl`）：诊断 1733 条，其中 `variable-source-unresolved`
-> **1717 条（99.1%）**。噪声已高到不可用，P7 是**可用性修复期**而非增值期。  
+> **1717 条（99.1%）**。噪声已高到不可用，P7 是**可用性修复期**而非增值期。
 > **收工状态（0.1.2）**：全量 15108 文件 334299 → **289304** 条；
 > 剩余 98% 是内置全局，正是 P7-C 的目标。
 

@@ -123,7 +123,7 @@ func (s *Server) AuditFile(ctx context.Context, uri string, lang parser.Lang, te
 func (s *Server) AuditEnabled() bool {
 	settings := s.settings()
 	for _, code := range diag.Registered() {
-		if diag.Enabled(code, settings, "") {
+		if diag.Enabled(code, settings) {
 			return true
 		}
 	}

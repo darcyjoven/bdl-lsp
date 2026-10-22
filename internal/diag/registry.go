@@ -5,8 +5,7 @@
 // 逐码开关，也无法在配置里写错码时给出提示。本包把三者收拢：
 //
 //   - 所有语义诊断码集中注册，带出厂默认级别；
-//   - 级别解析优先级：`bdl.diagnostics.<code>`（新键） > 旧专用配置键 > 注册表默认；
-//   - 旧专用配置键继续生效（向后兼容），但按“码”细分后新键优先；
+//   - 级别解析优先级：`bdl.diagnostics.<code>` > 注册表默认；
 //   - 未注册的码会在 config 校验时记 warn（拼错保护）。
 //
 // 语法诊断有两个“簇”的码：
@@ -15,8 +14,8 @@
 //     数量随语法版本变化，无法穷举）。
 //
 // 因此 MISSING 支持两级覆盖：`bdl.diagnostics.missing-<kind>` 精确命中单个
-// 类型，`bdl.diagnostics.missing-node` 作为整簇兜底；两者都缺时退回旧键
-// `missingDiagnostics`。`IsRegistered` 对 `missing-` 前缀一律放行，
+// 类型，`bdl.diagnostics.missing-node` 作为整簇兜底；两者都缺时用
+// 注册表默认。`IsRegistered` 对 `missing-` 前缀一律放行，
 // 否则拼写检查会把合法的动态码全报成未知。
 package diag
 
@@ -137,18 +136,12 @@ func Specs() []Spec {
 
 // SeverityFor 依据诊断码与配置决定诊断级别；ok=false 表示该诊断被关闭。
 //
-// 优先级：
-//  1. settings.Diagnostics[code] —— `bdl.diagnostics.<code>` 新键；
-//  2. 旧专用配置键（由 caller 传入的 legacy）；
-//  3. 注册表默认级别。
+// 优先级：settings.Diagnostics[code]（`bdl.diagnostics.<code>`）> 注册表默认。
 //
 // settings 按值传入是有意的：调用方在一次诊断流程里只取一次 settings，
 // 避免逐条诊断重复加锁读取配置。
-func SeverityFor(code Code, settings config.Settings, legacy config.DiagnosticLevel) (protocol.DiagnosticSeverity, bool) {
-	level := legacy
-	if level == "" {
-		level = DefaultLevel(code)
-	}
+func SeverityFor(code Code, settings config.Settings) (protocol.DiagnosticSeverity, bool) {
+	level := DefaultLevel(code)
 	if lv, ok := settings.Diagnostics[string(code)]; ok && lv != "" {
 		level = lv
 	}
@@ -156,8 +149,8 @@ func SeverityFor(code Code, settings config.Settings, legacy config.DiagnosticLe
 }
 
 // Enabled 报告某诊断码是否开启（不看语法，只回答“会不会发”）。
-func Enabled(code Code, settings config.Settings, legacy config.DiagnosticLevel) bool {
-	_, ok := SeverityFor(code, settings, legacy)
+func Enabled(code Code, settings config.Settings) bool {
+	_, ok := SeverityFor(code, settings)
 	return ok
 }
 
@@ -204,7 +197,7 @@ func DefaultLevel(code Code) config.DiagnosticLevel {
 // IsRegistered 报告 code 是否已注册。
 //
 // `missing-<kind>` 是动态码（kind 来自 grammar 节点类型，无法穷举），
-// 一律视为已注册；它们没有独立默认值，解析时落到 missing-node 或旧键。
+// 一律视为已注册；它们没有独立默认值，解析时落到 missing-node。
 func IsRegistered(code Code) bool {
 	if _, ok := defaultLevel[code]; ok {
 		return true

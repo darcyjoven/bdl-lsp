@@ -9,11 +9,11 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
 )
 
-// setRecordMemberLevel 把 recordMemberDiagnostics 设为指定级别。
+// setRecordMemberLevel 把 record-member-unknown 设为指定级别。
 func (h *harness) setRecordMemberLevel(t *testing.T, level string) {
 	t.Helper()
 	cfg := fmt.Sprintf(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":`+
-		`{"settings":{"bdl":{"recordMemberDiagnostics":%q}}}}`, level)
+		`{"settings":{"bdl":{"diagnostics":{"record-member-unknown":%q}}}}}`, level)
 	h.send(cfg)
 	// didChangeConfiguration 无响应，等一小会确保服务器已处理。
 	time.Sleep(120 * time.Millisecond)

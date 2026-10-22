@@ -29,41 +29,30 @@ func TestToSeverityMapsAllLevels(t *testing.T) {
 	}
 }
 
-func TestSeverityForPriorityNewKeyOverLegacy(t *testing.T) {
-	// 新键 off 压过旧键 warning。
+func TestSeverityForOverrideAndDefault(t *testing.T) {
 	settings := config.Settings{
-		Globals:     config.GlobalsSettings{UnresolvedSourceDiagnostics: config.LevelWarning},
 		Diagnostics: map[string]config.DiagnosticLevel{string(CodeVariableSourceUnresolved): config.LevelOff},
 	}
-	if _, on := SeverityFor(CodeVariableSourceUnresolved, settings, settings.Globals.UnresolvedSourceDiagnostics); on {
-		t.Error("新键 off 应压过旧键 warning")
+	if _, on := SeverityFor(CodeVariableSourceUnresolved, settings); on {
+		t.Error("diagnostics 里的 off 应关闭诊断")
 	}
 
-	// 新键 error 压过旧键 warning。
 	settings.Diagnostics[string(CodeVariableSourceUnresolved)] = config.LevelError
-	sev, on := SeverityFor(CodeVariableSourceUnresolved, settings, settings.Globals.UnresolvedSourceDiagnostics)
+	sev, on := SeverityFor(CodeVariableSourceUnresolved, settings)
 	if !on || sev != protocol.DiagnosticSeverityError {
-		t.Errorf("新键 error 应生效，得到 (%v, %v)", sev, on)
-	}
-}
-
-func TestSeverityForFallsBackToLegacyThenDefault(t *testing.T) {
-	// 旧键优先于注册表默认。
-	settings := config.Settings{}
-	sev, on := SeverityFor(CodeVariableSourceUnresolved, settings, config.LevelHint)
-	if !on || sev != protocol.DiagnosticSeverityHint {
-		t.Errorf("应使用旧键 hint，得到 (%v, %v)", sev, on)
+		t.Errorf("diagnostics 里的 error 应生效，得到 (%v, %v)", sev, on)
 	}
 
-	// 旧键为空时用注册表默认（variable-source-unresolved 默认 warning）。
-	sev, on = SeverityFor(CodeVariableSourceUnresolved, settings, "")
+	// 未配置时用注册表默认（variable-source-unresolved 默认 warning）。
+	empty := config.Settings{}
+	sev, on = SeverityFor(CodeVariableSourceUnresolved, empty)
 	if !on || sev != protocol.DiagnosticSeverityWarning {
 		t.Errorf("应使用默认 warning，得到 (%v, %v)", sev, on)
 	}
 
 	// 空串新键值不应覆盖（配置里给了空值等于没给）。
-	settings.Diagnostics = map[string]config.DiagnosticLevel{string(CodeVariableSourceUnresolved): ""}
-	sev, on = SeverityFor(CodeVariableSourceUnresolved, settings, "")
+	empty.Diagnostics = map[string]config.DiagnosticLevel{string(CodeVariableSourceUnresolved): ""}
+	sev, on = SeverityFor(CodeVariableSourceUnresolved, empty)
 	if !on || sev != protocol.DiagnosticSeverityWarning {
 		t.Errorf("空值新键不应覆盖默认，得到 (%v, %v)", sev, on)
 	}

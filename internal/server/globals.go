@@ -61,8 +61,7 @@ func (s *Server) globalsChecks(ctx context.Context, doc *document.Document, fi *
 	s.globalsEntries[doc.URI] = entries
 	s.globalsMu.Unlock()
 
-	level := settings.Globals.FileNotFoundDiagnostics
-	severity, enabled := diag.SeverityFor(diag.CodeGlobalsFileNotFound, settings, level)
+	severity, enabled := diag.SeverityFor(diag.CodeGlobalsFileNotFound, settings)
 	if !enabled {
 		return nil
 	}
@@ -476,8 +475,7 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 	}
 
 	settings := s.settings()
-	level := settings.Globals.UnresolvedSourceDiagnostics
-	severity, enabled := diag.SeverityFor(diag.CodeVariableSourceUnresolved, settings, level)
+	severity, enabled := diag.SeverityFor(diag.CodeVariableSourceUnresolved, settings)
 	if !enabled {
 		s.storeSourceDiags(doc.URI, nil) // off：缓存也清掉
 		return nil
@@ -528,8 +526,8 @@ func (s *Server) functionNotFoundChecks(doc *document.Document, fi *index.FileIn
 	if fi == nil {
 		return nil
 	}
-	// 级别先判：默认 off，关掉时连 query 都不该编译（全树扫描很贵）。
-	severity, enabled := diag.SeverityFor(diag.CodeFunctionNotFound, s.settings(), "")
+	// 级别先判：默认 warning；关掉时连 query 都不该编译（全树扫描很贵）。
+	severity, enabled := diag.SeverityFor(diag.CodeFunctionNotFound, s.settings())
 	if !enabled {
 		return nil
 	}

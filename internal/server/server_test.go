@@ -1094,8 +1094,8 @@ func TestDiagnosticsSeverityConfigurable(t *testing.T) {
 		t.Errorf("默认应为 warning(2)，实际 %v", d["severity"])
 	}
 
-	// 旧键改成 error 后应重新诊断（红波浪线仍可要回来）
-	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"error"}}}`)
+	// 逐码改成 error 后应重新诊断（红波浪线仍可要回来）
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"diagnostics":{"syntax-error":"error"}}}}`)
 	diags = h.drainDiagnostics(uri, 5*time.Second)
 	if len(diags) == 0 {
 		t.Fatal("配置变更后仍应有诊断")
@@ -1115,7 +1115,7 @@ func TestDiagnosticsOff(t *testing.T) {
 	h.sendDidOpen(uri, "bdl", "MAIN\n    DISPLAY \"unterminated\n", 1)
 	h.drainDiagnostics(uri, 5*time.Second)
 
-	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"syntaxDiagnostics":"off"}}}`)
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"diagnostics":{"syntax-error":"off"}}}}`)
 	diags := h.drainDiagnostics(uri, 5*time.Second)
 	if len(diags) != 0 {
 		t.Errorf("关闭后应无诊断，实际 %d 条", len(diags))
@@ -1132,7 +1132,7 @@ func TestDiagnosticsNestedSettings(t *testing.T) {
 	h.drainDiagnostics(uri, 5*time.Second)
 
 	// VSCode 会把设置包在 "bdl" 键下
-	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"bdl":{"syntaxDiagnostics":"information"}}}}`)
+	h.send(`{"jsonrpc":"2.0","method":"workspace/didChangeConfiguration","params":{"settings":{"bdl":{"diagnostics":{"syntax-error":"information"}}}}}`)
 	diags := h.drainDiagnostics(uri, 5*time.Second)
 	if len(diags) == 0 {
 		t.Fatal("嵌套设置应生效")
@@ -1210,23 +1210,22 @@ func TestSyntaxErrorPerCodeOverride(t *testing.T) {
 	}
 }
 
-// P7-B：MISSING 节点的两级逐码配置（精确 missing-<kind> > 整簇 missing-node > 旧键）。
+// P7-B：MISSING 节点的两级逐码配置（精确 missing-<kind> > 整簇 missing-node）。
 func TestMissingNodeSeverityPriority(t *testing.T) {
 	iss := parser.Issue{Missing: true, Kind: "end_if"}
 
-	// 1) 旧键兜底
-	got, on := severityFor(iss, config.Settings{MissingDiagnostics: config.LevelWarning})
+	// 1) 未配置时用注册表默认
+	got, on := severityFor(iss, config.Settings{})
 	if !on || got != protocol.DiagnosticSeverityWarning {
-		t.Errorf("旧键 warning 应生效，得到 (%v,%v)", got, on)
+		t.Errorf("默认 warning 应生效，得到 (%v,%v)", got, on)
 	}
 
-	// 2) 整簇 missing-node 压过旧键
+	// 2) 整簇 missing-node
 	got, on = severityFor(iss, config.Settings{
-		MissingDiagnostics: config.LevelWarning,
-		Diagnostics:        map[string]config.DiagnosticLevel{"missing-node": config.LevelHint},
+		Diagnostics: map[string]config.DiagnosticLevel{"missing-node": config.LevelHint},
 	})
 	if !on || got != protocol.DiagnosticSeverityHint {
-		t.Errorf("missing-node 应压过旧键，得到 (%v,%v)", got, on)
+		t.Errorf("missing-node 应生效，得到 (%v,%v)", got, on)
 	}
 
 	// 3) 精确 missing-<kind> 压过整簇

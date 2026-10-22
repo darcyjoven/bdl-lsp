@@ -4,7 +4,8 @@
 > 用途：说清楚同一套 `bdl-lsp` 在两个客户端里"哪些能力完整、哪些降级、
 > 哪些是客户端本身不支持"，避免把客户端限制当成 LSP 缺陷。  
 > 配套：[README](../README.md)、[FEATURES](FEATURES.md)、[DEPLOY-ZED](DEPLOY-ZED.md)、
-> [TESTING](TESTING.md)。
+> [TESTING](TESTING.md)、[VSCode 手册](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/USER-GUIDE.md)、
+> [Zed 手册](https://github.com/darcyjoven/zed-bdl/blob/main/docs/USER-GUIDE.md)。
 
 一句话：**语言智能（诊断/悬停/跳转/补全/重命名/格式化）两边都可用；
 UI 与命令类能力（链接资料视图、部署、语义高亮）只有 VSCode 完整，Zed 走替代路径。**
@@ -47,7 +48,7 @@ UI 与命令类能力（链接资料视图、部署、语义高亮）只有 VSCo
 // .vscode/settings.json
 {
   "bdl.server.path": "/path/to/bdl-lsp",
-  "bdl.fieldDiagnostics": "warning",
+  "bdl.diagnostics": { "record-member-unknown": "off" },
   "bdl.ignore.files": ["build/**", "**/*.bak.4gl"],
   "bdl.ignore.fields": ["tmp_*"],
   "bdl.link.enable": true
@@ -67,7 +68,7 @@ UI 与命令类能力（链接资料视图、部署、语义高亮）只有 VSCo
     "bdl-lsp": {
       "binary": { "path": "/path/to/bdl-lsp" },
       "settings": {
-        "fieldDiagnostics": "warning",
+        "diagnostics": { "record-member-unknown": "off" },
         "ignore": {
           "files": ["build/**", "**/*.bak.4gl"],
           "fields": ["tmp_*"]

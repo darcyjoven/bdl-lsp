@@ -56,32 +56,11 @@ type Limits struct {
 type Settings struct {
 	// GeneroVersion 目标 Genero 版本，默认 2.50。
 	GeneroVersion GeneroVersion `json:"generoVersion"`
-	// SyntaxDiagnostics 语法错误（ERROR 节点）的级别，默认 error。
-	SyntaxDiagnostics DiagnosticLevel `json:"syntaxDiagnostics"`
-	// MissingDiagnostics 缺失节点（MISSING）的级别，默认 warning。
-	MissingDiagnostics DiagnosticLevel `json:"missingDiagnostics"`
 	// Globals 是 GLOBALS 引入（P3a）相关的配置。
 	Globals GlobalsSettings `json:"globals"`
-	// RecordMemberDiagnostics 是 `BY NAME rec.member` 记录成员校验（P6）
-	// 的诊断级别。**默认 off**，但是"可开启"的：
-	//
-	// 没有 schema 索引时，`DEFINE r RECORD LIKE table.*` 的成员全在数据库
-	// 表结构里，静态不可见，硬校验会成片误报——这也是当初默认关掉的原因。
-	// 有了 `bdl.schema`（P6 数据库 schema 索引）之后，这类记录能真正展开，
-	// 语料实测开启后只有 24 条（15108 个文件），且都是"源码里引用了 RECORD
-	// 声明里没有的成员"这类实际存在的不一致。
-	//
-	// 仍然默认 off 的原因：少数记录的成员可能来自链接资料/构建时的其它版本
-	// （实测 ghrr034.4gl 一个文件就占 17 条），默认开启会让用户先看到一片
-	// 红再自行判断，不如让他显式开启。
-	RecordMemberDiagnostics DiagnosticLevel `json:"recordMemberDiagnostics"`
-
-	// FieldDiagnostics 是 4GL 字段存在性校验（P3b）的诊断级别，
-	// 默认 warning（Q3 决策：只在表单唯一解析成功时报告）。
-	FieldDiagnostics DiagnosticLevel `json:"fieldDiagnostics"`
-	// Diagnostics 是按诊断码单独覆盖级别的配置，键为诊断码（如
+	// Diagnostics 是**唯一**的诊断级别入口：键为诊断码（如
 	// "variable-source-unresolved"）、值为级别（off/warning/error/...）。
-	// 优先级：bdl.diagnostics.<code> > 旧专用配置键 > 注册表默认。
+	// 未列出的码使用 internal/diag 注册表的出厂默认值。
 	Diagnostics map[string]DiagnosticLevel `json:"diagnostics"`
 	// Builtins 是内置函数/变量符号表（P7-C）的配置。
 	Builtins BuiltinsSettings `json:"builtins"`
@@ -120,12 +99,6 @@ type FormatSettings struct {
 
 // GlobalsSettings 控制 GLOBALS 模组全局变量相关的解析与诊断（P3a）。
 type GlobalsSettings struct {
-	// FileNotFoundDiagnostics 是 `GLOBALS "路径"` 目标文件找不到时的级别，
-	// 默认 warning。
-	FileNotFoundDiagnostics DiagnosticLevel `json:"fileNotFoundDiagnostics"`
-	// UnresolvedSourceDiagnostics 是变量使用处查不到任何定义时的级别，
-	// 默认 warning。用户明确要求可关闭（设为 off）。
-	UnresolvedSourceDiagnostics DiagnosticLevel `json:"unresolvedSourceDiagnostics"`
 	// SearchPaths 是附加的解析根（相对工作区根，按序尝试）。
 	//
 	// 动机：语料里 97 处 `../../config/top.global` 因模块目录层级不同
@@ -317,17 +290,7 @@ func (s Settings) LinkDataDir() string {
 func Default() Settings {
 	return Settings{
 		GeneroVersion: Genero25,
-		// Q10 定稿：语法错误默认 warning（旧键默认值同步，否则走旧键与走
-		// 新键的用户行为不一致）。想要红波浪线可用 bdl.diagnostics.syntax-error。
-		SyntaxDiagnostics:  LevelWarning,
-		MissingDiagnostics: LevelWarning,
-		LogLevel:           "info",
-		Globals: GlobalsSettings{
-			FileNotFoundDiagnostics:     LevelWarning,
-			UnresolvedSourceDiagnostics: LevelWarning,
-		},
-		FieldDiagnostics:        LevelWarning,
-		RecordMemberDiagnostics: LevelOff,
+		LogLevel:      "info",
 		Format: FormatSettings{
 			Keywords:    "unchanged",
 			IndentStyle: "auto",
@@ -347,6 +310,10 @@ type Manager struct {
 	mu   sync.RWMutex
 	cur  Settings
 	path string // 工作区配置文件路径，可为空
+	// fileDiagnostics 是 `.bdl-lsp/config.json` 里的诊断覆盖，作为客户端
+	// 覆盖的基底。客户端下发空 `diagnostics` 时恢复到这里，而不是清空，
+	// 否则个人设置会把团队共享的项目配置抹掉。
+	fileDiagnostics map[string]DiagnosticLevel
 }
 
 // NewManager 创建配置管理器；rootURI 非空时会尝试读取工作区配置。
@@ -398,6 +365,14 @@ func (m *Manager) loadFile(path string) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return fmt.Errorf("解析 %s: %w", path, err)
 	}
+	m.mu.Lock()
+	if s.Diagnostics != nil {
+		m.fileDiagnostics = make(map[string]DiagnosticLevel, len(s.Diagnostics))
+		for code, lv := range s.Diagnostics {
+			m.fileDiagnostics[code] = lv
+		}
+	}
+	m.mu.Unlock()
 	m.merge(&s)
 	return nil
 }
@@ -422,12 +397,6 @@ func (m *Manager) merge(s *Settings) {
 	if s.GeneroVersion != "" {
 		m.cur.GeneroVersion = s.GeneroVersion
 	}
-	if s.SyntaxDiagnostics != "" {
-		m.cur.SyntaxDiagnostics = s.SyntaxDiagnostics
-	}
-	if s.MissingDiagnostics != "" {
-		m.cur.MissingDiagnostics = s.MissingDiagnostics
-	}
 	if s.LogLevel != "" {
 		m.cur.LogLevel = s.LogLevel
 	}
@@ -445,12 +414,6 @@ func (m *Manager) merge(s *Settings) {
 	}
 
 	// Globals（P3a）
-	if s.Globals.FileNotFoundDiagnostics != "" {
-		m.cur.Globals.FileNotFoundDiagnostics = s.Globals.FileNotFoundDiagnostics
-	}
-	if s.Globals.UnresolvedSourceDiagnostics != "" {
-		m.cur.Globals.UnresolvedSourceDiagnostics = s.Globals.UnresolvedSourceDiagnostics
-	}
 	// SearchPaths 用 nil 区分“未下发”与“显式清空”：
 	// 客户端只发用户改过的键，JSON 省略数组时为 nil。
 	if s.Globals.SearchPaths != nil {
@@ -458,24 +421,22 @@ func (m *Manager) merge(s *Settings) {
 	}
 
 	// P3b：字段校验与表单根（PerRoots 同样用 nil 区分未下发与清空）
-	if s.RecordMemberDiagnostics != "" {
-		m.cur.RecordMemberDiagnostics = s.RecordMemberDiagnostics
-	}
-	if s.FieldDiagnostics != "" {
-		m.cur.FieldDiagnostics = s.FieldDiagnostics
-	}
 	if s.PerRoots != nil {
 		m.cur.PerRoots = s.PerRoots
 	}
 
-	// Diagnostics 按诊断码单独覆盖级别（nil 表示未下发，保留现有值）。
+	// Diagnostics 按诊断码覆盖级别：每次下发都是完整对象，空对象表示
+	// “清掉个人覆盖”，因此以项目文件里的覆盖为基底整体重建，而不是在
+	// 当前值上合并。nil 仍表示未下发、保留现有值。
 	if s.Diagnostics != nil {
-		if m.cur.Diagnostics == nil {
-			m.cur.Diagnostics = make(map[string]DiagnosticLevel)
+		next := make(map[string]DiagnosticLevel, len(m.fileDiagnostics)+len(s.Diagnostics))
+		for code, lv := range m.fileDiagnostics {
+			next[code] = lv
 		}
 		for code, lv := range s.Diagnostics {
-			m.cur.Diagnostics[code] = lv
+			next[code] = lv
 		}
+		m.cur.Diagnostics = next
 	}
 
 	// P7-D：链接资料
@@ -658,17 +619,6 @@ func (s Settings) Validate() []string {
 		}
 	}
 
-	for name, lvl := range map[string]DiagnosticLevel{
-		"syntaxDiagnostics":  s.SyntaxDiagnostics,
-		"missingDiagnostics": s.MissingDiagnostics,
-	} {
-		switch lvl {
-		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:
-		default:
-			problems = append(problems, fmt.Sprintf("未知 %s %q（支持 off/error/warning/information/hint）", name, lvl))
-		}
-	}
-
 	switch s.Format.Keywords {
 	case "", "unchanged", "upper", "lower":
 	default:
@@ -737,21 +687,6 @@ func (s Settings) Validate() []string {
 	for i, n := range s.Builtins.Disable {
 		if strings.TrimSpace(n) == "" {
 			problems = append(problems, fmt.Sprintf("builtins.disable[%d] 为空", i))
-		}
-	}
-
-	for name, lvl := range map[string]DiagnosticLevel{
-		"globals.fileNotFoundDiagnostics":     s.Globals.FileNotFoundDiagnostics,
-		"globals.unresolvedSourceDiagnostics": s.Globals.UnresolvedSourceDiagnostics,
-		"fieldDiagnostics":                    s.FieldDiagnostics,
-	} {
-		// （format 的取值校验在下面单独做）
-		switch lvl {
-		case LevelOff, LevelError, LevelWarning, LevelInfo, LevelHint:
-		case "":
-			problems = append(problems, fmt.Sprintf("%s 未设置（应取 off/error/warning/information/hint）", name))
-		default:
-			problems = append(problems, fmt.Sprintf("未知 %s %q（支持 off/error/warning/information/hint）", name, lvl))
 		}
 	}
 

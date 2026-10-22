@@ -121,7 +121,7 @@ func TestFieldDiagnosticsOff(t *testing.T) {
 		"params": map[string]any{
 			"settings": map[string]any{
 				"bdl": map[string]any{
-					"fieldDiagnostics": "off",
+					"diagnostics": map[string]any{"field-not-in-form": "off"},
 				},
 			},
 		},

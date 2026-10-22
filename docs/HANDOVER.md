@@ -1,9 +1,9 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-22（第十轮：**P8 收尾 + 0.2.3 导入进度 + 0.2.4 untitled 崩溃修复**）  
+> 更新时间：2026-10-23（第十一轮：**0.3.0 设置分层/旧诊断键移除 + VSCode/Zed 用户手册**）
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.2.4** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
+> 版本：`bdl-lsp` **0.3.0** / `vscode-extension` **0.2.0**（设置分组 + 用户手册）/ `zed-extension` **0.1.1**（用户手册）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -26,7 +26,7 @@ Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
 
 **诊断码改动流程**：改 `internal/diag` 的 `summaries`/`defaultLevel` 后，跑
 `make diagnostics-write` 重生成 `docs/DIAGNOSTICS.md`，再跑 `make lint`
-（内含 `diagnostics-check`，会核对 VSCode `package.json` 的枚举与老键默认值）。
+（内含 `diagnostics-check`，会核对 VSCode `package.json` 里 `bdl.diagnostics` 的类型与级别枚举）。
 
 **改 grammar 的硬规矩**：
 
@@ -63,7 +63,7 @@ GLOBALS、字段/表单、部署、索引、链接资料、内置符号、忽略
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.2.2` | Go LSP 服务器 + CLI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.0` | Go LSP 服务器 + CLI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.1.1` | VSCode 插件 |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件 |
 
@@ -146,20 +146,23 @@ workspace/didChangeConfiguration
 
 ```text
 generoVersion                       2.50
-syntaxDiagnostics                   error
-missingDiagnostics                  warning
 server.path / server.logLevel / trace.server
-globals.fileNotFoundDiagnostics     warning
-globals.unresolvedSourceDiagnostics warning
+diagnostics.<码>                    唯一诊断入口；默认 warning（例外见注册表）
+diagnostics.syntax-error            默认 warning
+diagnostics.record-member-unknown   默认 off
+diagnostics.file-too-large          默认 information
+diagnostics.link-data-stale         默认 hint
+format.keywords / indentStyle / indentSize    unchanged / auto / 0
+limits.maxFileBytes / maxFileLines / maxIssues / parseTimeoutMS
+                                    2MB / 20000 / 200 / 2000
+index.enable                        true
+schema.enable / schema.paths        true / []
 globals.searchPaths                 []
-fieldDiagnostics                    warning
+perRoots                            []
+builtins.enable / .paths / .disable true / [] / []
 ignore.files                        []         ← P8：整文件静默 + 不进索引
 ignore.fields                       []         ← P8：只屏蔽 field-not-in-form
 ignore.forms                        []         ← P8：屏蔽该表单的字段类诊断
-perRoots                            []
-recordMemberDiagnostics             off        ← P6，默认关闭
-diagnostics.<码>                    （见 FEATURES） ← P7-B 注册表，优先级最高
-builtins.enable / .paths / .disable true / [] / []  ← P7-C
 link.enable                         true       ← P7-D
 link.dataDir                        .link
 link.moduleRoots                    []          （空 = 自动探测 tiptop/topcust）
@@ -173,15 +176,13 @@ link.sync.command                   ""          （source=command）
 link.sync.file                      ""          （source=file；空 = .link/gal_file.csv）
 link.sync.db.host/port/service/user 1521…       （source=golang；密码见下）
   密码：环境变量 BDL_ORA_PASSWORD > <项目>/.link/secrets.json（必须 0600）
-format.keywords                     unchanged  （unchanged/upper/lower）
-format.indentStyle                  auto       （auto/tab/space）
-format.indentSize                   0          （0 = 跟随编辑器）
-deploy.target                       ""
-limits.maxFileBytes                 2097152
-limits.maxFileLines                 20000
-limits.maxIssues                    200
-limits.parseTimeoutMs               2000
+deploy.target                       ""          （VSCode 命令使用）
 ```
+
+旧专用诊断键（`syntaxDiagnostics`、`missingDiagnostics`、`fieldDiagnostics`、
+`recordMemberDiagnostics`、`globals.fileNotFoundDiagnostics`、
+`globals.unresolvedSourceDiagnostics`）已在 0.3.0 删除，统一走
+`diagnostics.<码>`。
 
 ## 6. 环境约束（每次开工先做）
 

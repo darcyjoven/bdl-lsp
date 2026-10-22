@@ -30,23 +30,6 @@ func TestCheckRegistryEveryCodeDocumented(t *testing.T) {
 	}
 }
 
-// TestLegacyGroupLevelsConsistent 检查线上数据本身的约束：
-// 同一老键覆盖的多个码必须有同一默认级别，否则"老键的默认值"是二义的。
-func TestLegacyGroupLevelsConsistent(t *testing.T) {
-	levelOf := map[diag.Code]string{}
-	for _, sp := range diag.Specs() {
-		levelOf[sp.Code] = string(sp.Level)
-	}
-	for key, codes := range LegacyKeys {
-		want := levelOf[codes[0]]
-		for _, c := range codes {
-			if levelOf[c] != want {
-				t.Errorf("%s 覆盖的 %s 默认级别 %q ≠ %s 的 %q", key, c, levelOf[c], codes[0], want)
-			}
-		}
-	}
-}
-
 // TestCheckVSCodeCatchesDrift 钉住"校验有牙"：默认值/枚举/缺键都要报。
 func TestCheckVSCodeCatchesDrift(t *testing.T) {
 	specs := diag.Specs()
@@ -62,17 +45,11 @@ func TestCheckVSCodeCatchesDrift(t *testing.T) {
 		mutate func(map[string]any)
 		want   string
 	}{
-		{"默认值与注册表不符", func(p map[string]any) {
-			p["bdl.fieldDiagnostics"].(map[string]any)["default"] = "off"
-		}, "bdl.fieldDiagnostics"},
-		{"枚举写错一个词", func(p map[string]any) {
-			p["bdl.syntaxDiagnostics"].(map[string]any)["enum"] = []string{"off", "error", "warn"}
-		}, "bdl.syntaxDiagnostics"},
-		{"缺老键", func(p map[string]any) {
-			delete(p, "bdl.recordMemberDiagnostics")
-		}, "bdl.recordMemberDiagnostics"},
-		{"缺新键", func(p map[string]any) {
+		{"缺 bdl.diagnostics", func(p map[string]any) {
 			delete(p, "bdl.diagnostics")
+		}, "bdl.diagnostics"},
+		{"类型写错", func(p map[string]any) {
+			p["bdl.diagnostics"].(map[string]any)["type"] = "string"
 		}, "bdl.diagnostics"},
 	}
 	for _, c := range cases {
@@ -126,15 +103,6 @@ func writeVSCode(t *testing.T, dir, name string, mutate func(map[string]any)) st
 		"bdl.diagnostics": map[string]any{
 			"type": "object", "default": map[string]any{}, "enum": AllLevels(),
 		},
-	}
-	levelOf := map[diag.Code]string{}
-	for _, sp := range diag.Specs() {
-		levelOf[sp.Code] = string(sp.Level)
-	}
-	for key, codes := range LegacyKeys {
-		props[key] = map[string]any{
-			"type": "string", "enum": AllLevels(), "default": levelOf[codes[0]],
-		}
 	}
 	if mutate != nil {
 		mutate(props)

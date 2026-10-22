@@ -143,9 +143,7 @@ func TestGlobalsNotFoundDisabledByConfig(t *testing.T) {
 		"params": map[string]any{
 			"settings": map[string]any{
 				"bdl": map[string]any{
-					"globals": map[string]any{
-						"fileNotFoundDiagnostics": "off",
-					},
+					"diagnostics": map[string]any{"globals-file-not-found": "off"},
 				},
 			},
 		},
@@ -499,9 +497,7 @@ func TestUnresolvedSourceDisabledByConfig(t *testing.T) {
 		"params": map[string]any{
 			"settings": map[string]any{
 				"bdl": map[string]any{
-					"globals": map[string]any{
-						"unresolvedSourceDiagnostics": "off",
-					},
+					"diagnostics": map[string]any{"variable-source-unresolved": "off"},
 				},
 			},
 		},
@@ -604,19 +600,18 @@ func TestDiagnosticsPerCodeDisablesSingleCode(t *testing.T) {
 	}
 }
 
-func TestDiagnosticsPerCodeOverridesLegacyKey(t *testing.T) {
+func TestDiagnosticsPerCodeOverride(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
 	mainURI := "file://" + filepath.Join(dir, "main.4gl")
 
-	// 新键 error 应压过旧键 warning。
+	// 逐码 error 应生效。
 	cfg := map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "workspace/didChangeConfiguration",
 		"params": map[string]any{
 			"settings": map[string]any{
 				"bdl": map[string]any{
-					"globals":     map[string]any{"unresolvedSourceDiagnostics": "warning"},
 					"diagnostics": map[string]any{"variable-source-unresolved": "error"},
 				},
 			},

@@ -13,12 +13,8 @@ func TestDefaultValues(t *testing.T) {
 	if s.GeneroVersion != Genero25 {
 		t.Errorf("GeneroVersion = %q，期望 2.50", s.GeneroVersion)
 	}
-	// Q10 定稿：语法错误默认 warning，与 bdl.diagnostics 新键保持一致。
-	if s.SyntaxDiagnostics != LevelWarning {
-		t.Errorf("SyntaxDiagnostics = %q，期望 warning", s.SyntaxDiagnostics)
-	}
-	if s.MissingDiagnostics != LevelWarning {
-		t.Errorf("MissingDiagnostics = %q，期望 warning", s.MissingDiagnostics)
+	if len(s.Diagnostics) != 0 {
+		t.Errorf("Diagnostics 默认应为空（级别由注册表提供），实际 %v", s.Diagnostics)
 	}
 	if s.Limits.MaxIssues != 200 {
 		t.Errorf("MaxIssues = %d", s.Limits.MaxIssues)
@@ -30,19 +26,19 @@ func TestDefaultValues(t *testing.T) {
 
 func TestApplyPartial(t *testing.T) {
 	m := NewManager("")
-	if err := m.Apply(json.RawMessage(`{"generoVersion":"3.00","missingDiagnostics":"off"}`)); err != nil {
+	if err := m.Apply(json.RawMessage(`{"generoVersion":"3.00","diagnostics":{"missing-node":"off"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	s := m.Get()
 	if s.GeneroVersion != Genero30 {
 		t.Errorf("GeneroVersion = %q", s.GeneroVersion)
 	}
-	if s.MissingDiagnostics != LevelOff {
-		t.Errorf("MissingDiagnostics = %q", s.MissingDiagnostics)
+	if s.Diagnostics["missing-node"] != LevelOff {
+		t.Errorf("diagnostics[missing-node] = %q", s.Diagnostics["missing-node"])
 	}
 	// 未指定的项保持默认
-	if s.SyntaxDiagnostics != LevelWarning {
-		t.Errorf("SyntaxDiagnostics 应保持默认 warning，实际 %q", s.SyntaxDiagnostics)
+	if s.Diagnostics["syntax-error"] != "" {
+		t.Errorf("未下发的码不应出现在覆盖表，实际 %q", s.Diagnostics["syntax-error"])
 	}
 	if s.Limits.MaxIssues != 200 {
 		t.Errorf("MaxIssues 应保持默认，实际 %d", s.Limits.MaxIssues)
@@ -56,11 +52,50 @@ func TestApplyInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestApplyEmptyDiagnosticsClears(t *testing.T) {
+	m := NewManager("")
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"syntax-error":"off"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["syntax-error"]; got != LevelOff {
+		t.Fatalf("设置未生效：%q", got)
+	}
+	// VSCode 删除用户覆盖后会下发空对象；必须清掉旧值，否则关掉的码永远回不来。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["syntax-error"]; got != "" {
+		t.Errorf("空对象应清空覆盖表，实际 %q", got)
+	}
+}
+
+func TestApplyKeepsProjectDiagnostics(t *testing.T) {
+	m := NewManager("")
+	// 模拟已加载的 .bdl-lsp/config.json 覆盖。
+	m.fileDiagnostics = map[string]DiagnosticLevel{"function-not-found": LevelHint}
+
+	// 客户端没有个人覆盖时下发空对象：项目配置必须保留。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["function-not-found"]; got != LevelHint {
+		t.Errorf("项目配置被个人空设置抹掉：%q", got)
+	}
+
+	// 个人覆盖可以压过项目配置。
+	if err := m.Apply(json.RawMessage(`{"diagnostics":{"function-not-found":"off"}}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Get().Diagnostics["function-not-found"]; got != LevelOff {
+		t.Errorf("个人覆盖未生效：%q", got)
+	}
+}
+
 func TestValidateErrors(t *testing.T) {
 	cases := []Settings{
-		{GeneroVersion: "9.99", SyntaxDiagnostics: LevelError, MissingDiagnostics: LevelWarning, Limits: Limits{MaxIssues: 1, MaxFileBytes: 1, ParseTimeoutMS: 1}},
-		{GeneroVersion: Genero25, SyntaxDiagnostics: "fatal", MissingDiagnostics: LevelWarning, Limits: Limits{MaxIssues: 1, MaxFileBytes: 1, ParseTimeoutMS: 1}},
-		{GeneroVersion: Genero25, SyntaxDiagnostics: LevelError, MissingDiagnostics: LevelWarning, Limits: Limits{MaxIssues: 0, MaxFileBytes: 1, ParseTimeoutMS: 1}},
+		{GeneroVersion: "9.99", Limits: Limits{MaxIssues: 1, MaxFileBytes: 1, ParseTimeoutMS: 1}},
+		{GeneroVersion: Genero25, Diagnostics: map[string]DiagnosticLevel{"syntax-error": "fatal"}, Limits: Limits{MaxIssues: 1, MaxFileBytes: 1, ParseTimeoutMS: 1}},
+		{GeneroVersion: Genero25, Limits: Limits{MaxIssues: 0, MaxFileBytes: 1, ParseTimeoutMS: 1}},
 	}
 	for i, c := range cases {
 		if problems := c.Validate(); len(problems) == 0 {
@@ -148,7 +183,7 @@ func TestURIToPath(t *testing.T) {
 	}
 }
 
-func TestDiagnosticsMergeByCode(t *testing.T) {
+func TestDiagnosticsReplaceByCode(t *testing.T) {
 	m := NewManager("")
 	// 首次下发：条目写入。
 	if err := m.Apply(json.RawMessage(`{"diagnostics":{"variable-source-unresolved":"off"}}`)); err != nil {
@@ -158,13 +193,14 @@ func TestDiagnosticsMergeByCode(t *testing.T) {
 		t.Fatalf("首次下发未生效：%q", got)
 	}
 
-	// 再次下发另一个码：前一个不被清掉（增量合并）。
+	// 再次下发另一个码：diagnostics 是完整对象，旧条目不应保留。
+	// 否则 VSCode 里删掉一个覆盖后，服务端仍会继续用旧值。
 	if err := m.Apply(json.RawMessage(`{"diagnostics":{"function-not-found":"hint"}}`)); err != nil {
 		t.Fatal(err)
 	}
 	s := m.Get()
-	if s.Diagnostics["variable-source-unresolved"] != LevelOff {
-		t.Error("增量合并丢了已有条目")
+	if _, ok := s.Diagnostics["variable-source-unresolved"]; ok {
+		t.Error("完整下发应清掉未列出的旧条目")
 	}
 	if s.Diagnostics["function-not-found"] != LevelHint {
 		t.Errorf("新条目未生效：%q", s.Diagnostics["function-not-found"])
@@ -213,7 +249,7 @@ func TestDiagnosticsAbsentKeepsValues(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 不下发 diagnostics 的配置不应清空它。
-	if err := m.Apply(json.RawMessage(`{"missingDiagnostics":"error"}`)); err != nil {
+	if err := m.Apply(json.RawMessage(`{"generoVersion":"3.00"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if got := m.Get().Diagnostics["file-too-large"]; got != LevelOff {

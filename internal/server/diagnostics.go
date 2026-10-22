@@ -228,7 +228,7 @@ func (s *Server) publishNotice(ctx context.Context, uri string, version int32, m
 		s.publish(ctx, uri, version, nil, nil)
 		return
 	}
-	severity, enabled := diag.SeverityFor(diag.CodeFileTooLarge, s.settings(), "")
+	severity, enabled := diag.SeverityFor(diag.CodeFileTooLarge, s.settings())
 	if !enabled {
 		// 关掉提示但仍要清掉上一轮的诊断（LSP 诊断是全量替换）。
 		s.publish(ctx, uri, version, nil, nil)
@@ -254,17 +254,12 @@ func (s *Server) publishNotice(ctx context.Context, uri string, version int32, m
 
 // severityFor 依据配置决定语法诊断的级别；ok=false 表示该诊断被关闭。
 //
-// 优先级（与语义诊断一致）：
+// 优先级：
 //  1. `bdl.diagnostics.<码>` —— ERROR 用固定码 syntax-error；MISSING 先试
 //     精确的 `missing-<kind>`，再试整簇兜底 `missing-node`；
-//  2. 旧专用键（syntaxDiagnostics / missingDiagnostics）；
-//  3. 注册表默认（都是 warning）。
+//  2. 注册表默认（syntax-error / missing-node 都是 warning）。
 func severityFor(iss parser.Issue, settings config.Settings) (protocol.DiagnosticSeverity, bool) {
 	code := diag.Code(diagnosticCode(iss))
-	legacy := settings.SyntaxDiagnostics
-	if iss.Missing {
-		legacy = settings.MissingDiagnostics
-	}
 	// 精确码（含动态的 missing-<kind>）
 	if lv, ok := settings.Diagnostics[string(code)]; ok && lv != "" {
 		return diag.ToSeverity(lv)
@@ -274,13 +269,9 @@ func severityFor(iss parser.Issue, settings config.Settings) (protocol.Diagnosti
 		if lv, ok := settings.Diagnostics[string(diag.CodeMissingNode)]; ok && lv != "" {
 			return diag.ToSeverity(lv)
 		}
+		return diag.ToSeverity(diag.DefaultLevel(diag.CodeMissingNode))
 	}
-	return diag.ToSeverity(legacy)
-}
-
-// toSeverity 是 diag.ToSeverity 的薄别名（保持既有调用点可读）。
-func toSeverity(level config.DiagnosticLevel) (protocol.DiagnosticSeverity, bool) {
-	return diag.ToSeverity(level)
+	return diag.ToSeverity(diag.DefaultLevel(diag.CodeSyntaxError))
 }
 
 // diagnosticCode 返回诊断的机器可读代码，便于用户过滤。

@@ -269,6 +269,9 @@ Zed   : rootUri = "file:///c:/..."        ← 预期
 
 1. **集中注册表**：Go 侧建 `internal/diag/registry.go`，每个码登记 Code + 默认级别。级别解析统一走 `diag.SeverityFor(code, settings, legacy)`，删除各功能里散落的 level 判断。
 2. **向后兼容**：现有独立配置项（`syntaxDiagnostics`、`globals.*`、`fieldDiagnostics`、`recordMemberDiagnostics`）继续生效，优先级 `diagnostics.<code>` > 旧键 > 注册表默认。旧键在文档中标记 deprecated，**至少两个版本内不删**。
+
+> **2026-10-23 更新（0.3.0）**：用户决定提前删除旧专用键，统一走
+> `bdl.diagnostics`；本节以下关于旧键兼容的内容是当时的决策记录，不再代表当前行为。
 3. **拼错保护**：`diagnostics` 里出现注册表没有的码 → 记 `warn` 日志（客户端 toast 可选）。现在的配置拼错是静默失效，这个坑必须堵。
 4. **清单防漂移**：仿照现有 `keywords-check`，新增 `make diagnostics-check`，校验三处一致：Go 注册表 ↔ `docs/DIAGNOSTICS.md`（自动生成）↔ VSCode `package.json` 的 enum 列表。
 

@@ -15,7 +15,7 @@
 ```
 
 级别取值：`off`（关闭）、`error`（红）、`warning`（黄）、`information`（灰）、`hint`（淡灰）。
-优先级：`bdl.diagnostics.<码>` > 老专用键（见下表）> 下表默认值。
+`bdl.diagnostics` 未列出的码使用下表默认值；设置项是**唯一**入口，旧专用键已移除。
 
 | 诊断码 | 默认级别 | 说明 |
 |---|---|---|
@@ -32,17 +32,6 @@
 | `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关） |
 | `syntax-error` | `warning` | grammar 的 ERROR 节点（无法解析的片段） |
 | `variable-source-unresolved` | `warning` | 变量使用处查不到任何定义（局部 / 模块级 / GLOBALS 引入均无） |
-
-## 老配置键（保留至少两个版本，仍生效）
-
-| 老键 | 覆盖的诊断码 | 默认级别 |
-|---|---|---|
-| `bdl.fieldDiagnostics` | `field-not-in-form`、`form-duplicate-item`、`form-layout-tag-undefined`、`form-screen-record-undefined` | `warning` |
-| `bdl.globals.fileNotFoundDiagnostics` | `globals-file-not-found` | `warning` |
-| `bdl.globals.unresolvedSourceDiagnostics` | `variable-source-unresolved` | `warning` |
-| `bdl.missingDiagnostics` | `missing-node` | `warning` |
-| `bdl.recordMemberDiagnostics` | `record-member-unknown` | `off` |
-| `bdl.syntaxDiagnostics` | `syntax-error`、`missing-node` | `warning` |
 
 ## 动态诊断码
 

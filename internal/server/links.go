@@ -251,7 +251,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 	if meta.GeneratedTime().IsZero() || age < time.Duration(maxAge)*24*time.Hour {
 		return
 	}
-	severity, enabled := diag.SeverityFor(diag.CodeLinkDataStale, settings, "")
+	severity, enabled := diag.SeverityFor(diag.CodeLinkDataStale, settings)
 	if !enabled {
 		return
 	}

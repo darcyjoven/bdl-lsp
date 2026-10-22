@@ -16,7 +16,7 @@
 //  2. `rec.*`（通配）：**语法树里没有 property 节点**——`*` 被 grammar
 //     当作通配吞掉。这恰好说明它不需要逐个校验：它本来就"全都要"。
 //
-// **默认关闭**（配置 `recordMemberDiagnostics`，默认 off）。
+// **默认关闭**（`bdl.diagnostics.record-member-unknown`，默认 off）。
 // 记录成员静态上只能靠 TYPE..END RECORD 的字段列表，而语料里
 // `DEFINE r LIKE table.*`（按数据库列展开）很常见，硬校验会大面积误报。
 // 按 PLAN §7.2 与风险表的决定：先默认关闭，由用户开启并观察。
@@ -472,8 +472,7 @@ func (s *Server) recordMemberChecks(doc *document.Document, issues *[]protocol.D
 		return
 	}
 	settings := s.settings()
-	level := settings.RecordMemberDiagnostics
-	severity, enabled := diag.SeverityFor(diag.CodeRecordMemberUnknown, settings, level)
+	severity, enabled := diag.SeverityFor(diag.CodeRecordMemberUnknown, settings)
 	if !enabled {
 		return
 	}
