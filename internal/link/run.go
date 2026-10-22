@@ -57,6 +57,9 @@ type ImportRequest struct {
 	Write bool
 	// Now 可注入固定时间（测试）。
 	Now time.Time
+	// Progress 是可选的源码扫描进度回调（CLI 用；后台同步传 nil）。
+	// 可能被多个 worker 并发调用，实现方需保证线程安全。
+	Progress func(done, total int)
 }
 
 // ImportOutcome 是导入结果 + 实际使用的布局信息。
@@ -106,7 +109,7 @@ func RunImport(req ImportRequest) (*ImportOutcome, error) {
 	start := time.Now()
 	// 全语料的函数名画像：用来区分"项目里根本没有这个函数"（外部函数，
 	// 忽略）与"有但链接里看不到"（真问题，照报）。
-	corpus, err := ScanCorpus(layout, req.Pool, 0)
+	corpus, err := ScanCorpusWithProgress(layout, req.Pool, 0, req.Progress)
 	if err != nil {
 		return nil, err
 	}

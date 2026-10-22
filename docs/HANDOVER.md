@@ -1,9 +1,9 @@
 # 会话交接（HANDOVER）
 
-> 更新时间：2026-10-22（第十轮：**P8 收尾完成——TESTING / grammar tag / 忽略列表 / 编辑器差异 / go-tree-sitter v0.25**）  
+> 更新时间：2026-10-22（第十轮：**P8 收尾 + 0.2.3 链接导入进度**）  
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 >
-> 版本：`bdl-lsp` **0.2.2** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
+> 版本：`bdl-lsp` **0.2.3** / `vscode-extension` **0.1.1**（新增 `bdl.ignore.*`）/ `zed-extension` **0.1.1**（grammar rev 更新）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 三个仓库各自独立记版本，不要求一致。
 
@@ -49,6 +49,7 @@ Windows/真实服务器/GUI。测试命令见 [TESTING.md](TESTING.md)，
 | 部署当前文件 | VSCode `bdl.deployCurrentFile` + Zed task `$ZED_FILE`（复核 + 文档） |
 | 编辑器差异 | [EDITOR-SUPPORT.md](EDITOR-SUPPORT.md)：语义高亮、pull diagnostics、配置外壳、链接视图、部署 |
 | 稳定性修复 | `parseMu` 串行化请求与防抖重算，修掉偶发 `ts_query_cursor_next_match` SIGSEGV（坑 #31） |
+| 链接导入进度 | `link import/sync` 扫描源码时每 400 个文件向 stderr 打一行进度（0.2.3） |
 
 ## 1. 一句话状态
 

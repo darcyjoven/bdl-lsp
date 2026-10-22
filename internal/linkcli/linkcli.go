@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/link"
@@ -72,6 +73,28 @@ status 查看已有资料的统计（不解析源码，秒回）。
 `)
 }
 
+// reportScanProgress 把源码扫描进度写到 stderr（stdout 留给结果）。
+//
+// 每 200 个文件或 10% 打一行：7200 个文件约 36 行，既能看到在动，
+// 又不会把 CI 日志刷爆。回调可能从多个 worker 并发进入，这里加锁。
+func reportScanProgress(done, total int) {
+	progressMu.Lock()
+	defer progressMu.Unlock()
+	if total <= 0 {
+		return
+	}
+	if done == 0 {
+		fmt.Fprintf(os.Stderr, "扫描源码 0/%d（需要解析全部 .4gl，首次通常 20–30 秒）…\n", total)
+		return
+	}
+	// 每 400 个文件一行：7600 个文件约 19 行，既能看到在动，又不刷屏。
+	if done == total || done%400 == 0 {
+		fmt.Fprintf(os.Stderr, "扫描源码 %d/%d（%d%%）\n", done, total, done*100/total)
+	}
+}
+
+var progressMu sync.Mutex
+
 // runSync 采集 + 导入（P7-D-3）。
 func runSync(args []string, version string) int {
 	fs := flag.NewFlagSet("link sync", flag.ContinueOnError)
@@ -121,6 +144,7 @@ func runSync(args []string, version string) int {
 	defer pool.Close()
 
 	start := time.Now()
+	fmt.Fprintf(os.Stderr, "正在采集（%s）…\n", *source)
 	res, err := linksync.Run(context.Background(), linksync.Request{
 		Config:      syncCfg,
 		ProjectRoot: projectRoot,
@@ -129,6 +153,7 @@ func runSync(args []string, version string) int {
 		Pool:        pool,
 		ToolVersion: version,
 		Write:       !*dryRun,
+		Progress:    reportScanProgress,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bdl-lsp link sync: %v\n", err)
@@ -191,6 +216,7 @@ func runImport(args []string, version string) int {
 		ToolVersion:  version,
 		Write:        true,
 		Now:          time.Now(),
+		Progress:     reportScanProgress,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "bdl-lsp link import: %v\n", err)

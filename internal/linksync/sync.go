@@ -21,6 +21,8 @@ type Request struct {
 	// Write=false 只采集+校验，不落盘（给 `link sync -dry-run` 用）。
 	Write bool
 	Now   time.Time
+	// Progress 是可选的源码扫描进度回调（CLI 用；后台调度传 nil）。
+	Progress func(done, total int)
 }
 
 // Result 是采集 + 导入的结果。
@@ -57,6 +59,7 @@ func Run(ctx context.Context, req Request) (*Result, error) {
 		ToolVersion:  req.ToolVersion,
 		Write:        req.Write,
 		Now:          req.Now,
+		Progress:     req.Progress,
 	})
 	if err != nil {
 		return nil, err

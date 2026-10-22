@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/darcyjoven/bdl-lsp/internal/index"
 	"github.com/darcyjoven/bdl-lsp/internal/parser"
@@ -47,6 +48,13 @@ func (c *CorpusIndex) Scan(module, code string) FileScan {
 
 // ScanCorpus 解析整份语料并汇总。
 func ScanCorpus(layout *Layout, pool *parser.Pool, workers int) (*CorpusIndex, error) {
+	return ScanCorpusWithProgress(layout, pool, workers, nil)
+}
+
+// ScanCorpusWithProgress 与 ScanCorpus 相同，但每扫描约 200 个文件回调一次
+// progress(done, total)。回调可能从多个 worker 并发调用，实现方需自行保证
+// 线程安全；它只用于终端进度，不要在里面做重活。
+func ScanCorpusWithProgress(layout *Layout, pool *parser.Pool, workers int, progress func(done, total int)) (*CorpusIndex, error) {
 	files, err := corpusFiles(layout.RootDirs())
 	if err != nil {
 		return nil, err
@@ -66,6 +74,11 @@ func ScanCorpus(layout *Layout, pool *parser.Pool, workers int) (*CorpusIndex, e
 	if workers <= 0 {
 		workers = runtime.GOMAXPROCS(0)
 	}
+	total := len(files)
+	var done atomic.Int64
+	if progress != nil {
+		progress(0, total)
+	}
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -80,12 +93,16 @@ func ScanCorpus(layout *Layout, pool *parser.Pool, workers int) (*CorpusIndex, e
 					continue
 				}
 				scan := scanOnePath(pool, calls, path)
+				n := done.Add(1)
 				mu.Lock()
 				out.byKey[module+"/"+code] = scan
 				for _, d := range scan.Defines {
 					out.Defines[d] = true
 				}
 				mu.Unlock()
+				if progress != nil && (n == int64(total) || n%200 == 0) {
+					progress(int(n), total)
+				}
 			}
 		}()
 	}

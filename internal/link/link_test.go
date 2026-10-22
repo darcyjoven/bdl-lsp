@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -673,5 +674,31 @@ func TestScanCorpusFacts(t *testing.T) {
 	}
 	if st := got.Calls["cl_err3"]; st == nil || st.Calls != 2 || st.Files != 1 {
 		t.Errorf("cl_err3 调用统计不对：%+v", st)
+	}
+
+	// 进度回调：至少要有 0/total 与 total/total 两次（CLI 靠它显示进度）。
+	var mu sync.Mutex
+	var seen [][2]int
+	got2, err := ScanCorpusWithProgress(layout, pool, 1, func(done, total int) {
+		mu.Lock()
+		seen = append(seen, [2]int{done, total})
+		mu.Unlock()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.Files != 2 {
+		t.Fatalf("带进度扫描文件数 = %d，期望 2", got2.Files)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) < 2 {
+		t.Fatalf("进度回调次数 = %d，期望至少 2（0 与完成）", len(seen))
+	}
+	if seen[0] != [2]int{0, 2} {
+		t.Errorf("首次进度 = %v，期望 [0 2]", seen[0])
+	}
+	if seen[len(seen)-1] != [2]int{2, 2} {
+		t.Errorf("末次进度 = %v，期望 [2 2]", seen[len(seen)-1])
 	}
 }
