@@ -19,9 +19,13 @@ func TestTreeOnRealCorpus(t *testing.T) {
 	if root == "" {
 		root = "/code/workspace/tiptop-gp"
 	}
-	dataDir := filepath.Join(root, ".link")
+	// 真实语料目录可能还是迁移前的 `.link/`：两个都认（P1-2）。
+	dataDir := filepath.Join(root, DefaultDataDir)
 	if _, err := os.Stat(filepath.Join(dataDir, LinksFileName)); err != nil {
-		t.Skip("没有真实语料/链接资料，跳过")
+		dataDir = filepath.Join(root, LegacyDataDir)
+		if _, err := os.Stat(filepath.Join(dataDir, LinksFileName)); err != nil {
+			t.Skip("没有真实语料/链接资料，跳过")
+		}
 	}
 	layout := NewLayout(root, nil)
 	idx, err := Load(dataDir)
