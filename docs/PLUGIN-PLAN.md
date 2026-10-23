@@ -12,7 +12,7 @@
 
 | # | 类型 | 事项 | 归属 | 优先级 |
 |---|---|---|---|---|
-| P0-1 | **BUG（严重）** | 后台索引与请求处理并发 → tree-sitter 崩溃、服务整个挂掉（大文件 100% 复现） | bdl-lsp | **最高**（发布前） |
+| P0-1 | **BUG（严重）· 已修** | 链接预热回调在外部关文档树 → tree-sitter 崩溃、服务整个挂掉（大文件 100% 复现） | bdl-lsp | ✅ 已修复（2026-10-23） |
 | P0-2 | BUG | `INPUT ARRAY … FROM s_x.*` 等表单侧名字被报"变量不存在" | bdl-lsp | 高（发布前） |
 | P0-3 | **UX** | 文件因大小/超时/未解析时不告知用户；要加"强制解析"入口 | bdl-lsp + 插件 | 高（发布前） |
 | P1-1 | 功能 | 二进制确认进包 + 功能命令进 VSCode 命令面板（链接导入/同步/状态、schema、部署） | 插件（+tiptop） | 高（发布前） |
@@ -52,7 +52,7 @@
 
 ---
 
-## 2. P0-1：并发导致 tree-sitter 崩溃（本次分析的最大发现）
+## 2. P0-1：链接预热回调关闭文档树导致的崩溃（已修复）
 
 ### 2.1 用户看到的现象
 
@@ -60,14 +60,16 @@
 
 ### 2.2 复现与证据（2026-10-23 实测）
 
-环境：Linux 沙箱，`bdl-lsp 0.3.4`，语料 `/code/workspace/tiptop-gp`。
+环境：Linux 沙箱，`bdl-lsp 0.3.4`，语料 `/code/workspace/tiptop-gp`（含 `.link/`，5398 条链）。
+脚本：[`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py)（退出码 0=OK / 1=崩溃）。
 
 | 场景 | 结果 |
 |---|---|
-| 默认限制（2 MB / 20000 行），打开 `tiptop/axm/4gl/saxmt600.4gl`（41486 行 / 1.7 MB） | 不崩；发一条 `file-too-large`(**information**) 提示；**大纲 0 个符号** |
-| 限制放宽到 20 MB / 200000 行，打开同一文件 | **服务端 SIGSEGV，退出码 2**（1.3 s 内），**8/8 次全崩** |
-| 同一文件、**只把工作区换成只含该文件的临时目录**（索引只有 1 个文件） | ✅ 正常（0.8 s 返回诊断） |
-| 同一文件、不通过 LSP（直接调用 `form.Check`） | ✅ 正常（`issues=5, paths=21`） |
+| 默认限制（2 MB / 20000 行）打开 `tiptop/axm/4gl/saxmt600.4gl`（41486 行 / 1.7 MB） | 不崩；发一条 `file-too-large`(**information**)；**大纲 0 个符号** |
+| 限制放宽到 20 MB / 200000 行，打开同一文件 | **服务端 SIGSEGV，退出码 2**（1.3 s），**8/8 全崩** |
+| 同一文件、工作区换成只含该文件的临时目录 | ✅ 正常（0.8 s） |
+| 同一文件、**把 `.link/` 移走但保留全量索引** | ✅ 正常（0.7–0.8 s，**3/3**） |
+| 同一文件、不通过 LSP（直接 `form.Check`） | ✅ 正常（`issues=5, paths=21`） |
 
 崩溃栈（每次都一样）：
 
@@ -83,32 +85,47 @@ signal arrived during cgo execution
   internal/server.handleDidOpen         documents.go:36
 ```
 
-**结论**：崩溃与"文件多大"只有间接关系——**真正的条件是"后台工作区索引正在跑"**：
+**根因（已定位并修复）**：不是"文件太大"，也不是后台工作区索引，而是**链接资料预热完成后的回调**：
 
-- 全量语料（7756 个文件，索引要跑 ~25 s）+ 大文件（handler 侧 tree-sitter 工作要 ~1 s）
-  → 两者重叠窗口足够大 → **tree-sitter 状态被并发访问**，`ts_node_parent` 读到已失效的子树 → SIGSEGV；
-- 只含一个文件的临时工作区 → 索引瞬间结束 → 不重叠 → 正常。
+```text
+link.SymbolIndex.StartGlobal           // 后台 goroutine 预热全局模组（983 文件 ≈ 2 s）
+  └─ onReady 回调 = Server.requestRediagnose
+       └─ rediagnoseAll → reparse → Document.SetTree   // ← 关闭旧树！
+```
 
-这解释了用户的三条现象：默认限制下大文件被跳过（没大纲）；放宽限制后**服务崩了**（连语法诊断也没有了，
-注意 VSCode 会自动重启语言服务器，用户看到的就是"有些文件一直出不来"）。
+`handleDidOpen`（持 `parseMu`）刚为这个 4 万行文件建好树并正在跑字段校验（约 1 s）；
+与此同时预热 goroutine 完成，回调**没有持 `parseMu`** 就去重诊断所有文档 → `SetTree`
+把 handler 正在遍历的那棵树 `Close()` 掉 → `ts_node_parent` 读已释放内存 → SIGSEGV。
+小文件在预热完成前就跑完了，所以只有大文件表现稳定。
 
-**为什么 `parseMu` 没挡住**：`parseMu` 只串行化了 *请求处理* 与 *防抖重算*（P7-B 那次 `ts_query_cursor_next_match`
-崩溃的修法）。**后台工作区索引（`internal/wsindex` 的 worker 池）从未纳入这个互斥**，它与 handler 并发使用
-同一个 `parser.Pool`，并且和 handler 共享编译好的 query（`index.CallCollector` 等）。
+> 这也解释了默认限制下的现象：文件被跳过 → 没大纲；放宽限制 → 真的去解析 → 撞上预热窗口 → 崩。
 
-### 2.3 修复方向（发布前必须做）
+**修复（已提交）**：把这条回调纳入 `parseMu` 的纪律，但**不能直接加锁**——回调还有一条
+**同步**路径（`link.Resolver.Start`：没有全局模组时立即就绪并同步回调，此时调用方
+`maybeReloadLinks → reparseFull → handle` **已持有 `parseMu`**，直接加锁会自锁死，
+实测让两个链接测试挂起）。最终实现：
 
-1. **把 tree-sitter 的所有使用纳入同一个保护**，两种实现选其一：
-   - **(a) 全局串行**：给 `parser.Pool` 的 Parse/Query 使用加一把进程级互斥（索引 worker 也走它）。
-     代价：冷启动索引变慢（需实测：当前 7756 文件 24.7 s，串行化后可能 60 s+）。
-   - **(b) 隔离资源**（推荐）：索引侧用**自己的 Pool 实例**与**自己的 Query/Collector 实例**，
-     不共享任何 tree-sitter 对象；同时复核 `index.CallCollector` 是否被 handler 与索引同时使用。
-2. **加回归测试**：用语料里的 4 万行文件 + "先全量索引再打开该文件"的顺序做集成测试，
-   当前能 8/8 复现；修好后必须 0/8。
-3. **顺手加兜底**：崩溃兜底（进程级 `recover` 挡不住 SIGSEGV，只能靠不崩 + 索引隔离；
-   插件侧可以检测"语言服务器异常退出"并提示 + 自动重启，见 §4.3）。
-4. 明确 **索引是否该跳过超大文件**（现在是"全量解析一切"，即使 `limits` 已经把它排除在诊断之外）——
-   建议索引也遵守一个（更大的）阈值，并把跳过的文件数写进日志。
+| 函数 | 语义 |
+|---|---|
+| `requestRediagnose()` | 供回调使用：**永不阻塞**，丢到独立 goroutine，等 `parseMu` → 拿锁重算（并检查 shutdown） |
+| `rediagnoseAllLocked()` | 供已在 `parseMu` 内的调用方使用（`reparseFull` 遇到资料重载时） |
+
+回归测试（`internal/server/lock_test.go`）：① 持锁期间调用必须立即返回（防自锁死）；
+② 持锁期间**不得**发生重诊断，释放后必须补发一轮；③ `Locked` 版本不得再次加锁。
+
+**验证**：修复前 `scripts/repro-index-crash.py` 8/8 崩溃；修复后 **20/20 全部 OK**
+（含 4.5 万行的 `saapt110.4gl`），`go test ./...` 全绿，
+`go test ./internal/server/ -run TestRequestRediagnose` 覆盖锁纪律。
+
+### 2.3 还剩的加固项
+
+1. **CI 回归**：复现脚本依赖真实语料（CI 没有），需要在 CI 里补一条**合成工作区**的等价测试
+   （造 `.link/links.jsonl` + 多个"全局模组"文件把预热窗口拉开 + 一个大文件），
+   或者把语料抽样放进 CI 缓存。
+2. **同类路径审计**：现在只有这一条异步回调会"从外部改文档树"。审计结论写进代码注释
+   （`parseMu` 的说明），后续新增任何后台 → 文档树的路径都必须走 `requestRediagnose` 一类入口。
+3. 明确 **工作区索引是否该跳过超大文件**（它现在解析一切，包括 `limits` 已排除诊断的文件）——
+   属于性能优化，不是本次崩溃的原因。
 
 ### 2.4 顺带的产品要求（P0-3）
 
@@ -121,8 +138,11 @@ signal arrived during cgo execution
 | 服务崩溃/重启 | 无感（用户只看到功能时有时无） | 输出通道 + 通知："语言服务器异常退出，已重启（详情见日志）" |
 
 "强制解析"实现：命令 `bdl.forceParseCurrentFile` + `editor/title` 菜单（`when: resourceLangId == bdl || per`），
-行为 = 对该 URI 关闭本次阈值/超时限制重解析一次（用 `workspace/executeCommand` 通知服务端，
-或客户端临时把该文件加入白名单）。**只对当前文件、只到下次编辑为止**，避免变成"永久绕过"。
+行为 = 对该 URI 关闭阈值/超时限制并重解析一次（`workspace/executeCommand` 通知服务端，
+服务端把该 URI 记进"强制解析集合"）。
+
+**有效期（用户确认）**：**文件不关闭就一直生效**（`didClose` 时从集合里移除）；
+这样用户点一次就能一直编辑、看诊断，不必每次重新点。
 
 ---
 
@@ -243,8 +263,8 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 - **读**：`.project/` 优先；`.project/` 不存在而 `.link/` 存在时，读 `.link/` 并发一条
   "资料目录已迁移，建议移动"的提示（不自动搬，避免动用户文件）；提供命令 `bdl.migrateLinkDir` 一键迁移。
 - **写**：只写 `.project/`，永不写 `.link/`。
-- `.gitignore` 提示：`.project/secrets.json`、`.project/deploy.json` 不该提交（`E8 刻意不做` 的旧决定保留：
-  不改用户文件，只在资料视图里给一次性提示 + 文档写清）。
+- `.project/` 里的 `secrets.json` / `deploy.json` 是**插件自己生成的内部文件**（用户不再配置它们），
+  因此**不做任何"加 .gitignore"提示**，也不动用户文件（旧决定 `E8` 保持）。
 - 涉及改动：`bdl-lsp`（`link.DefaultDataDir`、`config` 默认值、诊断消息文案）、
   `tiptop`（CLI 默认目录、secrets/csv 落点）、插件（默认 `dataDir`、新建目录的时机）。
 
@@ -260,8 +280,9 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 
 设置面板的注意点：
 - 组的标题不要重复"Genero BDL："前缀（面板本身已经分组显示）——用户点名要求。
-- **生产环境组要有一条醒目警告**：*建议只写在 **Workspace** 设置里；不要提交
-  `~/.vscode/settings.json` 到 git*（可以用 `markdownDescription` + `enumItemLabels` 呈现）。
+- **生产环境组要有一条醒目警告**：*这些值请写在 **Workspace** 设置里；
+  并且**不要让 `settings.json`（无论工作区的还是 `~/.vscode/settings.json`）进 git 管理***
+  （密码类的值本插件一律不放进设置，见 §5.3；但主机名/账号仍不该提交）。
 - `link.enable=false` 时，链接相关命令用 `when` 隐藏（§4.2）。
 
 ### 5.3 "不要文件配置"怎么落地（已确认方案）
@@ -299,9 +320,12 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 - **合并语义**（关键）：读现有 `links.jsonl` → 只重算受影响程序的链 → 其余链原样保留 →
   meta 里记 `partial: {"modules":[…],"files":[…],"updatedAt":…,"rowsTotal":…}`。
   这样单文件更新是**秒级**，而不是 24 s。
-- 边界（需要实现时定）：被更新的程序可能**引用**别的文件/被别的程序引用 → 是否连带更新
-  "调用它/被它调用"的程序？默认只更新显式指定的集合，meta 里注明"局部更新"，
-  视图/状态命令显示"资料是部分更新的"。
+- **连带范围（用户 2026-10-23 确认）**：
+  - 指定的是 **MAIN 程序**的文件 → 它自己只属于一条链 → 直接更新那一条；
+  - 指定的是 **lib/sub/qry（全局模组）**下的文件 → 更新它自己所在的那部分；
+  - 指定的是**被多个 MAIN 引用的公共文件**（如 `saapt310.4gl`）→ 先把受影响的作业
+    **列出来并计数**，提示"将更新 N 个作业（程序）"，**用户确认后再写盘**；
+  - 无论哪种，都只更新显式指定集合所覆盖的链，meta 里注明"局部更新"与时间。
 
 ### 6.3 与插件配合
 
@@ -328,7 +352,18 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 > 用户明确：**schema 功能放到正式发布之后一个版本**；本节只留设计，不排进发布前待办。
 > 数据来源附件（Oracle 导出，6 万多行）暂未拿到，格式按下面设计先定，拿到再校准。
 
-### 7.1 数据模型（`.project/.schema/`）
+### 7.1 数据来源与模型（`.project/.schema/`）
+
+**样例数据（用户已提供，不入库）**：`bdl-lsp/artifacts/schema/demo.csv`
+（Oracle 导出，58,100 行 / 3.1 MB，放在 `artifacts/` 下由 `.gitignore` 忽略）。
+表头实测为：
+
+```text
+table_name,column_name,column_desc,data_type,data_length,char_length,data_precicison,data_scale,nullable,default_legth
+```
+
+注意表头有两个拼写错误（`data_precicison`、`default_legth`）——**导入器必须容错**
+（按位置或别名匹配，不要按严格列名）。校准时只读前 1000 行。
 
 从用户给的 SQL 看，每条记录是：
 
@@ -394,16 +429,19 @@ data_length, char_length, data_precision, data_scale, nullable, default_length
 
 ---
 
-## 9. 待确认
+## 9. 已确认 / 待确认
 
-1. **`.project/` 里的 `deploy.json` 与 `secrets.json` 是否要提示加 `.gitignore`**：
-   旧决定是"不擅自改用户文件"。现在密码进了 `.project/secrets.json`，是否改成立即在视图里提示一次？
-2. **局部同步的连带范围**：更新 `aap/4gl/saapt310.4gl` 时，是否连带更新"引用它的程序"？
-   （影响"链接资料是否完整"的观感）
-3. **强制解析的粒度**：只对当前文件、到下次编辑有效（本计划默认），还是要"本次会话永久"？
-4. **schema 附件**：拿到 Oracle 导出后需要按前 1000 行校准列语义（尤其 `data_length/char_length` 的取舍）。
+**已确认（用户 2026-10-23）**：
 
----
+1. `.project/secrets.json`、`.project/deploy.json` 是插件内部文件，**用户不需要配置、不做提示**；
+   但**设置里要醒目提示**：生产环境类配置只写 workspace 设置，且 `settings.json` 不要进 git 管理。
+2. 局部同步的连带语义：MAIN → 只更新自己那条链；lib/sub/qry → 更新自己；
+   **被多个 MAIN 引用的公共文件 → 列出并计数受影响的作业，用户确认后再更新**。
+3. "强制解析"有效期：**文件不关闭就一直生效**（关闭时失效）。
+4. schema 样例数据已放到 `bdl-lsp/artifacts/schema/demo.csv`（不追踪）。
+
+**待确认**：schema 数据正式导入时，按前 1000 行校准列语义（尤其 `data_length/char_length`
+在 VARCHAR2/NUMBER 上的取舍）——发布后一版再定，不阻塞发布。
 
 ## 附录 A：被删文档里"仍然有效"的决策（抢救）
 

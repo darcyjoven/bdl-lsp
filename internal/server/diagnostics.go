@@ -101,9 +101,10 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	}
 	// P7-D：用户可能刚 `tiptop link import` 过；同样按 mtime 检查（2s 节流）。
 	// 重载后 links 换了实例，本次诊断用的还是旧的可变状态，所以重载完要
-	// 直接返回——由 rediagnoseAll 再走一轮，避免用半旧半新的数据判定。
+	// 直接返回——由 requestRediagnose 再走一轮，避免用半旧半新的数据判定。
+	// 这里已经在 parseMu 内（handle/timer 都持锁），必须用 Locked 版本。
 	if s.maybeReloadLinks() {
-		s.rediagnoseAll()
+		s.rediagnoseAllLocked()
 		return
 	}
 

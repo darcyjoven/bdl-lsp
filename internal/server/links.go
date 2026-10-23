@@ -89,7 +89,9 @@ func (s *Server) newLinkResolver() {
 	res := link.NewResolver(idx, layout, settings.Link.GlobalModules, link.NewBDLParseFunc(s.pool))
 	// 索引预热完成后补发一轮诊断：首轮因为"可见集不完整"被跳过，
 	// 这里把结果补上（用户不该为了看诊断去动一下文件）。
-	res.SetOnReady(func() { s.rediagnoseAll() })
+	// 走 requestRediagnose：回调可能是同步的（调用方已持 parseMu），
+	// 不能在这里直接重诊断，否则自锁死。
+	res.SetOnReady(func() { s.requestRediagnose() })
 
 	s.links.resolver = res
 	s.links.loaded = true
@@ -168,12 +170,49 @@ func (s *Server) maybeReloadLinks() bool {
 	return true
 }
 
-// rediagnoseAll 重新诊断所有已打开文档（链接索引就绪/资料重载后调用）。
-func (s *Server) rediagnoseAll() {
+// rediagnoseAllLocked 重新诊断所有已打开文档（**假定 parseMu 已持有**）。
+//
+// 会走 reparse → Document.SetTree（关闭旧树），因此调用方必须已经在
+// parseMu 内（handle / 防抖 timer / 下面的 requestRediagnose）。
+func (s *Server) rediagnoseAllLocked() {
 	ctx := context.Background()
 	for _, doc := range s.docs.All() {
 		s.reparse(ctx, doc, nil)
 	}
+}
+
+// requestRediagnose 请求一次"全部已打开文档重诊断"，**从不阻塞调用方**。
+//
+// 为什么不能直接加锁重诊断：链接预热的回调有两种触发方式
+//
+//   - 有全局模组：link.SymbolIndex.StartGlobal 在**后台 goroutine** 里回调
+//     （2026-10-23 的段错误来源：没有串行化就 SetTree 关掉了 handler 正在
+//     遍历的树 → ts_node_parent 读已释放内存；全量语料 + 4 万行文件 8/8 复现，
+//     移走 .link/ 后 0/3 复现——是预热回调，不是后台索引）；
+//   - 没有全局模组：link.Resolver.Start 在**同步**路径回调，此时调用方
+//     （maybeReloadLinks → reparseFull → handle）**正持着 parseMu**，
+//     直接加锁会自己锁死自己（downstream 测试实测挂起）。
+//
+// 所以统一丢到独立 goroutine：等 parseMu → 拿锁重算。调用方永不阻塞；
+// 回调本身很稀有（每次资料重载 / 预热就绪各一次），不做合并也无需担心堆积。
+func (s *Server) requestRediagnose() {
+	s.mu.Lock()
+	shutdown := s.shutdown
+	s.mu.Unlock()
+	if shutdown {
+		return
+	}
+	go func() {
+		s.parseMu.Lock()
+		defer s.parseMu.Unlock()
+		s.mu.Lock()
+		shutdown := s.shutdown
+		s.mu.Unlock()
+		if shutdown {
+			return
+		}
+		s.rediagnoseAllLocked()
+	}()
 }
 
 // stampOfFile 取文件 mtime+size；不存在返回零值。

@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.4` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.5` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,7 +14,7 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.4 | 语言服务；`link`/`deploy` 已分离出去 |
+| `bdl-lsp` | 0.3.5 | 语言服务；`link`/`deploy` 已分离出去 |
 | `tiptop` | 0.1.2 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
 | `vscode-bdl` | 0.5.1 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
@@ -70,24 +70,27 @@
 
 | # | 事项 | 做法要点 | 验收 |
 |---|---|---|---|
-| P0-1 | **并发崩溃（最高优先）** | 后台工作区索引与请求处理共享 tree-sitter 状态 → SIGSEGV。隔离索引侧的 Pool/Query（或统一串行化）；索引也遵守一个更大的文件阈值 | [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 从 CRASH 变 OK；同一场景进 CI 回归 |
+| ✅ P0-1 | ~~并发崩溃（最高优先）~~ **已修复 2026-10-23** | 真凶不是索引，而是**链接预热回调**（`link.SymbolIndex.StartGlobal` 的后台 `onReady` → `rediagnoseAll` → `reparse` → `Document.SetTree` 关掉 handler 正在遍历的树）。改为 `requestRediagnose()`（永不阻塞、后台等 `parseMu` 再算）+ `rediagnoseAllLocked()`（供已持锁的 `reparseFull` 调） | [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py)：修复前 8/8 崩溃 → 修复后 **20/20 OK**（含 4.5 万行文件）；`internal/server/lock_test.go` 三条锁纪律测试 |
+| P0-1b | 崩溃回归进 CI | 复现脚本依赖真实语料（CI 没有）→ 补一条**合成工作区**的等价测试（造 `.link/links.jsonl` + 全局模组文件拉开预热窗口 + 一个大文件） | CI 里能复现并拦住回归 |
 | P0-2 | 表单侧名字被误报"变量不存在" | 补 `(input record:)`、`clear`、`construct` FROM 侧跳过；再加语义兜底（名字命中已引用表单的 item/SCREEN RECORD 就不报 T5） | `saapt310.4gl` 的 4 条误报归零；全语料 T5 总数不上升 |
-| P0-3 | 未解析/超时**要告知用户** + 强制解析 | 解析超时原先只写日志；改为发诊断；`editor/title` 加"强制解析当前文件"命令 | 默认限制下打开 4 万行文件，能看到提示与按钮 |
+| P0-3 | 未解析/超时**要告知用户** + 强制解析 | 解析超时原先只写日志；改为发诊断；`editor/title` 加"强制解析当前文件"命令。**有效期：文件不关闭就一直生效**（`didClose` 移除） | 默认限制下打开 4 万行文件，能看到提示与按钮 |
 | P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
 | P1-2 | `.link` → `.project` | 读时兼容 `.link` 并提示迁移（提供迁移命令）；写只写 `.project/`；CSV/`secrets.json`/`deploy.json` 都落 `.project/` | 旧项目仍可用；新资料只出现在 `.project/` |
-| P1-3 | link **局部同步** | `link sync` 新增 `-modules`、`-files`（`<模组>/4gl/<程序>.4gl`），合并进现有 `links.jsonl`；视图「反查引用程序」旁加"重新同步"；"更新当前文件"命令 | 单文件更新秒级返回，其余链不变 |
+| P1-3 | link **局部同步** | `link sync` 新增 `-modules`、`-files`（`<模组>/4gl/<程序>.4gl`），合并进现有 `links.jsonl`；视图「反查引用程序」旁加"重新同步"；"更新当前文件"命令。连带语义：MAIN 只更新自己那条链；lib/sub/qry 更新自己；**公共文件被多个 MAIN 引用时，先列出并计数受影响的作业，用户确认再写** | 单文件更新秒级返回，其余链不变；多作业场景有确认 |
 | P1-4 | 三档模式与默认值 | `link.enable`/`deploy.enable` 默认 **false**；命令用 `when` 隐藏；不连库、不写盘、无后台任务 | 新机器装上后零配置可用且无配置提示 |
-| P1-5 | 设置重分组为 5 类 | 基础 / 生产环境（DB+部署，**带"只写 workspace 设置"警告**）/ 链接 / 部署 / 数据库字段；生产配置由插件合成 `.project/deploy.json`，用户不手写 | 设置面板只有这 5 组；无手写 JSON 路径 |
+| P1-5 | 设置重分组为 5 类 | 基础 / 生产环境（DB+部署）/ 链接 / 部署 / 数据库字段；生产配置由插件合成 `.project/deploy.json`（用户不手写、**不需要任何 gitignore 提示**）。生产组必须带警告：**只写 workspace 设置，且 `settings.json` 不要进 git 管理** | 设置面板只有这 5 组；无手写 JSON 路径；警告可见 |
 | P1-6 | 去掉 7 天过期与自动同步 | 删 `link.maxAgeDays`、`link-data-stale`、`linksync` 的 `onStart/interval` | 资料过期不再自动提示；同步只由命令触发 |
 | P1-7 | 用户文档重写为插件说明 | `vscode-extension/docs/USER-GUIDE.md` 按最终形态重写 → 作为 README/市场说明（同源） | 文档与 UI/命令一一对应；截图清单更新 |
-| P2-1 | schema（**发布后一版**） | `.project/.schema` 数据 + 独立视图（正则查询、展开加载、右键同步）+ hover 扩展（`LIKE t.col`、`record LIKE t.*`）+ 同步策略 | 见 PLUGIN-PLAN §7；数据附件待提供 |
+| P2-1 | schema（**发布后一版**） | `.project/.schema` 数据 + 独立视图（正则查询、展开加载、右键同步）+ hover 扩展（`LIKE t.col`、`record LIKE t.*`）+ 同步策略 | 见 PLUGIN-PLAN §7；样例数据已在 `artifacts/schema/demo.csv`（58,100 行，表头两处拼写错误需容错） |
 
 **已完成（2026-10-23 第二轮）**：
 
 - ✅ 文档清理：删除 `TODO.md`、`PLAN-DETAILED-P1.md`、`PLAN.md`、全部 `PLAN-P*.md`、`DEPLOY-ZED.md`；
   有效决策抢救进 [PLUGIN-PLAN](PLUGIN-PLAN.md) 附录 A；
-- ✅ 复现脚本 [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 落地（全量语料 8/8 崩溃、
-  单文件工作区 0/8，退出码可直接进 CI）。
+- ✅ 复现脚本 [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 落地（退出码 0=OK / 1=崩溃）；
+- ✅ **P0-1 修复并验证**：链接预热回调纳入 `parseMu` 纪律（`requestRediagnose` / `rediagnoseAllLocked`），
+  复现脚本 8/8 崩溃 → 20/20 正常，`go test ./...` 全绿；
+- ✅ 样例 schema 数据放到 `artifacts/schema/demo.csv`（已 gitignore）。
 
 ---
 
@@ -192,7 +195,7 @@
 ## G. 建议的推进顺序
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
-2. **§P 插件改版**（发布前）：先 P0-1（并发崩溃）→ P0-2/P0-3 → P1-*；P2-1（schema）发布后一版
+2. **§P 插件改版**（发布前）：P0-1 ✅ 已修 → **P0-2（表单侧误报）→ P0-3** → P1-*；P2-1（schema）发布后一版
 3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
 4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
 5. §D（等用户决定是否恢复 Zed）
@@ -203,5 +206,5 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P0-1（并发崩溃）开始做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P0-2（表单侧名字被误报）开始做。
 ```
