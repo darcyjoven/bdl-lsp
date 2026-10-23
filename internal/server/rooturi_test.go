@@ -1,6 +1,7 @@
 package server
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -89,9 +90,10 @@ func TestInitializeWithoutRootURI(t *testing.T) {
 	if srv.cfg == nil {
 		t.Error("配置管理器未初始化")
 	}
-	// 期望解成本地路径 /tmp/proj
-	if srv.rootPath != "/tmp/proj" {
-		t.Errorf("rootPath = %q，期望 /tmp/proj", srv.rootPath)
+	// 期望解成本地路径 /tmp/proj（Windows 上同一 URI 解成 \tmp\proj，
+	// 用 filepath.FromSlash 表达"按宿主平台的写法"，断言仍然有效）
+	if want := filepath.FromSlash("/tmp/proj"); srv.rootPath != want {
+		t.Errorf("rootPath = %q，期望 %q", srv.rootPath, want)
 	}
 }
 
@@ -111,8 +113,8 @@ func TestPercentEncodingSurvivesInitialize(t *testing.T) {
 		t.Fatalf("initialize 返回错误: %v", resp["error"])
 	}
 
-	if h.srv.rootPath != "/tmp/a#b/proj" {
-		t.Errorf("rootPath = %q，期望 /tmp/a#b/proj（百分号未完整解码）", h.srv.rootPath)
+	if want := filepath.FromSlash("/tmp/a#b/proj"); h.srv.rootPath != want {
+		t.Errorf("rootPath = %q，期望 %q（百分号未完整解码）", h.srv.rootPath, want)
 	}
 	if strings.Contains(h.srv.rootPath, "%23") {
 		t.Errorf("rootPath 残留编码：%q", h.srv.rootPath)
@@ -132,8 +134,10 @@ func TestToPathDecodesAllEncodings(t *testing.T) {
 			t.Errorf("ToPath(%q) 报错: %v", c.uri, err)
 			continue
 		}
-		if got != c.want {
-			t.Errorf("ToPath(%q) = %q，期望 %q", c.uri, got, c.want)
+		// 期望值按宿主平台表达：Windows 上同一 URI 解成 \tmp\a b。
+		// 校验的是"百分号解码正确"，不是"在 Windows 上也返回 POSIX 路径"。
+		if want := filepath.FromSlash(c.want); got != want {
+			t.Errorf("ToPath(%q) = %q，期望 %q", c.uri, got, want)
 		}
 	}
 }

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -270,7 +269,7 @@ func detailKeys(m map[string]string) []string {
 func TestCursorNamesDontTriggerUnresolvedDiag(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	uri := "file://" + filepath.Join(dir, "cur.4gl")
+	uri := testURI(dir, "cur.4gl")
 
 	h.sendDidOpen(uri, "bdl", cursorSource, 1)
 	diags := h.drainDiagnostics(uri, 5*time.Second)

@@ -43,9 +43,9 @@ func globalsScopeSetup(t *testing.T) (dir, mainURI, otherURI, globalURI string) 
 		t.Fatal(err)
 	}
 	return dir,
-		"file://" + filepath.Join(dir, "main.4gl"),
-		"file://" + filepath.Join(dir, "other.4gl"),
-		"file://" + filepath.Join(dir, "top.global")
+		testURI(dir, "main.4gl"),
+		testURI(dir, "other.4gl"),
+		testURI(dir, "top.global")
 }
 
 // TestGlobalsEntriesNotLeakedAcrossDocs 验证：文档 A 关闭后，
@@ -187,7 +187,7 @@ func TestGlobalsSameFileImportedTwice(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "top.global"), []byte(g), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 	h := initializeGlobals(t, dir)
 
 	src := "GLOBALS \"top.global\"\nGLOBALS \"top.global\"\nMAIN\n    DISPLAY g_counter\nEND MAIN\n"

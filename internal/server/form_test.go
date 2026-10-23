@@ -36,15 +36,15 @@ func setupFormTree(t *testing.T) (dir, mainURI, perURI string) {
 		t.Fatal(err)
 	}
 	return dir,
-		"file://" + filepath.Join(dir, "amm", "4gl", "main.4gl"),
-		"file://" + filepath.Join(dir, "amm", "per", "ammr110.per")
+		testURI(dir, "amm", "4gl", "main.4gl"),
+		testURI(dir, "amm", "per", "ammr110.per")
 }
 
 func initializeFormServer(t *testing.T, dir string) *harness {
 	t.Helper()
 	h, cleanup := startServer(t)
 	t.Cleanup(cleanup)
-	rootURI := "file://" + dir
+	rootURI := testURI(dir)
 	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":%q,"capabilities":{}}}`, rootURI))
 	h.readMessage(3 * time.Second)
 	return h

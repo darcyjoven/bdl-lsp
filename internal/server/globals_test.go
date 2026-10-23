@@ -38,7 +38,7 @@ func setupGlobalsTree(t *testing.T, exists bool) (dir string, mainURI, globalURI
 			t.Fatal(err)
 		}
 	}
-	return dir, "file://" + filepath.Join(dir, "main.4gl"), "file://" + filepath.Join(dir, "top.global")
+	return dir, testURI(dir, "main.4gl"), testURI(dir, "top.global")
 }
 
 // initializeGlobals 启动服务器并以 rootUri=dir 完成 initialize。
@@ -47,7 +47,7 @@ func initializeGlobals(t *testing.T, dir string) *harness {
 	h, cleanup := startServer(t)
 	t.Cleanup(cleanup)
 
-	rootURI := "file://" + dir
+	rootURI := testURI(dir)
 	h.send(fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":%q,"capabilities":{}}}`, rootURI))
 	h.readMessage(3 * time.Second)
 	return h
@@ -192,7 +192,7 @@ func TestGlobalsImportInPERIgnored(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
 
-	perURI := "file://" + filepath.Join(dir, "form.per")
+	perURI := testURI(dir, "form.per")
 	h.sendDidOpen(perURI, "per", "SCHEMA ds\nLAYOUT\nGRID\n{\n}\nEND\nEND\n", 1)
 	diags := h.drainDiagnostics(perURI, 5*time.Second)
 
@@ -221,8 +221,8 @@ func setupGlobalsNav(t *testing.T) (dir, mainURI, globalURI string) {
 		t.Fatal(err)
 	}
 	return dir,
-		"file://" + filepath.Join(dir, "main.4gl"),
-		"file://" + filepath.Join(dir, "top.global")
+		testURI(dir, "main.4gl"),
+		testURI(dir, "top.global")
 }
 
 const mainUsesGlobals = "GLOBALS \"top.global\"\nMAIN\n    DISPLAY g_counter\n    LET g_rec.id = 1\nEND MAIN\n"
@@ -396,7 +396,7 @@ func findUnresolvedDiags(diags []any) []map[string]any {
 func TestUnresolvedSourceWarnsForUnknownVariable(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// g_undefined 没有任何定义（无导入、无 DEFINE）
 	h.sendDidOpen(mainURI, "bdl", "MAIN\n    DISPLAY g_undefined\nEND MAIN\n", 1)
@@ -437,7 +437,7 @@ func TestUnresolvedSourceSkipsCallAndField(t *testing.T) {
 	// 函数调用名、rec.field 字段侧不检查（规划 §5.3 保守规则）
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	src := "MAIN\n    DEFINE r RECORD\n        id INTEGER\n    END RECORD\n    CALL cl_null(r.id)\n    LET r.id = 1\nEND MAIN\n"
 	h.sendDidOpen(mainURI, "bdl", src, 1)
@@ -475,7 +475,7 @@ func TestUnresolvedSourceSilentWithUnresolvableImport(t *testing.T) {
 	// 存在变量形式的导入（静态无法核对）→ 全部放过
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	src := "GLOBALS g_file_var\nMAIN\n    DISPLAY g_counter\nEND MAIN\n"
 	h.sendDidOpen(mainURI, "bdl", src, 1)
@@ -489,7 +489,7 @@ func TestUnresolvedSourceSilentWithUnresolvableImport(t *testing.T) {
 func TestUnresolvedSourceDisabledByConfig(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	cfg := map[string]any{
 		"jsonrpc": "2.0",
@@ -537,7 +537,7 @@ func (h *harness) sendDiagnosticsConfig(t *testing.T, diagnostics map[string]str
 func TestUnresolvedSkipsFunctionNameInWhenever(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// WHENEVER ERROR CALL f：f 是函数名；GOTO lbl：lbl 是标号。
 	// 语法树里都是 (whenever (variable (identifier)))，不是 call 节点。
@@ -553,7 +553,7 @@ func TestUnresolvedSkipsFunctionNameInWhenever(t *testing.T) {
 func TestUnresolvedSkipsFunctionNameInExpression(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// IF fn() THEN 的 fn 是 (expression name: (variable ...)) 而非 call 节点。
 	src := "MAIN\n    IF fn_check() THEN\n        DISPLAY 1\n    END IF\nEND MAIN\n"
@@ -568,7 +568,7 @@ func TestUnresolvedSkipsFunctionNameInExpression(t *testing.T) {
 func TestUnresolvedSkipsFormFieldWithDot(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// DISPLAY ... TO FORMONLY.cn2：field 是
 	// (variable (object object: (variable ...) property: ...))，直接子节点
@@ -588,7 +588,7 @@ func TestUnresolvedSkipsFormFieldWithDot(t *testing.T) {
 func TestDiagnosticsPerCodeDisablesSingleCode(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// 先确认默认会报，再用 bdl.diagnostics 单独关掉它。
 	h.sendDiagnosticsConfig(t, map[string]string{"variable-source-unresolved": "off"})
@@ -603,7 +603,7 @@ func TestDiagnosticsPerCodeDisablesSingleCode(t *testing.T) {
 func TestDiagnosticsPerCodeOverride(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// 逐码 error 应生效。
 	cfg := map[string]any{
@@ -652,7 +652,7 @@ func findFunctionNotFoundDiags(diags []any) []map[string]any {
 func TestFunctionNotFoundOffByDefault(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	// 未定义的函数调用：默认 off（实测 24 个真实文件报 3660 条，
 	// 内置函数与跨模块函数还没有符号表，不能默认开）。
@@ -673,7 +673,7 @@ func TestFunctionNotFoundOffByDefault(t *testing.T) {
 func TestFunctionNotFoundNeedsLinkData(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	h.sendDiagnosticsConfig(t, map[string]string{"function-not-found": "warning"})
 	h.sendDidOpen(mainURI, "bdl", "MAIN\n    CALL no_such_fn()\nEND MAIN\n", 1)
@@ -687,7 +687,7 @@ func TestFunctionNotFoundNeedsLinkData(t *testing.T) {
 func TestFunctionNotFoundAcceptsLocalDefinition(t *testing.T) {
 	dir := t.TempDir()
 	h := initializeGlobals(t, dir)
-	mainURI := "file://" + filepath.Join(dir, "main.4gl")
+	mainURI := testURI(dir, "main.4gl")
 
 	h.sendDiagnosticsConfig(t, map[string]string{"function-not-found": "warning"})
 	src := "MAIN\n    CALL helper()\nEND MAIN\n\nFUNCTION helper()\n    DISPLAY 1\nEND FUNCTION\n"

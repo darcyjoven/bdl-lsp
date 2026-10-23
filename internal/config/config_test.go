@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 )
 
 func TestDefaultValues(t *testing.T) {
@@ -115,7 +117,7 @@ func TestLoadWorkspaceConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewManager("file://" + dir)
+	m := NewManager(fileuri.FromPath(dir))
 	s := m.Get()
 	if s.GeneroVersion != Genero40 {
 		t.Errorf("GeneroVersion = %q，期望 4.00", s.GeneroVersion)
@@ -130,7 +132,7 @@ func TestLoadWorkspaceConfig(t *testing.T) {
 
 func TestWorkspaceConfigMissingFallsBack(t *testing.T) {
 	dir := t.TempDir()
-	m := NewManager("file://" + dir)
+	m := NewManager(fileuri.FromPath(dir))
 	if s := m.Get(); s.GeneroVersion != Genero25 {
 		t.Errorf("配置缺失时应使用默认值，实际 %q", s.GeneroVersion)
 	}

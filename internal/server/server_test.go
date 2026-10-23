@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,9 +16,21 @@ import (
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/internal/config"
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/parser"
 	"go.lsp.dev/protocol"
 )
+
+// testURI 把本地路径拼成 LSP 用的 file:// URI。
+//
+// 不能写成 `"file://" + filepath.Join(...)`：Windows 路径带盘符，
+// 拼出来是 `file://C:\Users\...` —— 盘符会被当成 authority，服务端
+// 解不出真实路径，于是所有以路径为基准的用例（GLOBALS / 表单 /
+// 链接资料）在 Windows 上全线失败（2026-10-23 CI 的 30 个失败用例）。
+// 生产侧做同一件事的是 fileuri.FromPath，测试直接复用它。
+func testURI(parts ...string) string {
+	return fileuri.FromPath(filepath.Join(parts...))
+}
 
 // pipeStream 在测试里充当 LSP 的双向流。
 type pipeStream struct {

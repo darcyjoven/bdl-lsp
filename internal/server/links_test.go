@@ -51,7 +51,7 @@ func (f *linkFixture) write(t *testing.T, module, code, src string) string {
 
 // uri 返回文件的 file:// URI。
 func (f *linkFixture) uri(module, code string) string {
-	return "file://" + filepath.Join(f.dirs[module], code+".4gl")
+	return testURI(f.dirs[module], code+".4gl")
 }
 
 // writeLinks 写 .link/links.jsonl（每行一条链）。
@@ -74,7 +74,7 @@ func (f *linkFixture) initialize(t *testing.T) *harness {
 	t.Cleanup(cleanup)
 	h.send(fmt.Sprintf(
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":%q,"capabilities":{}}}`,
-		"file://"+f.root))
+		testURI(f.root)))
 	h.readMessage(3 * time.Second)
 	return h
 }
@@ -362,7 +362,7 @@ func TestLinkInvalidDataReportsDiagnostic(t *testing.T) {
 	h := f.initialize(t)
 	// 资料自身的问题在首个 didOpen 时发布（避免和 initialize 响应抢帧）。
 	h.sendDidOpen(f.uri("apm", "probe"), "bdl", "MAIN\n    DISPLAY 1\nEND MAIN\n", 1)
-	target := "file://" + filepath.Join(dir, "links.jsonl")
+	target := testURI(dir, "links.jsonl")
 	diags := drainUntilCode(t, h, target, "link-data-invalid", 10*time.Second)
 	if n := countOf(diags, "link-data-invalid"); n == 0 {
 		t.Fatalf("坏资料应报 link-data-invalid，实际诊断码 %v", codes(diags))
@@ -384,7 +384,7 @@ func TestLinkStaleDataReportsHint(t *testing.T) {
 
 	h := f.initialize(t)
 	h.sendDidOpen(f.uri("apm", "entry"), "bdl", readFileString(t, f.dirs["apm"], "entry"), 1)
-	target := "file://" + filepath.Join(dir, "links.meta.json")
+	target := testURI(dir, "links.meta.json")
 	diags := drainUntilCode(t, h, target, "link-data-stale", 10*time.Second)
 	if n := countOf(diags, "link-data-stale"); n == 0 {
 		t.Fatalf("过期资料应报 link-data-stale，实际诊断码 %v", codes(diags))

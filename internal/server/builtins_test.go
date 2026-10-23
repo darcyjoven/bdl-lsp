@@ -137,7 +137,7 @@ func TestBuiltinOverlayFileAddsName(t *testing.T) {
 	// 用 rootUri 初始化，让覆盖文件按约定路径自动加载。
 	h.send(fmt.Sprintf(
 		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":%q,"capabilities":{}}}`,
-		"file://"+root))
+		testURI(root)))
 	h.readMessage(3 * time.Second)
 
 	const uri = "file:///tmp/builtin5.4gl"
