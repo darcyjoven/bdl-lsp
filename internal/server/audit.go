@@ -30,7 +30,7 @@ func (s *Server) EnableResolvers(rootPath string) {
 	s.newGlobalsResolver(rootPath)
 	s.newFormResolver(rootPath)
 	s.newBuiltinLoader()
-	// P7-D：链接资料（没有 .link/links.jsonl 时静默跳过）。
+	// P7-D：链接资料（没有 .project/links.jsonl 时静默跳过）。
 	s.newLinkResolver()
 }
 

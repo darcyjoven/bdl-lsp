@@ -338,7 +338,7 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 	// 异步会让"第一次打开"和"第二次打开"报不一样的结果。
 	s.loadSchemaIndex()
 
-	// P7-D：链接资料（.link/links.jsonl）；没有资料时静默跳过。
+	// P7-D：链接资料（.project/links.jsonl）；没有资料时静默跳过。
 	// 注意：不在这里 publishLinkStatus —— initialize 期间发通知会和
 	// initialize 响应抢同一帧，客户端（和测试）都得处理乱序。
 	// 改成第一次 didOpen 时发，那时用户已经真的在看文件了。

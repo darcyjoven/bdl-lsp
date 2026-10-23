@@ -19,7 +19,7 @@ import (
 //  4. 缺失文件（链接里有、磁盘上没有）→ 零诊断；
 //  5. 没有链接资料 → function-not-found 整项不启用。
 
-// linkFixture 建一个最小项目树：tiptop/{apm,lib,sub}/4gl + .link/links.jsonl。
+// linkFixture 建一个最小项目树：tiptop/{apm,lib,sub}/4gl + .project/links.jsonl。
 type linkFixture struct {
 	root string
 	dirs map[string]string // "apm" -> <root>/tiptop/apm/4gl
@@ -54,10 +54,10 @@ func (f *linkFixture) uri(module, code string) string {
 	return testURI(f.dirs[module], code+".4gl")
 }
 
-// writeLinks 写 .link/links.jsonl（每行一条链）。
+// writeLinks 写 .project/links.jsonl（每行一条链）。
 func (f *linkFixture) writeLinks(t *testing.T, lines ...string) {
 	t.Helper()
-	dir := filepath.Join(f.root, ".link")
+	dir := filepath.Join(f.root, ".project")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestLinkAmbiguousIndexesAllMains(t *testing.T) {
 func TestLinkInvalidDataReportsDiagnostic(t *testing.T) {
 	f := newLinkFixture(t)
 	f.write(t, "apm", "probe", "MAIN\n    DISPLAY 1\nEND MAIN\n")
-	dir := filepath.Join(f.root, ".link")
+	dir := filepath.Join(f.root, ".project")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +376,7 @@ func TestLinkStaleDataReportsHint(t *testing.T) {
 	f.writeLinks(t,
 		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"]]}`,
 	)
-	dir := filepath.Join(f.root, ".link")
+	dir := filepath.Join(f.root, ".project")
 	meta := `{"schema":1,"generatedAt":"2020-01-01T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}`
 	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
 		t.Fatal(err)
@@ -418,7 +418,7 @@ func TestLinkExternalFunctionsAreSuppressed(t *testing.T) {
 	f.write(t, "apm", "entry", "MAIN\n  CALL cl_err3(\"x\")\n  CALL cl_typo()\nEND MAIN\n")
 	f.writeLinks(t, `{"schema":1,"program":"entry","module":"apm","main":"entry",`+
 		`"files":[["apm","entry"]]}`)
-	dir := filepath.Join(f.root, ".link")
+	dir := filepath.Join(f.root, ".project")
 	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
 		`"chains":1,"rowsTotal":1,"rowsY":1,` +
 		`"externals":[{"name":"cl_err3","files":186,"calls":3200}],` +
@@ -458,7 +458,7 @@ func TestLinkTreeRequest(t *testing.T) {
 		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"],["APM","sub1"]]}`,
 		`{"schema":1,"program":"entry2","module":"APM","main":"entry2","files":[["APM","entry"],["APM","sub1"]]}`,
 	)
-	dir := filepath.Join(f.root, ".link")
+	dir := filepath.Join(f.root, ".project")
 	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
 		`"chains":2,"rowsTotal":2,"rowsY":2}`
 	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
@@ -526,5 +526,44 @@ func TestLinkTreeRequest(t *testing.T) {
 	}
 	if found, _ := res["found"].(bool); found {
 		t.Errorf("untitled 不应命中链接资料：%v", res)
+	}
+}
+
+// TestLegacyLinkDirStillReadWithHint P1-2：资料还在旧目录 `.link/` 时，
+// 必须**照旧能用**（发一次 link-data-legacy-dir 提示），而不是"突然没有链接资料"。
+func TestLegacyLinkDirStillReadWithHint(t *testing.T) {
+	f := newLinkFixture(t)
+	f.write(t, "apm", "entry", "MAIN\n    CALL shared_fn()\nEND MAIN\n")
+	f.write(t, "lib", "shared", "FUNCTION shared_fn()\n    DISPLAY \"x\"\nEND FUNCTION\n")
+
+	// 故意写到旧目录（模拟迁移前的项目）
+	legacy := filepath.Join(f.root, ".link")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	links := `{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"],["LIB","shared"]]}`
+	if err := os.WriteFile(filepath.Join(legacy, "links.jsonl"), []byte(links+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, "links.meta.json"),
+		[]byte(`{"schema":1,"generatedAt":"2026-10-23T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	h := f.initialize(t)
+	h.sendDidOpen(f.uri("apm", "entry"), "bdl", readFileString(t, f.dirs["apm"], "entry"), 1)
+
+	// 旧目录的 links.jsonl 上应出现迁移提示
+	diags := drainUntilCode(t, h, testURI(legacy, "links.jsonl"), "link-data-legacy-dir", 10*time.Second)
+	if n := countOf(diags, "link-data-legacy-dir"); n == 0 {
+		t.Fatalf("旧目录应发 link-data-legacy-dir，实际诊断码 %v", codes(diags))
+	}
+
+	// 数据仍然生效：shared_fn 通过链可见 → 不报 function-not-found
+	src := readFileString(t, f.dirs["apm"], "entry")
+	h.sendDidOpen(f.uri("apm", "entry2"), "bdl", src, 1)
+	entryDiags := h.collectDiagnostics(f.uri("apm", "entry2"), 3*time.Second)
+	if n := countOf(entryDiags, "function-not-found"); n != 0 {
+		t.Errorf("旧目录资料应照旧生效，不该报 function-not-found（%d 条）", n)
 	}
 }

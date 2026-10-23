@@ -32,6 +32,9 @@ type linkState struct {
 	last  time.Time
 	// statusPublished 记录"资料自身的问题"是否已发过一次（首个 didOpen 发）。
 	statusPublished bool
+	// legacyDir 非空表示资料是从旧目录 `.link/` 读到的（P1-2 迁移前），
+	// 用来发 link-data-legacy-dir 提示；写盘一律只写新目录。
+	legacyDir string
 }
 
 type fileStampLite struct {
@@ -46,7 +49,7 @@ const linkReloadInterval = 2 * time.Second
 //
 // 三种结局都要能正常工作：
 //   - 功能关闭（bdl.link.enable=false）→ resolver=nil，function-not-found 不启用；
-//   - 没有资料（`.link/links.jsonl` 不存在）→ resolver=nil，不报错（新项目常态）；
+//   - 没有资料（`.project/links.jsonl` 不存在）→ resolver=nil，不报错（新项目常态）；
 //   - 资料坏了 → resolver=nil，发 link-data-invalid 让用户知道为什么诊断没出现。
 func (s *Server) newLinkResolver() {
 	if s.links == nil {
@@ -64,12 +67,29 @@ func (s *Server) newLinkResolver() {
 	}
 
 	dataDir := settings.LinkDataDir()
+	configured := dataDir
 	if !filepath.IsAbs(dataDir) {
 		dataDir = filepath.Join(s.rootPath, dataDir)
 	}
 	s.links.dataDir = dataDir
+	s.links.legacyDir = ""
 
 	idx, err := link.Load(dataDir)
+
+	// 兼容旧布局（P1-2）：配置还是默认值、新目录没有资料、而 `.link/` 有 →
+	// 读旧目录（**不写**），并记下来发一条迁移提示。
+	// 用户显式把 dataDir 指到别处时不做这个回退，避免"我明明配了却没生效"。
+	if err == link.ErrNoData && configured == link.DefaultDataDir {
+		legacy := filepath.Join(s.rootPath, link.LegacyDataDir)
+		if _, statErr := os.Stat(filepath.Join(legacy, link.LinksFileName)); statErr == nil {
+			if legacyIdx, legacyErr := link.Load(legacy); legacyErr == nil {
+				idx, err = legacyIdx, nil
+				s.links.dataDir = legacy
+				s.links.legacyDir = legacy
+				s.logger.Info("链接资料仍在旧目录，建议迁移", "dir", legacy)
+			}
+		}
+	}
 	if err != nil {
 		s.links.resolver = nil
 		s.links.loaded = false
@@ -254,6 +274,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 	s.links.mu.RLock()
 	dataDir := s.links.dataDir
 	loadErr := s.links.err
+	legacyDir := s.links.legacyDir
 	idx := (*link.Index)(nil)
 	if s.links.resolver != nil {
 		idx = s.links.resolver.Index()
@@ -261,6 +282,23 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 	s.links.mu.RUnlock()
 	if dataDir == "" {
 		return
+	}
+
+	// 0) 旧目录：资料能用，但位置该搬家了（`.link/` → `.project/`）。
+	// 报在**旧目录**的 links.jsonl 上，用户一点就知道该搬哪个目录；
+	// 这里不 return，后面的"坏资料 / 过期"判定照旧。
+	if legacyDir != "" {
+		if sev, enabled := diag.SeverityFor(diag.CodeLinkDataLegacyDir, settings); enabled {
+			uri := fileURI(filepath.Join(legacyDir, link.LinksFileName))
+			s.publishExtra(ctx, uri, []protocol.Diagnostic{{
+				Range:    protocol.Range{},
+				Severity: sev,
+				Source:   "bdl-lsp",
+				Message: "链接资料仍在旧目录 `.link/`；执行命令「Genero BDL: 迁移链接资料目录」" +
+					"可以搬到 `.project/`（迁移前会先确认，搬完自动重启语言服务器）",
+				Code: string(diag.CodeLinkDataLegacyDir),
+			}})
+		}
 	}
 
 	// 1) 资料坏了：报在 links.jsonl 上（那个文件存在且就是坏的那份）。
@@ -306,7 +344,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 
 // publishExtra 发布"不属于任何已打开文档"的诊断。
 //
-// 这类诊断指向资料文件（.link/links.jsonl），它们通常没被打开，版本号用 0：
+// 这类诊断指向资料文件（.project/links.jsonl），它们通常没被打开，版本号用 0：
 // LSP 的 publishDiagnostics 允许对任意 URI 发布，VSCode 会收进 Problems 面板。
 func (s *Server) publishExtra(ctx context.Context, uri string, diags []protocol.Diagnostic) {
 	version := int32(0)
@@ -341,7 +379,7 @@ func filePathOf(uri string) string {
 //
 // 必须走 internal/fileuri：手写 `"file://" + filepath.ToSlash(path)` 在
 // Windows 上得到 `file://C:/…` —— 盘符落进 authority，是非法 URI，
-// VSCode 不会把诊断挂到 .link/ 文件上（2026-10-23 Windows CI 暴露）。
+// VSCode 不会把诊断挂到 .project/ 文件上（2026-10-23 Windows CI 暴露）。
 func fileURI(path string) string {
 	return fileuri.FromPath(path)
 }

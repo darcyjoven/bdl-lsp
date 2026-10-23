@@ -285,6 +285,9 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 
 ## 5. P1-2 / P1-5：`.project` 目录与设置重组
 
+> P1-2（目录迁移）**已实现 2026-10-23**，见下面的「已实现」小节；
+> P1-5（设置重分组）待做。
+
 ### 5.1 新目录布局
 
 ```text
@@ -298,10 +301,19 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
     └── .schema/              # 数据库字段资料（发布后一版才用，先占位）
 ```
 
-约定：
-- **读**：`.project/` 优先；`.project/` 不存在而 `.link/` 存在时，读 `.link/` 并发一条
-  "资料目录已迁移，建议移动"的提示（不自动搬，避免动用户文件）；提供命令 `bdl.migrateLinkDir` 一键迁移。
-- **写**：只写 `.project/`，永不写 `.link/`。
+#### 已实现（2026-10-23）
+
+| 位置 | 实现 |
+|---|---|
+| 默认值 | `link.DefaultDataDir` / `link.dataDir` 配置默认值 / 插件设置默认值 全部 `.link` → **`.project`** |
+| 读兼容 | `newLinkResolver`：配置仍是默认值、`.project/links.jsonl` 不存在而 `.link/links.jsonl` 存在 → 读旧目录（**不写**），并记下 `legacyDir` |
+| 提示 | 新诊断码 **`link-data-legacy-dir`**（hint，挂在**旧目录**的 `links.jsonl` 上）：说明资料在旧目录、可用命令迁移 |
+| 迁移命令 | 插件 `bdl.migrateLinkDir`：确认后把 `.link/` 下的文件搬到 `.project/`（不覆盖已有 `links.jsonl`，不动用户文件），随后自动重启语言服务器 |
+| 主动提示 | 插件监听诊断，看到 `link-data-legacy-dir` 时弹一次"迁移 / 稍后"——不用用户去翻 Problems |
+| 测试 | `internal/server` 新增 `TestLegacyLinkDirStillReadWithHint`（旧目录资料**照旧生效** + 提示出现）；e2e 的命令清单纳入 `bdl.migrateLinkDir` |
+| 文档 | tiptop/bdl-lsp/插件的当前文档与脚本（含 `fetch-gal-file.sh` 的默认输出路径）全部改为 `.project/`，并注明旧目录兼容 |
+
+约定（与设计一致）：**读** `.project/` 优先、旧 `.link/` 兼容；**写**只写 `.project/`。
 - `.project/` 里的 `secrets.json` / `deploy.json` 是**插件自己生成的内部文件**（用户不再配置它们），
   因此**不做任何"加 .gitignore"提示**，也不动用户文件（旧决定 `E8` 保持）。
 - 涉及改动：`bdl-lsp`（`link.DefaultDataDir`、`config` 默认值、诊断消息文案）、

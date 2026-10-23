@@ -309,7 +309,7 @@ func collect(root string, limit int) []string {
 		if d.IsDir() {
 			// 跳过常见的无关目录，避免把构建产物当源码。
 			switch d.Name() {
-			case ".git", "node_modules", "artifacts", ".link":
+			case ".git", "node_modules", "artifacts", ".project", ".link":
 				return filepath.SkipDir
 			}
 			return nil

@@ -53,13 +53,15 @@ const (
 	CodeParseTimeout Code = "parse-timeout"
 	// CodeFunctionNotFound 调用处的函数名在当前模块及可用模组中找不到定义。
 	//
-	// 依赖链接资料（P7-D）：没有 `.link/links.jsonl` 时整项**不启用**，
+	// 依赖链接资料（P7-D）：没有 `.project/links.jsonl` 时整项**不启用**，
 	// 因为可见集不完整时报告就是误报。
 	CodeFunctionNotFound Code = "function-not-found"
 	// CodeLinkDataInvalid 链接资料格式不合法（JSONL 解析失败、schema 过高）。
 	CodeLinkDataInvalid Code = "link-data-invalid"
 	// CodeLinkDataStale 链接资料超过 maxAgeDays 未更新。
 	CodeLinkDataStale Code = "link-data-stale"
+	// CodeLinkDataLegacyDir 资料还放在旧目录 `.link/`（已迁移到 `.project/`）。
+	CodeLinkDataLegacyDir Code = "link-data-legacy-dir"
 	// CodeSyntaxError grammar 的 ERROR 节点（语法错误）。
 	CodeSyntaxError Code = "syntax-error"
 	// CodeMissingNode grammar 的 MISSING 节点整簇兜底码。
@@ -93,6 +95,8 @@ var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeLinkDataInvalid:           config.LevelWarning,
 	// 过期只是"温和提示"，不该像错误一样占满 Problems。
 	CodeLinkDataStale: config.LevelHint,
+	// 旧目录提示同理：资料能用，只是位置该搬家了。
+	CodeLinkDataLegacyDir: config.LevelHint,
 	// Q10 定稿：语法错误默认也是 warning（不是 error）。
 	CodeSyntaxError: config.LevelWarning,
 	CodeMissingNode: config.LevelWarning,
@@ -116,6 +120,7 @@ var summaries = map[Code]string{
 	CodeFunctionNotFound:          "调用处的函数名在当前模块及可用模组中找不到定义（需链接资料）",
 	CodeLinkDataInvalid:           "链接资料格式不合法（JSONL 解析失败、schema 版本过高）",
 	CodeLinkDataStale:             "链接资料超过 `bdl.link.maxAgeDays` 未更新",
+	CodeLinkDataLegacyDir:         "链接资料仍在旧目录 `.link/`；`bdl.migrateLinkDir` 可一键迁移到 `.project/`（迁移前会先确认）",
 	CodeSyntaxError:               "grammar 的 ERROR 节点（无法解析的片段）",
 	CodeMissingNode:               "grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等）",
 }

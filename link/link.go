@@ -52,10 +52,19 @@ const (
 	MetaFileName = "links.meta.json"
 	// DefaultDataDir 是默认资料目录（相对项目根）。
 	//
+	// 2026-10-23（PLUGIN-PLAN P1-2）：`.link` → `.project`——项目级资料
+	// （链接资料、CSV、secrets、部署配置，以及将来的 schema）统一放一个目录，
+	// 不再散落。旧目录 `.link/` 仍会被读取（见 server/links.go 的兼容回退），
+	// 但**只写新目录**。
+	//
 	// 用 `.link` 而不是 `.bdl-lsp/link`：点开头是隐藏目录，名字短对
 	// Windows 路径长度友好；且它与 `.bdl-lsp`（编辑器配置）语义不同——
 	// 这份数据是从外部系统同步来的，通常不提交进仓库。
-	DefaultDataDir = ".link"
+	DefaultDataDir = ".project"
+
+	// LegacyDataDir 是迁移前的资料目录（P1-2 之前）。bdl-lsp **只读不写**：
+	// 读到旧目录时发一条 link-data-legacy-dir 提示，由编辑器侧一键迁移。
+	LegacyDataDir = ".link"
 )
 
 // FileRef 是链路里的一个文件：`[模组, 程序代码]`。
@@ -405,7 +414,7 @@ func loadMeta(dir string) *Meta {
 }
 
 // ErrNoData 表示还没有链接资料。
-var ErrNoData = errors.New("没有链接资料（.link/links.jsonl 不存在）")
+var ErrNoData = errors.New("没有链接资料（.project/links.jsonl 不存在；旧目录 .link/ 也认）")
 
 // Save 把链与元数据写入目录（原子：先写临时文件再 rename）。
 //

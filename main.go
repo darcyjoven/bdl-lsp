@@ -8,7 +8,7 @@
 //
 // 链接资料的生成与部署**不在本程序内**：它们属于具体系统的项目管理工具
 // （如 tiptop 的 `tiptop link import` / `tiptop deploy`）。bdl-lsp 只读取
-// `<项目>/.link/` 下的资料，通过文件系统与那些工具对接。
+// `<项目>/.project/` 下的资料（旧 `.link/` 仍兼容读取），通过文件系统与那些工具对接。
 // 见 docs/PLAN-SEPARATION.md。
 package main
 
@@ -32,7 +32,7 @@ import (
 // 版本策略（用户 2026-10-21 定）：从 0.1.1 起算；每完成一轮完整改动
 // 并提交，就 +1。各仓库（bdl-lsp / tiptop / vscode-extension / zed-extension）
 // 各自独立记版本，不要求一致。
-var version = "0.3.7"
+var version = "0.3.8"
 
 func main() {
 	os.Exit(run(os.Args[1:]))

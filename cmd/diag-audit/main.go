@@ -99,7 +99,7 @@ func main() {
 		}
 		fmt.Fprintf(os.Stderr, "diag-audit: %s\n", res.Describe())
 	} else {
-		fmt.Fprintln(os.Stderr, "diag-audit: 没有链接资料（.link/links.jsonl），function-not-found 不启用")
+		fmt.Fprintln(os.Stderr, "diag-audit: 没有链接资料（.project/links.jsonl），function-not-found 不启用")
 	}
 
 	if !srv.AuditEnabled() {

@@ -10,11 +10,11 @@
 - 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化）
 - 跨文件校验：4GL 中使用的表单字段是否真的存在于对应 `.per`
 - `.per` 内部一致性校验
-- 读取 `<项目根>/.link/` 链接资料，给出跨文件函数可见性与导航
+- 读取 `<项目根>/.project/` 链接资料（旧 `.link/` 兼容），给出跨文件函数可见性与导航
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译、编译结果回传为诊断（**自 0.3.2 起由 [tiptop](https://github.com/darcyjoven/tiptop) 执行**）
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.7` / `tiptop 0.1.2` / `vscode-bdl 0.5.2`）：语言智能、GLOBALS、字段/表单、
+> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.8` / `tiptop 0.1.3` / `vscode-bdl 0.5.3`）：语言智能、GLOBALS、字段/表单、
 > 工作区索引、内置符号、忽略列表均已落地；链接资料的采集/导入与部署已分离到 tiptop。
 > 剩下的是真实环境验证，见 [PENDING.md](docs/PENDING.md)。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告。
@@ -27,9 +27,9 @@
 
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
-| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | **v0.3.7 可用** |
-| `tiptop/` | `git@github.com:darcyjoven/tiptop.git` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI | **v0.1.2 可用** |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp` 与 `tiptop`） | **v0.5.2 可用**，e2e 38/38 |
+| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | **v0.3.8 可用** |
+| `tiptop/` | `git@github.com:darcyjoven/tiptop.git` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI | **v0.1.3 可用** |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp` 与 `tiptop`） | **v0.5.3 可用**，e2e 38/38 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**（暂停） |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |
@@ -101,7 +101,7 @@ make regress                   # 全量语料回归（约 2.5 分钟）
 ./artifacts/bin/bdl-lsp check --json testdata/broken.4gl
 
 # 程序链接资料（P7-D）：采集与导入**不在本程序内**，由 tiptop 负责
-# （见 docs/PLAN-SEPARATION.md）。bdl-lsp 只读取 <项目根>/.link/ 下的资料。
+# （见 docs/PLAN-SEPARATION.md）。bdl-lsp 只读取 <项目根>/.project/ 下的资料（旧 .link/ 兼容）。
 tiptop link import -csv artifacts/link/link.csv -root /path/to/project
 tiptop link status -root /path/to/project
 

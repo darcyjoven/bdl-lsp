@@ -9,13 +9,13 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.4` · `tiptop 0.1.2` · `4gl-full 0.5.1` |
+| 被测版本 | `bdl-lsp 0.3.8` · `tiptop 0.1.3` · `4gl-full 0.5.3` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
 | 结论 | ⬜ 全部通过 ⬜ 有失败（见 §9） |
 
-> 标记说明：**⭐** = 本轮（0.3.4 / 0.1.2）刚修的点，最值得盯；
+> 标记说明：**⭐** = 2026-10-23 这一轮（0.3.5–0.3.8 / 0.1.3 / 0.5.1–0.5.3）刚改的点，最值得盯；
 > **[需服务器]** = 要有真实 SSH + Genero 编译机的环境才能做，没有就跳过并如实标注。
 
 ---
@@ -166,24 +166,24 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.1-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.3-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.5.1-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.5.3-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.5.1-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.5.3-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
 Get-ChildItem "$ext\bin"                       # 期望：bdl-lsp.exe、tiptop.exe、BUILD-INFO.json、若干 .dll
 Get-Content    "$ext\bin\BUILD-INFO.json"
-& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.4
-& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.2
+& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.8
+& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.3
 & "$ext\bin\bdl-lsp.exe" check "$ws\topcust\aap\4gl\broken.4gl"
 ```
 
@@ -234,12 +234,12 @@ code "$ws"
   - 记录：____
 - [ ] 2.7 补全：在 `MAIN` 里输入 `DIS` 能出关键字补全；输入一个已定义函数名能出符号补全
   - 记录：____
-- [ ] 2.8 链接资料视图（侧边栏「链接资料」）能刷新、展开（没有 `.link/` 资料时给出提示而非报错）
+- [ ] 2.8 链接资料视图（侧边栏「链接资料」）能刷新、展开（没有 `.project/` 资料时给出提示而非报错）
   - 记录：____
 
 ---
 
-## 3. ⭐ 本轮修复点回归（0.3.4 / 0.1.2）
+## 3. ⭐ 本轮修复点回归（0.3.5–0.3.8 / 0.1.2–0.1.3 / 0.5.1–0.5.3）
 
 > 这些是本轮为了让 Windows 变绿而改的东西。**CI 只能证明单测过**，
 > 真正的客户端行为（VSCode 收不收得到诊断、点击能不能打开）必须在真机上看。
@@ -253,34 +253,67 @@ code "$ws"
 - [ ] 3.3 把工作区放到 `D:\` 等非系统盘（若本机有），重复 §2.3：悬停/跳转正常
   - 记录：____
 
-### 3.2 ⭐ 链接资料诊断必须挂到 `.link\` 文件上
+### 3.2 ⭐ 链接资料诊断必须挂到 `.project\` 文件上
 
 > 修复前：服务端手写 `"file://"+路径`，Windows 上生成非法 URI（`file://C:/…`），
 > 客户端收不到这些诊断。**这是本轮最容易被忽略、但用户会真实遇到的一条。**
 
 ```powershell
-New-Item -ItemType Directory -Force -Path "$ws\.link" | Out-Null
-[IO.File]::WriteAllText("$ws\.link\links.jsonl", "{这不是 JSON}`n")
+New-Item -ItemType Directory -Force -Path "$ws\.project" | Out-Null
+[IO.File]::WriteAllText("$ws\.project\links.jsonl", "{这不是 JSON}`n")
 ```
 
 - [ ] 3.4 触发重载（重新打开工作区或执行 `Genero BDL: 重启语言服务器`）后，Problems 面板出现 `link-data-invalid`
   - 记录：____
-- [ ] 3.5 该诊断**归属文件是 `.link\links.jsonl`**（点它能在编辑器里打开那个文件，而不是一个不存在的路径）
+- [ ] 3.5 该诊断**归属文件是 `.project\links.jsonl`**（点它能在编辑器里打开那个文件，而不是一个不存在的路径）
   - 记录：____
 
 ```powershell
 # 3.6「过期」检查需要一份**有效**的资料，否则会先走 3.4 的坏资料分支
-[IO.File]::WriteAllText("$ws\.link\links.jsonl",
+[IO.File]::WriteAllText("$ws\.project\links.jsonl",
   '{"schema":1,"program":"globals_main","module":"AAP","main":"globals_main","files":[["AAP","globals_main"]]}' + "`n")
-[IO.File]::WriteAllText("$ws\.link\links.meta.json",
+[IO.File]::WriteAllText("$ws\.project\links.meta.json",
   '{"schema":1,"generatedAt":"2020-01-01T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}')
 ```
 
 - [ ] 3.6 重启服务器后出现 `link-data-stale`（**hint 级**，Problems 面板可能要放宽级别才显示；挂在 `links.meta.json` 上）
   - 记录：____
 
-> 查完把这套假资料清掉（`Remove-Item "$ws\.link\links.jsonl","$ws\.link\links.meta.json"`），
+> 查完把这套假资料清掉（`Remove-Item "$ws\.project\links.jsonl","$ws\.project\links.meta.json"`），
 > 否则 §3.3 的索引/符号搜索会受"缺文件"的资料影响。
+
+### 3.2b ⭐ 旧目录 `.link/` 仍可用 + 一键迁移（P1-2）
+
+```powershell
+# 造一个"迁移前"的项目：把资料只放在旧目录 .link/
+Remove-Item -Recurse -Force "$ws\.project" -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path "$ws\.link" | Out-Null
+[IO.File]::WriteAllText("$ws\.link\links.jsonl",
+  '{"schema":1,"program":"globals_main","module":"AAP","main":"globals_main","files":[["AAP","globals_main"]]}' + "`n")
+[IO.File]::WriteAllText("$ws\.link\links.meta.json",
+  '{"schema":1,"generatedAt":"2026-10-23T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}')
+```
+
+- [ ] 3.2b.1 重新打开工作区后：链接视图/跨文件跳转**照旧可用**（不是"突然没有资料"）
+- [ ] 3.2b.2 Problems 面板出现 `link-data-legacy-dir`（归属文件是**旧目录**的 `.link\links.jsonl`），
+      并且右下角弹出一次"迁移 / 稍后"提示
+- [ ] 3.2b.3 点"迁移"（或执行命令 `Genero BDL: 迁移链接资料目录`）→ 文件出现在 `.project/`，
+      语言服务器自动重启，链接资料仍然可用、提示消失
+  - 记录：____
+
+### 3.2c ⭐ 大文件提示 + 强制解析（P0-3）
+
+```powershell
+# 用一个明显超过默认上限（20000 行）的文件；没有就用生成一个
+$big = "$ws\topcust\aap\4gl\big.4gl"
+'MAIN' + ("`n  DISPLAY 1" * 30000) + "`nEND MAIN" | Set-Content -Encoding utf8 "$big"
+```
+
+- [ ] 3.2c.1 打开 `big.4gl`：Problems 里出现 **warning** 级的 `file-too-large`（不是 information），大纲为空
+- [ ] 3.2c.2 **编辑器标题栏右侧**出现"强制解析"图标（`.4gl` 已解析的文件不该有这个图标）
+- [ ] 3.2c.3 点它 → 状态栏提示"已强制解析（关闭该文件后失效）"；大纲出现内容、`file-too-large` 消失
+- [ ] 3.2c.4 关闭再打开该文件 → `file-too-large` 又出现（有效期到关闭）
+  - 记录：____
 
 ### 3.3 ⭐ 工作区索引给出的位置能打开
 
@@ -295,8 +328,8 @@ New-Item -ItemType Directory -Force -Path "$ws\.link" | Out-Null
 > 修复前：该文件按 unix 权限位校验，Windows 上一律报"权限过松（0666）"，等于这条密码来源不可用。
 
 ```powershell
-New-Item -ItemType Directory -Force -Path "$ws\.link" | Out-Null
-[IO.File]::WriteAllText("$ws\.link\secrets.json", '{"<你的只读账号>": "<密码>"}')
+New-Item -ItemType Directory -Force -Path "$ws\.project" | Out-Null
+[IO.File]::WriteAllText("$ws\.project\secrets.json", '{"<你的只读账号>": "<密码>"}')
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
@@ -333,7 +366,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 - [ ] 4.1 构建成功，产物 `artifacts\bin\bdl-lsp.exe` 存在（PE 文件）
   - 记录：____
-- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.4`
+- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.8`
   - 记录：____
 - [ ] 4.3 `-Check` 的样例冒烟通过（期望 `共 2 个文件，0 个有问题`）
   - 记录：____
@@ -411,6 +444,8 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 | Problems 面板看不到 `link-data-stale` | 它是 **hint** 级，面板默认过滤可能不显示；放宽级别即可见 |
 | 刚打开大项目时 `Ctrl+T` 搜不全 | 工作区索引在后台建（几十秒），期间结果不全属正常 |
 | `fglcomp: command not found` | 这是**远端**的问题（目标机没装 Genero），与本机扩展无关 |
+| 打开大文件时出现 `file-too-large` / `parse-timeout` 警告 | **有意为之**（P0-3）：这个文件确实没被检查，点标题栏的"强制解析"即可；不想要就调大 `bdl.limits.*` |
+| 出现 `link-data-legacy-dir`（hint） | 资料还在旧目录 `.link/`：能用，但建议执行「迁移链接资料目录」搬到 `.project/` |
 
 ---
 
@@ -432,7 +467,9 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 | 1.5–1.6 | VSCode 内服务器运行 | ⬜ | |
 | 2.1–2.8 | 语言服务 UI 表现 | ⬜ | |
 | 3.1–3.3 | ⭐ 路径/盘符 | ⬜ | |
-| 3.4–3.6 | ⭐ `.link` 诊断落点 | ⬜ | |
+| 3.2b | ⭐ 旧目录迁移 | ⬜ | |
+| 3.2c | ⭐ 大文件提示 + 强制解析 | ⬜ | |
+| 3.4–3.6 | ⭐ `.project` 诊断落点 | ⬜ | |
 | 3.7–3.8 | ⭐ 索引位置可打开 | ⬜ | |
 | 3.9–3.10 | ⭐ secrets.json | ⬜ | |
 | 3.11 | ⭐ gofmt / CRLF | ⬜ | |
@@ -447,7 +484,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.4` / `tiptop 0.1.2` / `4gl-full 0.5.1`
+- 被测版本：`bdl-lsp 0.3.8` / `tiptop 0.1.3` / `4gl-full 0.5.3`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

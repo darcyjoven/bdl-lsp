@@ -222,7 +222,7 @@ type LinkSettings struct {
 	// MaxAgeDays 是资料过期提示阈值（天），0 = 不提示。
 	MaxAgeDays int `json:"maxAgeDays"`
 	// 注意：这里**没有**采集（sync）配置。
-	// 生成 .link/ 资料是 tiptop 的职责，bdl-lsp 只读它。
+	// 生成 .project/ 资料是 tiptop 的职责，bdl-lsp 只读它。
 	// 见 docs/PLAN-SEPARATION.md。
 }
 
@@ -237,7 +237,7 @@ func (s Settings) LinkEnabled() bool {
 // LinkDataDir 返回资料目录（默认 `.link`）。
 func (s Settings) LinkDataDir() string {
 	if s.Link.DataDir == "" {
-		return ".link"
+		return ".project"
 	}
 	return s.Link.DataDir
 }
