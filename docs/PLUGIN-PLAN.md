@@ -384,7 +384,7 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 | 项 | 实现 |
 |---|---|
 | `-modules lib,sub,qry` | 命中 CSV 的 `gal02`（大小写不敏感） |
-| `-files aap/4gl/saapt310.4gl` | `link.ParseFileSpec`：最后一段去扩展名做代码，第一个非类型目录段做模组；也接受 `aap/saapt310`、`saapt310.4gl`、反斜杠 |
+| `-files aap/4gl/saapt310.4gl` | `link.ParseFileSpec`：最后一段去扩展名做代码；模组取**紧挨类型目录（4gl/per/42f/4fd/sch）的那一段**；也接受 `aap/saapt310`、`saapt310.4gl`、反斜杠。**踩坑**：最初取"第一个非类型目录段"，于是插件传工作区相对路径（`tiptop/aap/4gl/x.4gl`）时模组被认成 `tiptop`、匹配 0 个作业——P1-1 联调时发现并修正，测试里钉住了 `topcust/aap/4gl/…` 与 `tiptop/axc/4gl/…` 两种形态 |
 | 受影响作业 | 上述条件命中行的 `gal01` 集合（**并集**）；一层公共文件被多个 MAIN 引用时，这里就是"N 个作业" |
 | 采集下推 | `source=golang` + 默认 SQL 时追加 `AND (UPPER(gal02) IN … OR (UPPER(gal02),LOWER(gal03)) IN …)`；自定义 `-query` 不做下推（只在内存过滤） |
 | 只扫受影响文件 | `link.ScanPathList` 只读这些程序的文件（几十个），全量 20 多秒 → **亚秒级** |
