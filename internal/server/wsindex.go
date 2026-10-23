@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/internal/wsindex"
 	linkpkg "github.com/darcyjoven/bdl-lsp/link"
 	"go.lsp.dev/protocol"
@@ -222,13 +223,12 @@ func wsRange(line, col, length int) protocol.Range {
 	}
 }
 
-// pathURI 把本地路径转成 file:// URI（用与客户端一致的百分号编码）。
+// pathURI 把本地路径转成 file:// URI（与客户端一致的百分号编码）。
+//
+// 走 internal/fileuri.FromPath：手写拼接在 Windows 上会得到 `file://C:/…`
+// （盘符落进 authority），索引给出的位置在客户端打不开。
 func pathURI(path string) protocol.DocumentURI {
-	u := filepath.ToSlash(path)
-	if !strings.HasPrefix(u, "/") {
-		u = "/" + u
-	}
-	return protocol.DocumentURI("file://" + percentEncodePath(u))
+	return protocol.DocumentURI(fileuri.FromPath(path))
 }
 
 // moduleOfPath 取 4gl 文件所属模组（`…/<root>/<module>/4gl/x.4gl`）。
@@ -335,22 +335,4 @@ func (s *Server) wsReferences(curPath, word string) []protocol.Location {
 // sameFile 比较两个路径是否指向同一个文件（大小写不敏感，Windows 也要对）。
 func sameFile(a, b string) bool {
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
-}
-
-// percentEncodePath 对路径做最小的百分号编码（保留 '/'）。
-//
-// 与 internal/fileuri 的编码保持一致；这里只处理 URI 里必须转义的字符
-// （空格、#、?、%），避免把中文路径编成乱码。
-func percentEncodePath(p string) string {
-	var b strings.Builder
-	for i := 0; i < len(p); i++ {
-		c := p[i]
-		switch c {
-		case ' ', '#', '?', '%':
-			fmt.Fprintf(&b, "%%%02X", c)
-		default:
-			b.WriteByte(c)
-		}
-	}
-	return b.String()
 }

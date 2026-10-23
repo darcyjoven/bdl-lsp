@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -37,6 +36,7 @@ import (
 	"github.com/darcyjoven/bdl-lsp/builtin"
 	"github.com/darcyjoven/bdl-lsp/internal/config"
 	"github.com/darcyjoven/bdl-lsp/internal/diag"
+	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
 	"github.com/darcyjoven/bdl-lsp/internal/server"
 	"github.com/darcyjoven/bdl-lsp/parser"
 )
@@ -289,12 +289,14 @@ func hintFor(name string, count, files int) string {
 	return ""
 }
 
+// fileURI 与服务器/客户端用同一套编码（fileuri.FromPath）：
+// 手写 "file://"+路径 在 Windows 上会得到非法的 `file://C:/…`。
 func fileURI(path string) string {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		abs = path
 	}
-	return "file://" + (&url.URL{Path: filepath.ToSlash(abs)}).EscapedPath()
+	return fileuri.FromPath(abs)
 }
 
 // collect 列出语料下的 .4gl（不含 .per：内置表只服务 4GL 语义诊断）。

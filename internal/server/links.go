@@ -299,6 +299,10 @@ func filePathOf(uri string) string {
 }
 
 // fileURI 把绝对路径转成 file:// URI。
+//
+// 必须走 internal/fileuri：手写 `"file://" + filepath.ToSlash(path)` 在
+// Windows 上得到 `file://C:/…` —— 盘符落进 authority，是非法 URI，
+// VSCode 不会把诊断挂到 .link/ 文件上（2026-10-23 Windows CI 暴露）。
 func fileURI(path string) string {
-	return "file://" + filepath.ToSlash(path)
+	return fileuri.FromPath(path)
 }
