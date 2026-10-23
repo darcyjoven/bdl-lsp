@@ -232,6 +232,47 @@ func buildPerIndex(root string) map[string][]string {
 	return idx
 }
 
+// FormSideNames 返回这些 .per 文件里"表单侧的名字"（小写集合）：
+// ATTRIBUTES 的 item、INSTRUCTIONS 的 SCREEN RECORD 及其字段。
+//
+// 用途：T5（variable-source-unresolved）的兜底过滤。`CLEAR azp02`
+// （formonly 字段）、`FROM s_apd.*`（屏幕记录）里的名字在 4GL 里根本不是
+// 程序变量，静态上永远找不到"定义"，按变量去查就是必然误报。
+// 语法侧的白名单只能枚举已知语句形态，这里兜住其余所有情况。
+//
+// 复用的是表单解析缓存（loadIndex），所以对已经在做字段校验的文档几乎零成本。
+func (r *Resolver) FormSideNames(perPaths []string) map[string]bool {
+	if r == nil || len(perPaths) == 0 {
+		return nil
+	}
+	out := make(map[string]bool)
+	for _, p := range perPaths {
+		fi, _, _ := r.loadIndex(p)
+		if fi == nil {
+			continue
+		}
+		// Symbols 含嵌套的扁平副本（SCREEN RECORD 的字段也在里面）。
+		for _, sym := range fi.Symbols {
+			if sym == nil || sym.Lower == "" {
+				continue
+			}
+			out[sym.Lower] = true
+		}
+		// 还有 `= tablename.column` 的**列部分**：4GL 里可以按列名引用
+		// （`CLEAR formonly.azp02` 这类），checkField 同样认它算"存在"。
+		for _, fn := range fi.FormFieldNames {
+			if fn.Lower == "" {
+				continue
+			}
+			out[fn.Lower] = true
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // loadIndex 加载并解析 .per（缓存 + mtime 校验），与 globals 包同套路。
 func (r *Resolver) loadIndex(path string) (*index.FileIndex, *textpos.Index, string) {
 	uri := URIOfPath(path)

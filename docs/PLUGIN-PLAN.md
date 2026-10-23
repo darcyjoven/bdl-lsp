@@ -13,7 +13,7 @@
 | # | 类型 | 事项 | 归属 | 优先级 |
 |---|---|---|---|---|
 | P0-1 | **BUG（严重）· 已修** | 链接预热回调在外部关文档树 → tree-sitter 崩溃、服务整个挂掉（大文件 100% 复现） | bdl-lsp | ✅ 已修复（2026-10-23） |
-| P0-2 | BUG | `INPUT ARRAY … FROM s_x.*` 等表单侧名字被报"变量不存在" | bdl-lsp | 高（发布前） |
+| P0-2 | **BUG · 已修** | `INPUT ARRAY … FROM s_x.*`、`CLEAR azp02` 等表单侧名字被报"变量不存在" | bdl-lsp | ✅ 已修复（2026-10-23，语料 -19.4%） |
 | P0-3 | **UX** | 文件因大小/超时/未解析时不告知用户；要加"强制解析"入口 | bdl-lsp + 插件 | 高（发布前） |
 | P1-1 | 功能 | 二进制确认进包 + 功能命令进 VSCode 命令面板（链接导入/同步/状态、schema、部署） | 插件（+tiptop） | 高（发布前） |
 | P1-2 | 结构 | `.link` → `.project`；CSV 落 `.project/`；密码放 `.project/secrets.json` | bdl-lsp + tiptop + 插件 | 高（发布前） |
@@ -146,7 +146,7 @@ link.SymbolIndex.StartGlobal           // 后台 goroutine 预热全局模组（
 
 ---
 
-## 3. P0-2：表单侧名字被误报为"变量不存在"
+## 3. P0-2：表单侧名字被误报为"变量不存在"（已修复）
 
 ### 3.1 用户报的
 
@@ -176,7 +176,43 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 本质：`variable-source-unresolved`（T5）用的是**语法上下文白名单**，而"表单侧的名字"能出现在**很多**语句
 的很多字段位置——枚举不完，且每加一条 pattern 都有"Impossible pattern 静默禁用整个 query"的风险（本项目踩过）。
 
-### 3.3 修复方案（三层，建议全做）
+### 3.3 已实施的修复
+
+1. **语法跳过**：`queryVariables` 新增 `(input record: (variable) @skip)`
+   ——`INPUT ARRAY … FROM s_rec.*` 的屏幕记录名落在 `record:` 字段（不是 `field:`）。
+   另把 `CLEAR <x>` 的操作数整体跳过：Genero 不区分"程序变量 / 表单字段"，
+   静态无法判定，按"宁可不报"处理（真实误报见下）。
+2. **语义兜底**：`form.Resolver.FormSideNames()` 汇集**本文档引用到的表单**里的
+   表单侧名字（item tag、SCREEN RECORD 及其字段、`= table.column` 的**列名**），
+   T5 命中这些名字就不再报（`DISPLAY t5field`、`CLEAR s_rec` 这类靠它兜住）。
+   `reparseFull` / `AuditFile` 都改成"先跑字段校验拿表单集合，再跑 T5"。
+3. **回归测试**：`internal/server/t5form_test.go` 两条——表单侧名字（含只有列名的
+   `t5field`、没有表单绑定的 `INPUT ARRAY`）必须静默；真正未定义的程序变量仍要报。
+
+**语料实测**（`make diag-audit`，全量 15108 文件）：
+
+| 指标 | 修复前 | 修复后 | 差值 |
+|---|---|---|---|
+| `variable-source-unresolved` | 24284 | **19580** | **−4704（−19.4%）** |
+| 诊断总数 | 26707 | 22003 | −4704 |
+| `function-not-found` / `field-not-in-form` | 1423 / 869 | 1423 / 869 | 0（无副作用） |
+| `saapt310.4gl` 的误报 | 4 条 | **0 条** | −4 |
+
+### 3.4 还没做的（**需要你确认语义**）
+
+剩余 19580 条 T5 的主体**不再是表单名字**，而是**跨模块的模块级变量**，例如
+`L_AC`（1828 条）、`G_RVV`（1715）、`G_SFS`（1128）——这些名字在语料里确有
+`DEFINE`，但定义在**别的模块**的文件里（不是当前文件、也不在它 import 的 GLOBALS 里）。
+
+它们算不算误报，取决于 Genero 的可见性模型：
+
+- 若"模块级 `DEFINE` 不跨模块可见"（Genero 手册的常规理解）→ 这些是**真报**，工具没错；
+- 若这套项目的构建方式让它们跨模块可见（共享模块编译成库、老式 4GL 习惯）→
+  T5 需要按"模块/库"聚合可见性，那会是一次更大的改动（类似 P7-D 的链接可见性矩阵）。
+
+**建议**：先别动，等你在真实项目里看一眼这 1.9 万条是否构成噪声；如果需要再开一项。
+
+### 3.5 原方案（保留备查）
 
 1. **补语法跳过**（便宜）：`(input record: (variable) @skip)`；`clear` 语句；
    `construct` 的 FROM 侧（按位置判断，与 `constructOnColumns` 同思路）。
@@ -187,7 +223,7 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
    - 单测：上面 4 种写法的 fixture，断言"不产生 T5"；
    - 语料：`saapt310.4gl` 的 4 条误报归零，且**全语料 T5 总数不上升**（`make diag-audit` 对比）。
 
-### 3.4 注意
+### 3.6 注意
 
 `INPUT BY NAME g_rec.*`（`g_rec` 是**程序 record**）走的是 `value:` 字段，**继续校验**是对的——
 不要为了省事把整个 `input` 语句都跳过。

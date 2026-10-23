@@ -108,13 +108,16 @@ func (s *Server) AuditFile(ctx context.Context, uri string, lang parser.Lang, te
 	fi, _ := s.indexFor(doc)
 	var out []protocol.Diagnostic
 	out = append(out, s.globalsChecks(ctx, doc, fi)...)
-	out = append(out, s.unresolvedSourceChecks(doc, fi)...)
 	if lang == parser.LangBDL {
-		s.formChecks(doc, &out)
+		// 与 reparseFull 同序：先字段校验拿到引用的表单集合，
+		// T5 再用这些表单的 item / SCREEN RECORD 名字兜底过滤。
+		usedForms := s.formChecks(doc, &out)
+		out = append(out, s.unresolvedSourceChecks(doc, fi, s.formSideNames(usedForms))...)
 		s.recordMemberChecks(doc, &out)
 		out = append(out, s.functionNotFoundChecks(doc, fi)...)
 	} else {
 		s.perChecks(doc, &out)
+		out = append(out, s.unresolvedSourceChecks(doc, fi, nil)...)
 	}
 	return out
 }

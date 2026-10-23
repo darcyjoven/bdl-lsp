@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.5` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.6` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,7 +14,7 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.5 | 语言服务；`link`/`deploy` 已分离出去 |
+| `bdl-lsp` | 0.3.6 | 语言服务；`link`/`deploy` 已分离出去 |
 | `tiptop` | 0.1.2 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
 | `vscode-bdl` | 0.5.1 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
@@ -72,7 +72,8 @@
 |---|---|---|---|
 | ✅ P0-1 | ~~并发崩溃（最高优先）~~ **已修复 2026-10-23** | 真凶不是索引，而是**链接预热回调**（`link.SymbolIndex.StartGlobal` 的后台 `onReady` → `rediagnoseAll` → `reparse` → `Document.SetTree` 关掉 handler 正在遍历的树）。改为 `requestRediagnose()`（永不阻塞、后台等 `parseMu` 再算）+ `rediagnoseAllLocked()`（供已持锁的 `reparseFull` 调） | [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py)：修复前 8/8 崩溃 → 修复后 **20/20 OK**（含 4.5 万行文件）；`internal/server/lock_test.go` 三条锁纪律测试 |
 | P0-1b | 崩溃回归进 CI | 复现脚本依赖真实语料（CI 没有）→ 补一条**合成工作区**的等价测试（造 `.link/links.jsonl` + 全局模组文件拉开预热窗口 + 一个大文件） | CI 里能复现并拦住回归 |
-| P0-2 | 表单侧名字被误报"变量不存在" | 补 `(input record:)`、`clear`、`construct` FROM 侧跳过；再加语义兜底（名字命中已引用表单的 item/SCREEN RECORD 就不报 T5） | `saapt310.4gl` 的 4 条误报归零；全语料 T5 总数不上升 |
+| ✅ P0-2 | ~~表单侧名字被误报"变量不存在"~~ **已修复 2026-10-23** | ① 语法跳过新增 `(input record: …)`（`INPUT ARRAY … FROM s_x.*` 落在 `record:` 字段）与 `CLEAR` 操作数；② 语义兜底 `form.Resolver.FormSideNames()`（item / SCREEN RECORD / `= table.column` 列名），`reparseFull`+`AuditFile` 改成先跑字段校验再跑 T5；③ 回归测试 `internal/server/t5form_test.go` | `saapt310.4gl` 4 条 → **0**；全语料 T5 **24284 → 19580（−4704，−19.4%）**，`function-not-found`/`field-not-in-form` 一条不变 |
+| P0-2b | T5 剩余量级（**待确认语义**） | 剩余 19580 条的主体是**跨模块的模块级变量**（`L_AC` 1828、`G_RVV` 1715…）：它们在**别的模块**里确有 `DEFINE`，但不在当前文件或其 GLOBALS 里。算不算误报，取决于"模块级 DEFINE 是否跨模块可见"，需要真实项目口径 | 确认是噪声后再设计（类似链接可见性矩阵，属较大改动） |
 | P0-3 | 未解析/超时**要告知用户** + 强制解析 | 解析超时原先只写日志；改为发诊断；`editor/title` 加"强制解析当前文件"命令。**有效期：文件不关闭就一直生效**（`didClose` 移除） | 默认限制下打开 4 万行文件，能看到提示与按钮 |
 | P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
 | P1-2 | `.link` → `.project` | 读时兼容 `.link` 并提示迁移（提供迁移命令）；写只写 `.project/`；CSV/`secrets.json`/`deploy.json` 都落 `.project/` | 旧项目仍可用；新资料只出现在 `.project/` |
@@ -195,7 +196,7 @@
 ## G. 建议的推进顺序
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
-2. **§P 插件改版**（发布前）：P0-1 ✅ 已修 → **P0-2（表单侧误报）→ P0-3** → P1-*；P2-1（schema）发布后一版
+2. **§P 插件改版**（发布前）：P0-1 ✅、P0-2 ✅ → **P0-3（解析状态可见 + 强制解析）** → P1-*；P2-1（schema）发布后一版
 3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
 4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
 5. §D（等用户决定是否恢复 Zed）
@@ -206,5 +207,5 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P0-2（表单侧名字被误报）开始做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P0-3（解析状态可见 + 强制解析）开始做。
 ```

@@ -299,10 +299,15 @@ type variableUse struct {
 //		`(whenever name: ...)`**：name 字段来自隐藏规则 `_names` 的别名，
 //		node-types.json 里 whenever 没有这个字段，query 会编译失败并报
 //		"Impossible pattern"——而失败是静默的（整个 T5 被禁用，零诊断）；
-//	pattern 5-10 跳过表单字段上下文（P3b 联动修正）：INPUT ... FROM f、
+//	pattern 5-11 跳过表单字段上下文（P3b 联动修正）：INPUT ... FROM f、
 //	CONSTRUCT ... ON f、DISPLAY ... TO f、NEXT FIELD f、INFIELD(f) 里的
 //	名字是**表单字段**不是程序变量——T5 把它们当变量查会全部误报
 //	（实测：INPUT x FROM f01 的 f01 被 variable-source-unresolved 命中）。
+//	其中 `INPUT ARRAY … FROM 屏幕记录.*` 落在 `record:` 字段上（不是 field:），
+//	是 2026-10-23 才补的：语料 saapt310.4gl 有 3 条这类误报。
+//	`CLEAR x` 的操作数既可能是程序变量也可能是表单字段（Genero 不区分语法），
+//	无法静态判定 → 按"宁可不报"整体跳过；真实误报见 saapt310.4gl 的 `CLEAR azp02`
+//	（该字段定义在**调用方程序**的表单里，本文件引用的 12 个表单都没有它）。
 //
 // 性能实测（7138 行 / 329KB 文件）：
 //   - TreeCursor 逐节点 DFS：didChange 0.7ms → 74ms（每次 CGO 调用太贵）；
@@ -320,6 +325,8 @@ const queryVariables = `
 (expression name: (variable (identifier) @skip))
 (whenever (variable (identifier) @skip))
 (input field: (variable) @skip)
+(input record: (variable) @skip)
+(clear params: (expression (variable) @skip))
 (construct field: (variable) @skip)
 (display field: (variable) @skip)
 (hook field: (variable) @skip)
@@ -472,7 +479,7 @@ func collectVariableUses(tree *ts.Tree, src []byte, qs *variableQueries) []varia
 //
 // 存在 Unresolvable 导入（文件名是变量）时**全部放过**：
 // 那些导入里的定义静态不可知，任何"未定义"结论都可能是误报。
-func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIndex) []protocol.Diagnostic {
+func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIndex, formNames map[string]bool) []protocol.Diagnostic {
 	if fi == nil {
 		return nil
 	}
@@ -544,6 +551,12 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 	var diags []protocol.Diagnostic
 	for _, u := range uses {
 		if known[u.lower] {
+			continue
+		}
+		// 表单侧的名字（.per 的 item / SCREEN RECORD 及其字段）不是程序变量：
+		// 静态上永远找不到"定义"，按变量查必然误报。
+		// 例：`CLEAR azp02`（formonly 字段）、`FROM s_apd.*`（屏幕记录）。
+		if formNames[u.lower] {
 			continue
 		}
 		// P7-C：内置变量/函数/类名在语法树里就是普通 identifier，静态上

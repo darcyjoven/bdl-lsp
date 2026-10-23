@@ -41,12 +41,15 @@ func (s *Server) newFormResolver(rootPath string) {
 
 // formChecks 在 4gl 文档上执行字段校验并把诊断追加到 issues。
 //
+// 返回值是**本文档引用到的表单路径**（供 T5 兜底过滤"表单侧名字"用，
+// 见 unresolvedSourceChecks 的 formNames 参数）。
+//
 // 副作用：登记 doc → .per 的引用边（供 .per 变更时刷新）。
 // 配置 off 时仍执行解析与登记——relatedInformation 与后续能力依赖解析结果，
 // 只是诊断被关（与 globals 的策略一致）。
-func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnostic) {
+func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnostic) []string {
 	if s.formRes == nil || doc == nil || doc.Lang != parser.LangBDL {
-		return
+		return nil
 	}
 
 	// query 惰性编译（编译失败则本功能静默禁用）
@@ -54,12 +57,12 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 		s.formQs = form.CompileQueries(s.pool)
 	}
 	if s.formQs == nil {
-		return
+		return nil
 	}
 
 	text, tree, _ := doc.Snapshot()
 	if tree == nil {
-		return
+		return nil
 	}
 
 	// 清旧边再登记（引用可能已变）
@@ -74,7 +77,7 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 
 	severity, enabled := diag.SeverityFor(diag.CodeFieldNotInForm, s.settings())
 	if !enabled {
-		return
+		return usedPaths
 	}
 
 	idx := doc.Index()
@@ -118,6 +121,7 @@ func (s *Server) formChecks(doc *document.Document, issues *[]protocol.Diagnosti
 	}
 	s.storeFieldDiags(doc.URI, diags)
 	*issues = append(*issues, diags...)
+	return usedPaths
 }
 
 // cachedFieldDiags 返回缓存的字段/表单诊断（didChange 快速路径用）。

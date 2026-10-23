@@ -140,19 +140,32 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 
 	gfi, _ := s.indexFor(doc)
 	gDiags := s.globalsChecks(ctx, doc, gfi)
-	// T5 重算（unresolvedSourceChecks 内部写缓存）
-	gDiags = append(gDiags, s.unresolvedSourceChecks(doc, gfi)...)
-	// P3b：字段校验（4gl）或 .per 内部校验（per），追加进同一次发布
+
+	// 4gl：**先**跑字段校验——它顺带给出"本文档引用了哪些 .per"，
+	// T5 要用这些表单的 item / SCREEN RECORD 名字做兜底过滤
+	// （`CLEAR azp02` 这类表单字段按变量查必然误报，见 PLUGIN-PLAN §3）。
 	if doc.Lang == parser.LangBDL {
-		s.formChecks(doc, &gDiags)
+		usedForms := s.formChecks(doc, &gDiags)
+		// T5 重算（unresolvedSourceChecks 内部写缓存）
+		gDiags = append(gDiags, s.unresolvedSourceChecks(doc, gfi, s.formSideNames(usedForms))...)
 		// P6：BY NAME rec.member 的记录成员校验（默认 off）
 		s.recordMemberChecks(doc, &gDiags)
 		// P7-B：函数调用处找不到定义（默认 warning）
 		gDiags = append(gDiags, s.functionNotFoundChecks(doc, gfi)...)
 	} else {
 		s.perChecks(doc, &gDiags)
+		gDiags = append(gDiags, s.unresolvedSourceChecks(doc, gfi, nil)...)
 	}
 	s.publish(ctx, doc.URI, version, issues, gDiags)
+}
+
+// formSideNames 返回这些表单里"表单侧的名字"（见 form.Resolver.FormSideNames）。
+// formRes 未就绪或没有表单时返回 nil（T5 退回纯语法白名单）。
+func (s *Server) formSideNames(perPaths []string) map[string]bool {
+	if s == nil || s.formRes == nil {
+		return nil
+	}
+	return s.formRes.FormSideNames(perPaths)
 }
 
 // tooLargeReason 返回跳过大文件诊断的原因；未超限时返回空串。
