@@ -88,6 +88,10 @@ type Server struct {
 	// 否则会重现 2026-10-23 的 ts_node_parent 段错误（P0-1）。
 	parseMu sync.Mutex
 
+	// forceParse 是"用户要求强制解析"的文档集合（见 forceparse.go）。
+	// 以 URI 为键；didClose 时移除，所以"有效期到文件关闭"。
+	forceParse map[string]bool
+
 	mu        sync.Mutex
 	conn      jsonrpc2.Conn
 	shutdown  bool
@@ -111,6 +115,7 @@ func New(pool *parser.Pool, logger *slog.Logger, version string) *Server {
 		sourceDiags:    map[string][]protocol.Diagnostic{},
 		fieldDiags:     map[string][]protocol.Diagnostic{},
 		recheckTimers:  map[string]*time.Timer{},
+		forceParse:     map[string]bool{},
 		exited:         make(chan struct{}),
 	}
 }
@@ -247,6 +252,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleLinkTree(ctx, reply, req)
 	case MethodLinkReferences:
 		return s.handleLinkReferences(ctx, reply, req)
+	case MethodForceParse:
+		return s.handleForceParse(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}

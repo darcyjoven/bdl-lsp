@@ -1175,8 +1175,9 @@ func TestLargeFileSkipsDiagnostics(t *testing.T) {
 	if code, _ := d["code"].(string); code != "file-too-large" {
 		t.Errorf("code = %v，期望 file-too-large", d["code"])
 	}
-	if sev, _ := d["severity"].(float64); sev != 3 {
-		t.Errorf("提示应为 information(3)，实际 %v", d["severity"])
+	// P0-3（2026-10-23）：从 information 上调为 warning——"没被检查"必须看得见。
+	if sev, _ := d["severity"].(float64); sev != 2 {
+		t.Errorf("提示应为 warning(2)，实际 %v", d["severity"])
 	}
 }
 

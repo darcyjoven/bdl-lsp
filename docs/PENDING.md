@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.6` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.7` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,9 +14,9 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.6 | 语言服务；`link`/`deploy` 已分离出去 |
+| `bdl-lsp` | 0.3.7 | 语言服务；`link`/`deploy` 已分离出去 |
 | `tiptop` | 0.1.2 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
-| `vscode-bdl` | 0.5.1 | 平台包内置两个二进制；CI 四平台打包 |
+| `vscode-bdl` | 0.5.2 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
 
 **最近完成的（不再追踪）**：P1–P8 全部功能 · 0.3.1 GLOBALS 按文档隔离 ·
@@ -74,7 +74,7 @@
 | P0-1b | 崩溃回归进 CI | 复现脚本依赖真实语料（CI 没有）→ 补一条**合成工作区**的等价测试（造 `.link/links.jsonl` + 全局模组文件拉开预热窗口 + 一个大文件） | CI 里能复现并拦住回归 |
 | ✅ P0-2 | ~~表单侧名字被误报"变量不存在"~~ **已修复 2026-10-23** | ① 语法跳过新增 `(input record: …)`（`INPUT ARRAY … FROM s_x.*` 落在 `record:` 字段）与 `CLEAR` 操作数；② 语义兜底 `form.Resolver.FormSideNames()`（item / SCREEN RECORD / `= table.column` 列名），`reparseFull`+`AuditFile` 改成先跑字段校验再跑 T5；③ 回归测试 `internal/server/t5form_test.go` | `saapt310.4gl` 4 条 → **0**；全语料 T5 **24284 → 19580（−4704，−19.4%）**，`function-not-found`/`field-not-in-form` 一条不变 |
 | P0-2b | T5 剩余量级（**待确认语义**） | 剩余 19580 条的主体是**跨模块的模块级变量**（`L_AC` 1828、`G_RVV` 1715…）：它们在**别的模块**里确有 `DEFINE`，但不在当前文件或其 GLOBALS 里。算不算误报，取决于"模块级 DEFINE 是否跨模块可见"，需要真实项目口径 | 确认是噪声后再设计（类似链接可见性矩阵，属较大改动） |
-| P0-3 | 未解析/超时**要告知用户** + 强制解析 | 解析超时原先只写日志；改为发诊断；`editor/title` 加"强制解析当前文件"命令。**有效期：文件不关闭就一直生效**（`didClose` 移除） | 默认限制下打开 4 万行文件，能看到提示与按钮 |
+| ✅ P0-3 | ~~未解析/超时**要告知用户** + 强制解析~~ **已实现 2026-10-23** | ① 解析超时以前只写日志 → 新增诊断码 `parse-timeout`；② `file-too-large` / `parse-timeout` 默认级别从 information 上调为 **warning**（"文件没被检查"必须看得见）；③ 新增自定义请求 `bdl/forceParse` + 命令 `bdl.forceParseCurrentFile`，`editor/title` 仅在出现这两条诊断时显示按钮（`bdl.parseSkipped` 上下文）；④ 有效期：`didClose` 时移除标记 | 新增测试：超限→提示→强制解析后能出大纲且不再提示→关闭再打开提示回来；超时→`parse-timeout` 提示。见 `internal/server/forceparse_test.go` |
 | P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
 | P1-2 | `.link` → `.project` | 读时兼容 `.link` 并提示迁移（提供迁移命令）；写只写 `.project/`；CSV/`secrets.json`/`deploy.json` 都落 `.project/` | 旧项目仍可用；新资料只出现在 `.project/` |
 | P1-3 | link **局部同步** | `link sync` 新增 `-modules`、`-files`（`<模组>/4gl/<程序>.4gl`），合并进现有 `links.jsonl`；视图「反查引用程序」旁加"重新同步"；"更新当前文件"命令。连带语义：MAIN 只更新自己那条链；lib/sub/qry 更新自己；**公共文件被多个 MAIN 引用时，先列出并计数受影响的作业，用户确认再写** | 单文件更新秒级返回，其余链不变；多作业场景有确认 |
@@ -91,7 +91,9 @@
 - ✅ 复现脚本 [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 落地（退出码 0=OK / 1=崩溃）；
 - ✅ **P0-1 修复并验证**：链接预热回调纳入 `parseMu` 纪律（`requestRediagnose` / `rediagnoseAllLocked`），
   复现脚本 8/8 崩溃 → 20/20 正常，`go test ./...` 全绿；
-- ✅ 样例 schema 数据放到 `artifacts/schema/demo.csv`（已 gitignore）。
+- ✅ 样例 schema 数据放到 `artifacts/schema/demo.csv`（已 gitignore）；
+- ✅ **P0-3 实现并验证**：`parse-timeout` 码 + 两条提示级别上调为 warning +
+  `bdl/forceParse` 请求与 `bdl.forceParseCurrentFile` 命令（标题栏按钮按需出现）。
 
 ---
 

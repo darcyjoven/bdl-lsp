@@ -29,10 +29,13 @@ func (s *Server) reparse(ctx context.Context, doc *document.Document, oldTree *t
 	text, _, version := doc.Snapshot()
 	settings := s.settings()
 
-	if reason := tooLargeReason(text, settings.Limits); reason != "" {
-		s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
-		s.publishNotice(ctx, doc.URI, version, reason)
-		return
+	// 用户点过"强制解析"的文件不再受上限约束（有效期到关闭为止）。
+	if !s.forceParseURI(doc.URI) {
+		if reason := tooLargeReason(text, settings.Limits); reason != "" {
+			s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
+			s.publishNotice(ctx, doc.URI, version, diag.CodeFileTooLarge, reason)
+			return
+		}
 	}
 
 	opts := parser.ParseOptions{
@@ -43,6 +46,13 @@ func (s *Server) reparse(ctx context.Context, doc *document.Document, oldTree *t
 		// doc 仍持有 oldTree，保留它供下次复用，不要在此关闭（否则双重释放）。
 		if errors.Is(err, parser.ErrTimeout) && ctx.Err() == nil {
 			s.logger.Warn("解析超时，保留上次诊断", "uri", doc.URI, "timeout", opts.Timeout)
+			// 必须让用户看见"这个文件本轮没被解析"：否则表现为"功能时有时无"。
+			// 提示里给出两条出路：提高上限，或对当前文件执行「强制解析」。
+			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `basic.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
+			if s.forceParseURI(doc.URI) {
+				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `basic.limits.parseTimeoutMs`", opts.Timeout)
+			}
+			s.publishNotice(ctx, doc.URI, version, diag.CodeParseTimeout, msg)
 			return
 		}
 		s.logger.Error("解析失败", "uri", doc.URI, "error", err)
@@ -108,10 +118,12 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 		return
 	}
 
-	if reason := tooLargeReason(text, settings.Limits); reason != "" {
-		s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
-		s.publishNotice(ctx, doc.URI, version, reason)
-		return
+	if !s.forceParseURI(doc.URI) {
+		if reason := tooLargeReason(text, settings.Limits); reason != "" {
+			s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
+			s.publishNotice(ctx, doc.URI, version, diag.CodeFileTooLarge, reason)
+			return
+		}
 	}
 
 	opts := parser.ParseOptions{
@@ -121,6 +133,13 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 	if err != nil {
 		if errors.Is(err, parser.ErrTimeout) && ctx.Err() == nil {
 			s.logger.Warn("解析超时，保留上次诊断", "uri", doc.URI, "timeout", opts.Timeout)
+			// 必须让用户看见"这个文件本轮没被解析"：否则表现为"功能时有时无"。
+			// 提示里给出两条出路：提高上限，或对当前文件执行「强制解析」。
+			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `basic.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
+			if s.forceParseURI(doc.URI) {
+				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `basic.limits.parseTimeoutMs`", opts.Timeout)
+			}
+			s.publishNotice(ctx, doc.URI, version, diag.CodeParseTimeout, msg)
 			return
 		}
 		s.logger.Error("解析失败", "uri", doc.URI, "error", err)
@@ -233,16 +252,17 @@ func (s *Server) publish(ctx context.Context, uri string, version int32, issues 
 	}
 }
 
-// publishNotice 发送一条提示性诊断（大文件跳过等）。
+// publishNotice 发送一条"这个文件没被解析"的提示性诊断。
 //
-// 级别走注册表（默认 information），可用 `bdl.diagnostics.file-too-large`
-// 调整或关闭——大文件很常见时用户会想把它关掉。
-func (s *Server) publishNotice(ctx context.Context, uri string, version int32, message string) {
+// code 用 diag.CodeFileTooLarge 或 diag.CodeParseTimeout；两者默认都是 warning
+// （2026-10-23 从 information 上调：没被检查这件事必须看得见），
+// 可用 `bdl.diagnostics.<code>` 单独调级或关闭。
+func (s *Server) publishNotice(ctx context.Context, uri string, version int32, code diag.Code, message string) {
 	if s.ignoredFile(uri) {
 		s.publish(ctx, uri, version, nil, nil)
 		return
 	}
-	severity, enabled := diag.SeverityFor(diag.CodeFileTooLarge, s.settings())
+	severity, enabled := diag.SeverityFor(code, s.settings())
 	if !enabled {
 		// 关掉提示但仍要清掉上一轮的诊断（LSP 诊断是全量替换）。
 		s.publish(ctx, uri, version, nil, nil)
@@ -255,7 +275,7 @@ func (s *Server) publishNotice(ctx context.Context, uri string, version int32, m
 			Severity: severity,
 			Source:   "bdl-lsp",
 			Message:  message,
-			Code:     string(diag.CodeFileTooLarge),
+			Code:     string(code),
 		}},
 	}
 	if version > 0 {

@@ -65,8 +65,12 @@ func TestDefaultLevelsMatchDecisions(t *testing.T) {
 		CodeRecordMemberUnknown:      config.LevelOff,
 		// P7-D-2 起默认 warning：链接资料 + 外部函数过滤把全量语料的
 		// function-not-found 压到 0.09 条/文件（全量语料实测）。
-		CodeFunctionNotFound:          config.LevelWarning,
-		CodeFileTooLarge:              config.LevelInfo,
+		CodeFunctionNotFound: config.LevelWarning,
+		// 2026-10-23 决策（P0-3）：file-too-large / parse-timeout 都从
+		// information 上调到 warning——"这个文件没被检查"必须看得见，
+		// 而且现在有出路（提高上限 或 对当前文件强制解析）。
+		CodeFileTooLarge:              config.LevelWarning,
+		CodeParseTimeout:              config.LevelWarning,
 		CodeGlobalsFileNotFound:       config.LevelWarning,
 		CodeFieldNotInForm:            config.LevelWarning,
 		CodeFormDuplicateItem:         config.LevelWarning,

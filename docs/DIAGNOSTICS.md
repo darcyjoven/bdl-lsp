@@ -20,7 +20,7 @@
 | 诊断码 | 默认级别 | 说明 |
 |---|---|---|
 | `field-not-in-form` | `warning` | `INPUT … FROM`、`AFTER FIELD` 等引用的字段不在表单 `.per` 里（表单未同步或字段名写错） |
-| `file-too-large` | `information` | 文件超过解析上限（`bdl.limits.maxFileBytes` / `maxFileLines`），已跳过语法检查 |
+| `file-too-large` | `warning` | 文件超过解析上限（`bdl.limits.maxFileBytes` / `maxFileLines`），已跳过语法检查 |
 | `form-duplicate-item` | `warning` | 表单 `ATTRIBUTES` 里重复定义了同名 item |
 | `form-layout-tag-undefined` | `warning` | 表单 `LAYOUT` 里引用了 `ATTRIBUTES` 未定义的 item tag |
 | `form-screen-record-undefined` | `warning` | 表单 `SCREEN RECORD` 引用了未定义的 item 或字段名 |
@@ -29,6 +29,7 @@
 | `link-data-invalid` | `warning` | 链接资料格式不合法（JSONL 解析失败、schema 版本过高） |
 | `link-data-stale` | `hint` | 链接资料超过 `bdl.link.maxAgeDays` 未更新 |
 | `missing-node` | `warning` | grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等） |
+| `parse-timeout` | `warning` | 解析超时（`bdl.limits.parseTimeoutMs`），本轮已跳过诊断；可提高上限或对当前文件执行「强制解析」 |
 | `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关） |
 | `syntax-error` | `warning` | grammar 的 ERROR 节点（无法解析的片段） |
 | `variable-source-unresolved` | `warning` | 变量使用处查不到任何定义（局部 / 模块级 / GLOBALS 引入均无） |

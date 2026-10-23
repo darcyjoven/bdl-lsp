@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | P0-1 | **BUG（严重）· 已修** | 链接预热回调在外部关文档树 → tree-sitter 崩溃、服务整个挂掉（大文件 100% 复现） | bdl-lsp | ✅ 已修复（2026-10-23） |
 | P0-2 | **BUG · 已修** | `INPUT ARRAY … FROM s_x.*`、`CLEAR azp02` 等表单侧名字被报"变量不存在" | bdl-lsp | ✅ 已修复（2026-10-23，语料 -19.4%） |
-| P0-3 | **UX** | 文件因大小/超时/未解析时不告知用户；要加"强制解析"入口 | bdl-lsp + 插件 | 高（发布前） |
+| P0-3 | **UX · 已实现** | 文件因大小/超时/未解析时不告知用户；"强制解析"入口 | bdl-lsp + 插件 | ✅ 已实现（2026-10-23） |
 | P1-1 | 功能 | 二进制确认进包 + 功能命令进 VSCode 命令面板（链接导入/同步/状态、schema、部署） | 插件（+tiptop） | 高（发布前） |
 | P1-2 | 结构 | `.link` → `.project`；CSV 落 `.project/`；密码放 `.project/secrets.json` | bdl-lsp + tiptop + 插件 | 高（发布前） |
 | P1-3 | 功能 | `link sync` 局部更新（无参=全量 / 模块 / 具体 4gl）+ 合并进现有资料 | tiptop | 高（发布前） |
@@ -127,22 +127,25 @@ link.SymbolIndex.StartGlobal           // 后台 goroutine 预热全局模组（
 3. 明确 **工作区索引是否该跳过超大文件**（它现在解析一切，包括 `limits` 已排除诊断的文件）——
    属于性能优化，不是本次崩溃的原因。
 
-### 2.4 顺带的产品要求（P0-3）
+### 2.4 产品要求（P0-3）· **已实现 2026-10-23**
 
 用户明确要求：**因配置而没解析的文件要告知用户，并在文件右上角给一个"强制解析"按钮**。
 
-| 情形 | 现状 | 应改为 |
-|---|---|---|
-| 超过 `maxFileBytes` / `maxFileLines` | 发 `file-too-large`（information，容易被忽略） | 保持诊断，但级别建议 `warning`；**同时**在编辑器标题栏出现 "强制解析" 按钮 |
-| 解析**超时**（`limits.parseTimeoutMs`） | **只写日志**，用户什么都看不到 | 发同类诊断："解析超时，已跳过；可提高 `basic.limits.parseTimeoutMs` 或点强制解析" |
-| 服务崩溃/重启 | 无感（用户只看到功能时有时无） | 输出通道 + 通知："语言服务器异常退出，已重启（详情见日志）" |
+| 情形 | 实现（2026-10-23） |
+|---|---|
+| 超过 `maxFileBytes` / `maxFileLines` | 发 `file-too-large`，默认级别 **information → warning** |
+| 解析**超时**（`limits.parseTimeoutMs`） | 新增诊断码 **`parse-timeout`**（默认 warning），消息给出两条出路；强制解析仍超时时消息改为"建议提高上限" |
+| 服务崩溃/重启 | 仍靠 P0-1 的修复保证不崩；插件侧的异常退出提示留到 P1 一并做 |
 
-"强制解析"实现：命令 `bdl.forceParseCurrentFile` + `editor/title` 菜单（`when: resourceLangId == bdl || per`），
-行为 = 对该 URI 关闭阈值/超时限制并重解析一次（`workspace/executeCommand` 通知服务端，
-服务端把该 URI 记进"强制解析集合"）。
+**实现**（与当初设想的差异：不用 `executeCommand`，改成自定义请求，语义更直白）：
 
-**有效期（用户确认）**：**文件不关闭就一直生效**（`didClose` 时从集合里移除）；
-这样用户点一次就能一直编辑、看诊断，不必每次重新点。
+| 位置 | 内容 |
+|---|---|
+| 服务端 | `const MethodForceParse = "bdl/forceParse"`（params `{"uri":…}`）→ 记入 `forceParse` 集合 → 立即 `reparseFull`；`reparse`/`reparseFull` 对集合内的文件跳过 `tooLargeReason` |
+| 插件 | 命令 `bdl.forceParseCurrentFile` + `editor/title` 按钮（codicon `$(refresh)`），`when: bdl.parseSkipped && (resourceLangId == bdl \|\| per)` |
+| 按钮何时出现 | 监听诊断变化，该文件出现 `file-too-large` / `parse-timeout` 时才 `setContext("bdl.parseSkipped", true)`——不为每个 `.4gl` 挂一个没用的图标；解析成功后按钮自动消失 |
+| 有效期 | `didClose` 时移除标记（用户确认的语义）；关闭再打开又回到"按上限跳过" |
+| 测试 | `internal/server/forceparse_test.go`：超限→提示→强制解析（大纲非空、提示消失）→关闭再打开提示回来；超时→`parse-timeout` 提示 |
 
 ---
 

@@ -49,6 +49,8 @@ const (
 	CodeRecordMemberUnknown Code = "record-member-unknown"
 	// CodeFileTooLarge 文件超过解析上限，已跳过语法检查。
 	CodeFileTooLarge Code = "file-too-large"
+	// CodeParseTimeout 解析超时，本轮跳过诊断（文件太大或语法过于复杂）。
+	CodeParseTimeout Code = "parse-timeout"
 	// CodeFunctionNotFound 调用处的函数名在当前模块及可用模组中找不到定义。
 	//
 	// 依赖链接资料（P7-D）：没有 `.link/links.jsonl` 时整项**不启用**，
@@ -74,7 +76,9 @@ const (
 //     函数过滤全部落地后，全量语料只剩 1358 条（0.09 条/文件，见
 //     全量语料实测），噪声已可接受，默认改为 warning。
 //     没有链接资料时整项**不产生任何诊断**，所以对未启用的项目零影响；
-//   - file-too-large 是提示不是错误，默认 information。
+//   - file-too-large / parse-timeout：**默认 warning**（2026-10-23 从 information
+//     上调）。理由：这两条意味着"这个文件根本没被检查"，用户必须看得见；
+//     并且现在有出路——提高上限，或对当前文件执行「强制解析当前文件」。
 var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeGlobalsFileNotFound:       config.LevelWarning,
 	CodeVariableSourceUnresolved:  config.LevelWarning,
@@ -83,7 +87,8 @@ var defaultLevel = map[Code]config.DiagnosticLevel{
 	CodeFormLayoutTagUndefined:    config.LevelWarning,
 	CodeFormScreenRecordUndefined: config.LevelWarning,
 	CodeRecordMemberUnknown:       config.LevelOff,
-	CodeFileTooLarge:              config.LevelInfo,
+	CodeFileTooLarge:              config.LevelWarning,
+	CodeParseTimeout:              config.LevelWarning,
 	CodeFunctionNotFound:          config.LevelWarning,
 	CodeLinkDataInvalid:           config.LevelWarning,
 	// 过期只是"温和提示"，不该像错误一样占满 Problems。
@@ -107,6 +112,7 @@ var summaries = map[Code]string{
 	CodeFormScreenRecordUndefined: "表单 `SCREEN RECORD` 引用了未定义的 item 或字段名",
 	CodeRecordMemberUnknown:       "`BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关）",
 	CodeFileTooLarge:              "文件超过解析上限（`bdl.limits.maxFileBytes` / `maxFileLines`），已跳过语法检查",
+	CodeParseTimeout:              "解析超时（`bdl.limits.parseTimeoutMs`），本轮已跳过诊断；可提高上限或对当前文件执行「强制解析」",
 	CodeFunctionNotFound:          "调用处的函数名在当前模块及可用模组中找不到定义（需链接资料）",
 	CodeLinkDataInvalid:           "链接资料格式不合法（JSONL 解析失败、schema 版本过高）",
 	CodeLinkDataStale:             "链接资料超过 `bdl.link.maxAgeDays` 未更新",

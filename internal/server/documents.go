@@ -158,6 +158,8 @@ func (s *Server) handleDidClose(ctx context.Context, req jsonrpc2.Request) error
 
 	uri := string(params.TextDocument.URI)
 	s.docs.Close(uri)
+	// "强制解析"只到文件关闭为止（用户确认的有效期语义）。
+	s.setForceParse(uri, false)
 	s.indexes.drop(uri)
 	s.clearSourceDiags(uri)
 	s.clearFieldDiags(uri)
