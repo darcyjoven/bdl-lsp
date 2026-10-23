@@ -69,6 +69,11 @@ type ImportOptions struct {
 	Now time.Time
 	// Workers 是判定 MAIN 时的并发度（0 = GOMAXPROCS）。
 	Workers int
+	// OnlyPrograms 非 nil 时**只处理**这些程序编号（CSV 的 gal01），
+	// 其余行计入 Meta.RowsOutOfScope。P1-3 局部更新用。
+	OnlyPrograms map[string]bool
+	// Partial 非 nil 时记进 Meta.Partial（说明这次只更新了一部分）。
+	Partial *PartialMeta
 }
 
 // ImportResult 是导入产物。
@@ -129,6 +134,11 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 		// （实测 CSV 里有 51 行 'N'）。大小写不敏感，容忍 'y'。
 		if !strings.EqualFold(linked, "Y") {
 			res.Meta.RowsFilteredN++
+			continue
+		}
+		// 局部更新：不在本次范围内的程序整行跳过（不计入 RowsY）。
+		if opts.OnlyPrograms != nil && !opts.OnlyPrograms[program] {
+			res.Meta.RowsOutOfScope++
 			continue
 		}
 		res.Meta.RowsY++
@@ -197,9 +207,190 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 	}
 
 	res.Meta.MissingFiles = scans.missingTotal
+	res.Meta.Partial = opts.Partial
 	buildExternals(res, scans, opts)
 	SortChains(res.Chains)
 	return res, nil
+}
+
+// PartialMeta 记录"这次只更新了一部分"（P1-3 局部同步）。
+//
+// 为什么单独记：`generatedAt` 是**整份资料**的生成时间，局部更新后它不代表
+// "所有链都是新的"。视图/状态命令据此说明"哪一部分是新算的"。
+type PartialMeta struct {
+	UpdatedAt string   `json:"updatedAt"`
+	Modules   []string `json:"modules,omitempty"`
+	Specs     []string `json:"specs,omitempty"`
+	// Programs 是本次受影响的程序（作业）数。
+	Programs int `json:"programs"`
+	// ChainsUpdated 是本次重算写回的链数。
+	ChainsUpdated int `json:"chainsUpdated"`
+}
+
+// PartialSelection 是"局部更新要动哪些程序"的结果。
+type PartialSelection struct {
+	// Programs 是受影响的程序编号（CSV gal01，原样大小写）。
+	Programs map[string]bool
+	// Files 是这些程序在 CSV 里出现的全部 (模组,代码)，去重后按出现序。
+	// 用来把"源码扫描"缩小到这些文件（几毫秒，而不是全语料 20 多秒）。
+	Files []FileRef
+	// MatchedRows / RowsY 供 CLI 报告"匹配了几行、范围内几行"。
+	MatchedRows int
+	RowsY       int
+	// Modules / Specs 是用户给的原始条件（记进 meta 与报告）。
+	Modules []string
+	Specs   []string
+	// order 是受影响程序的出现顺序（报告用，保持与 CSV 一致）。
+	order []string
+}
+
+// ProgramNames 返回受影响的程序编号，按 CSV 出现顺序。
+func (s *PartialSelection) ProgramNames() []string {
+	if s == nil {
+		return nil
+	}
+	return append([]string(nil), s.order...)
+}
+
+// typeDirs 是"模组目录下再套的按类型命名的目录"，从文件路径里认模组时要跳过。
+var typeDirs = map[string]bool{"4gl": true, "per": true, "42f": true, "4fd": true, "sch": true}
+
+// SelectPrograms 按模组 / 文件条件挑出"本次要更新的程序"。
+//
+//	modules  命中 CSV 的 gal02（大小写不敏感）
+//	files    每一项形如 `aap/4gl/saapt310.4gl`、`aap/saapt310`、`saapt310.4gl`：
+//	         取最后一个路径段做程序代码（去扩展名），
+//	         其余段里第一个非类型目录段做模组（类型目录见 typeDirs）。
+//	两者取并集；都为空时返回空集合（调用方应改走全量导入）。
+func SelectPrograms(data []byte, modules, files []string) (*PartialSelection, error) {
+	data = stripBOM(data)
+	rows, header, err := readCSV(data)
+	if err != nil {
+		return nil, err
+	}
+	colProgram, ok1 := header["GAL01"]
+	colModule, ok2 := header["GAL02"]
+	colCode, ok3 := header["GAL03"]
+	colLinked, ok4 := header["GAL04"]
+	if !ok1 || !ok2 || !ok3 || !ok4 {
+		return nil, fmt.Errorf("表头缺少 GAL01..GAL04（实际列：%s）", headerNames(header))
+	}
+
+	moduleSet := map[string]bool{}
+	for _, m := range modules {
+		if m = strings.ToUpper(strings.TrimSpace(m)); m != "" {
+			moduleSet[m] = true
+		}
+	}
+	type spec struct{ module, code string }
+	var specs []spec
+	for _, raw := range files {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		m, code := ParseFileSpec(raw)
+		specs = append(specs, spec{module: m, code: code})
+	}
+
+	sel := &PartialSelection{
+		Programs: map[string]bool{},
+		Modules:  modules,
+		Specs:    files,
+	}
+	get := func(row []string, idx int) string {
+		if idx < len(row) {
+			return strings.TrimSpace(row[idx])
+		}
+		return ""
+	}
+	for _, row := range rows {
+		program := get(row, colProgram)
+		module := get(row, colModule)
+		code := get(row, colCode)
+		if program == "" || code == "" || !strings.EqualFold(get(row, colLinked), "Y") {
+			continue
+		}
+		sel.RowsY++
+		if moduleSet[strings.ToUpper(module)] {
+			if !sel.Programs[program] {
+				sel.order = append(sel.order, program)
+			}
+			sel.Programs[program] = true
+			sel.MatchedRows++
+			continue
+		}
+		for _, sp := range specs {
+			if !strings.EqualFold(sp.code, code) {
+				continue
+			}
+			if sp.module == "" || strings.EqualFold(sp.module, module) {
+				if !sel.Programs[program] {
+					sel.order = append(sel.order, program)
+				}
+				sel.Programs[program] = true
+				sel.MatchedRows++
+				break
+			}
+		}
+	}
+	if len(sel.Programs) == 0 {
+		return sel, nil
+	}
+
+	// 第二遍：把这些程序涉及的文件收集起来（去重、按出现序），供限定扫描用。
+	seen := map[string]bool{}
+	for _, row := range rows {
+		program := get(row, colProgram)
+		if !sel.Programs[program] {
+			continue
+		}
+		if !strings.EqualFold(get(row, colLinked), "Y") {
+			continue
+		}
+		ref := FileRef{get(row, colModule), get(row, colCode)}
+		if ref.Module() == "" || ref.Code() == "" || seen[ref.Key()] {
+			continue
+		}
+		seen[ref.Key()] = true
+		sel.Files = append(sel.Files, ref)
+	}
+	return sel, nil
+}
+
+// ParseFileSpec 解析 `-files` 的一项，返回模组与程序代码。
+//
+//	"aap/4gl/saapt310.4gl" → ("aap", "saapt310")
+//	"aap/saapt310"         → ("aap", "saapt310")
+//	"saapt310.4gl"         → ("", "saapt310")
+//
+// 模组取"第一个不是类型目录的路径段"（类型目录见 typeDirs）；
+// 代码取最后一段去掉扩展名。Windows 风格的反斜杠也接受。
+func ParseFileSpec(raw string) (module, code string) {
+	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
+	if raw == "" {
+		return "", ""
+	}
+	segs := strings.Split(raw, "/")
+	last := segs[len(segs)-1]
+	code = last
+	if i := strings.LastIndex(last, "."); i > 0 {
+		code = last[:i]
+	}
+	return firstModuleSegment(segs), code
+}
+
+// firstModuleSegment 从路径段里取模组名：第一个不是"类型目录"的段。
+func firstModuleSegment(segs []string) string {
+	for i, seg := range segs {
+		if i == len(segs)-1 {
+			break // 最后一段是文件名
+		}
+		if seg == "" || typeDirs[strings.ToLower(seg)] {
+			continue
+		}
+		return seg
+	}
+	return ""
 }
 
 // importGroup 是导入过程中的一个「程序编号」分组。

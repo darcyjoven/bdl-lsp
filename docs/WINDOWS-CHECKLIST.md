@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.8` · `tiptop 0.1.3` · `4gl-full 0.5.3` |
+| 被测版本 | `bdl-lsp 0.3.9` · `tiptop 0.1.4` · `4gl-full 0.5.3` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -182,8 +182,8 @@ $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
 Get-ChildItem "$ext\bin"                       # 期望：bdl-lsp.exe、tiptop.exe、BUILD-INFO.json、若干 .dll
 Get-Content    "$ext\bin\BUILD-INFO.json"
-& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.8
-& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.3
+& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.9
+& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.4
 & "$ext\bin\bdl-lsp.exe" check "$ws\topcust\aap\4gl\broken.4gl"
 ```
 
@@ -366,7 +366,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 - [ ] 4.1 构建成功，产物 `artifacts\bin\bdl-lsp.exe` 存在（PE 文件）
   - 记录：____
-- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.8`
+- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.9`
   - 记录：____
 - [ ] 4.3 `-Check` 的样例冒烟通过（期望 `共 2 个文件，0 个有问题`）
   - 记录：____
@@ -484,7 +484,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.8` / `tiptop 0.1.3` / `4gl-full 0.5.3`
+- 被测版本：`bdl-lsp 0.3.9` / `tiptop 0.1.4` / `4gl-full 0.5.3`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

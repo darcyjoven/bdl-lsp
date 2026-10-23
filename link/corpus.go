@@ -59,6 +59,19 @@ func ScanCorpusWithProgress(layout *Layout, pool *parser.Pool, workers int, prog
 	if err != nil {
 		return nil, err
 	}
+	return scanPathList(layout, pool, files, workers, progress)
+}
+
+// ScanPathList 只扫描**指定文件**并汇总（P1-3 局部更新用）。
+//
+// 与 ScanCorpus 的区别：不遍历模组根，直接把要扫的文件喂进来——
+// 单文件/单模组更新时只需要扫受影响程序的那几十个文件，而不是 7600 个。
+func ScanPathList(layout *Layout, pool *parser.Pool, paths []string, progress func(done, total int)) (*CorpusIndex, error) {
+	return scanPathList(layout, pool, paths, 0, progress)
+}
+
+// scanPathList 是两者的共同实现。
+func scanPathList(layout *Layout, pool *parser.Pool, files []string, workers int, progress func(done, total int)) (*CorpusIndex, error) {
 	calls, err := index.NewCallCollector(pool)
 	if err != nil {
 		return nil, err

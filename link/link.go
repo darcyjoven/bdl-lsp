@@ -150,19 +150,21 @@ type External struct {
 // 存在的理由：用户要能一眼看出"这份资料是什么时候、从哪来的、跳过了多少"。
 // 没有它，链接数据出问题时只能靠猜。
 type Meta struct {
-	Schema        int      `json:"schema"`
-	GeneratedAt   string   `json:"generatedAt"`
-	Source        string   `json:"source,omitempty"`       // db / script / command / file
-	SourceDetail  string   `json:"sourceDetail,omitempty"` // 例如 DS.GAL_FILE@host:1521/svc
-	RowsTotal     int      `json:"rowsTotal"`
-	RowsFilteredN int      `json:"rowsFilteredN"` // gal04<>'Y' 被过滤的行数
-	RowsY         int      `json:"rowsY"`
-	Chains        int      `json:"chains"`       // 有 MAIN 的链
-	Orphans       int      `json:"orphans"`      // 无 MAIN 的组
-	Ambiguous     int      `json:"ambiguous"`    // 有多个 MAIN 的组
-	MissingFiles  int      `json:"missingFiles"` // 磁盘上找不到的记录数
-	MultiMain     int      `json:"multiMain,omitempty"`
-	ResolvedFrom  []string `json:"resolvedFrom,omitempty"` // 参与解析的模组根
+	Schema        int    `json:"schema"`
+	GeneratedAt   string `json:"generatedAt"`
+	Source        string `json:"source,omitempty"`       // db / script / command / file
+	SourceDetail  string `json:"sourceDetail,omitempty"` // 例如 DS.GAL_FILE@host:1521/svc
+	RowsTotal     int    `json:"rowsTotal"`
+	RowsFilteredN int    `json:"rowsFilteredN"` // gal04<>'Y' 被过滤的行数
+	RowsY         int    `json:"rowsY"`
+	Chains        int    `json:"chains"`       // 有 MAIN 的链
+	Orphans       int    `json:"orphans"`      // 无 MAIN 的组
+	Ambiguous     int    `json:"ambiguous"`    // 有多个 MAIN 的组
+	MissingFiles  int    `json:"missingFiles"` // 磁盘上找不到的记录数
+	// RowsOutOfScope 是局部更新时"不在本次范围内"、被跳过的有效行数（P1-3）。
+	RowsOutOfScope int      `json:"rowsOutOfScope,omitempty"`
+	MultiMain      int      `json:"multiMain,omitempty"`
+	ResolvedFrom   []string `json:"resolvedFrom,omitempty"` // 参与解析的模组根
 	// Externals 是"被 ≥ExternalsMinFiles 个文件调用、却在整份资料里找不到
 	// 定义"的函数。它们多半是**语料快照缺少的库函数**（实测 `cl_err3`
 	// 27315 次 / 186 个文件），而不是用户写错。
@@ -174,6 +176,9 @@ type Meta struct {
 	ExternalsMinCalls int        `json:"externalsMinCalls,omitempty"`
 	ExternalsSkipped  bool       `json:"externalsSkipped,omitempty"`
 	ToolVersion       string     `json:"toolVersion,omitempty"`
+	// Partial 非空表示这份资料是**局部更新**过的：只重算了部分程序，
+	// generatedAt 不能代表全部内容的新鲜度（P1-3）。
+	Partial *PartialMeta `json:"partial,omitempty"`
 	// GeneratedAtTime 是 GeneratedAt 的解析结果（不落盘）。
 	generatedAt time.Time
 }

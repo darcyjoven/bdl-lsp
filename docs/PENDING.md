@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.8` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.9` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,8 +14,8 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.8 | 语言服务；`link`/`deploy` 已分离出去 |
-| `tiptop` | 0.1.3 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
+| `bdl-lsp` | 0.3.9 | 语言服务；`link`/`deploy` 已分离出去 |
+| `tiptop` | 0.1.4 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
 | `vscode-bdl` | 0.5.3 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
 
@@ -77,7 +77,7 @@
 | ✅ P0-3 | ~~未解析/超时**要告知用户** + 强制解析~~ **已实现 2026-10-23** | ① 解析超时以前只写日志 → 新增诊断码 `parse-timeout`；② `file-too-large` / `parse-timeout` 默认级别从 information 上调为 **warning**（"文件没被检查"必须看得见）；③ 新增自定义请求 `bdl/forceParse` + 命令 `bdl.forceParseCurrentFile`，`editor/title` 仅在出现这两条诊断时显示按钮（`bdl.parseSkipped` 上下文）；④ 有效期：`didClose` 时移除标记 | 新增测试：超限→提示→强制解析后能出大纲且不再提示→关闭再打开提示回来；超时→`parse-timeout` 提示。见 `internal/server/forceparse_test.go` |
 | P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
 | ✅ P1-2 | ~~`.link` → `.project`~~ **已实现 2026-10-23** | ① 默认值三处（`link.DefaultDataDir` / LSP 配置 / 插件设置）改 `.project`；② 读兼容：新目录没有资料而 `.link/` 有 → 读旧目录并记 `legacyDir`；③ 新诊断码 `link-data-legacy-dir`（hint，挂在旧目录 `links.jsonl` 上）；④ 插件命令 `bdl.migrateLinkDir` + 看到提示时弹出"迁移/稍后"，搬完自动重启服务器；⑤ tiptop/脚本/文档全部改 `.project/` | 旧项目仍可用且有迁移提示；`TestLegacyLinkDirStillReadWithHint`；e2e 命令清单含迁移命令 |
-| P1-3 | link **局部同步** | `link sync` 新增 `-modules`、`-files`（`<模组>/4gl/<程序>.4gl`），合并进现有 `links.jsonl`；视图「反查引用程序」旁加"重新同步"；"更新当前文件"命令。连带语义：MAIN 只更新自己那条链；lib/sub/qry 更新自己；**公共文件被多个 MAIN 引用时，先列出并计数受影响的作业，用户确认再写** | 单文件更新秒级返回，其余链不变；多作业场景有确认 |
+| ✅ P1-3 | ~~link **局部同步**~~ **已实现 2026-10-23** | tiptop：`link import`/`sync` 新增 `-modules`、`-files`（+ `import` 的 `-dry-run`）：只重算受影响作业的链并**合并**进现有 `links.jsonl`（其余链保留）；只扫受影响文件（亚秒级）；`source=golang` + 默认 SQL 时条件下推到 Oracle；meta 记 `partial`，`link status` 显示局部更新；无全量基线时报错 | `link/partial_test.go`、`linksync/filter_test.go`；实测"公共文件被 2 个作业引用 → 受影响作业 2 个（PROG1, PROG2）"；合并后其余链保留 |
 | P1-4 | 三档模式与默认值 | `link.enable`/`deploy.enable` 默认 **false**；命令用 `when` 隐藏；不连库、不写盘、无后台任务 | 新机器装上后零配置可用且无配置提示 |
 | P1-5 | 设置重分组为 5 类 | 基础 / 生产环境（DB+部署）/ 链接 / 部署 / 数据库字段；生产配置由插件合成 `.project/deploy.json`（用户不手写、**不需要任何 gitignore 提示**）。生产组必须带警告：**只写 workspace 设置，且 `settings.json` 不要进 git 管理** | 设置面板只有这 5 组；无手写 JSON 路径；警告可见 |
 | P1-6 | 去掉 7 天过期与自动同步 | 删 `link.maxAgeDays`、`link-data-stale`、`linksync` 的 `onStart/interval` | 资料过期不再自动提示；同步只由命令触发 |
@@ -201,7 +201,8 @@
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
 2. **§P 插件改版**（发布前）：P0-1 ✅、P0-2 ✅、P0-3 ✅、P1-2 ✅ →
-   **P1-3（tiptop link 局部同步）** → P1-1（命令进 VSCode）→ P1-4/P1-5（三档默认 + 设置五组）→ P1-6 → P1-7；P2-1（schema）发布后一版
+   P1-3 ✅ → **P1-1（链接/部署命令进 VSCode 面板，含"更新当前文件"用 P1-3 的 -files + dry-run 确认）**
+   → P1-4/P1-5（三档默认 + 设置五组）→ P1-6 → P1-7；P2-1（schema）发布后一版
 3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
 4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
 5. §D（等用户决定是否恢复 Zed）
@@ -212,5 +213,5 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P1-3（link 局部同步）开始做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P1-1（命令进 VSCode）开始做。
 ```

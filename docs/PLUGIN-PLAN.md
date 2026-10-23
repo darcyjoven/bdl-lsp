@@ -350,14 +350,43 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 
 ---
 
-## 6. P1-3：link 局部同步（新参数 + 合并）
+## 6. P1-3：link 局部同步（新参数 + 合并）· **已实现 2026-10-23**
 
 ### 6.1 现状
 
 `tiptop link sync`（`-source golang|command|file`）每次都是**全量**：查 `DS.GAL_FILE` 全表 →
 重新扫全语料判定 MAIN → **覆盖** `links.jsonl`（实测 ~24 s / 7600 文件）。
 
-### 6.2 新参数（语义）
+### 6.2 新参数（语义）· 已实现
+
+实现位置：`bdl-lsp/link`（选择/合并的纯逻辑）+ `tiptop`（CLI 与 SQL 下推）。
+
+| 项 | 实现 |
+|---|---|
+| `-modules lib,sub,qry` | 命中 CSV 的 `gal02`（大小写不敏感） |
+| `-files aap/4gl/saapt310.4gl` | `link.ParseFileSpec`：最后一段去扩展名做代码，第一个非类型目录段做模组；也接受 `aap/saapt310`、`saapt310.4gl`、反斜杠 |
+| 受影响作业 | 上述条件命中行的 `gal01` 集合（**并集**）；一层公共文件被多个 MAIN 引用时，这里就是"N 个作业" |
+| 采集下推 | `source=golang` + 默认 SQL 时追加 `AND (UPPER(gal02) IN … OR (UPPER(gal02),LOWER(gal03)) IN …)`；自定义 `-query` 不做下推（只在内存过滤） |
+| 只扫受影响文件 | `link.ScanPathList` 只读这些程序的文件（几十个），全量 20 多秒 → **亚秒级** |
+| 合并 | `mergeChains`：受影响的程序用新链替换，其余链（含 orphan）原样保留 |
+| meta | `partial{updatedAt, modules, specs, programs, chainsUpdated}`；`generatedAt` 保持上一次全量的时间（局部更新不能代表全部内容） |
+| 前提 | 必须有全量基线，否则报错提示先跑全量（`ErrNoData` 路径） |
+| 报告 | `PartialImportOutcome.Report`："受影响作业 N 个（名字…）/ 本次重算链 / 保留旧链 / 范围内有效行"；`-dry-run` 只打印不写盘 |
+| `link status` | 显示"局部更新 时间：作业 N 个 / 重算链 M 条 / 模组|文件 …（其余链仍是上一次全量导入的结果）" |
+| 测试 | `link/partial_test.go`（选择、文件规格解析、合并、无基线报错）、`linksync/filter_test.go`（SQL 子句与只对默认 SQL 下推） |
+
+**实测**（临时工程 / 3 个作业，其中一个公共文件被 2 个作业引用）：
+
+```text
+$ tiptop link import -csv links.csv -root /tmp/p13ws -files aap/4gl/saapt310.4gl -dry-run
+文件条件        aap/4gl/saapt310.4gl
+受影响作业      2 个（PROG1, PROG2）
+本次重算链      2 条
+保留旧链        2 条
+范围内有效行    7（范围外跳过 3）
+```
+
+### 6.3 原参数说明（保留）
 
 ```text
 tiptop link sync                      # 无参：全量（保持现状）
@@ -378,7 +407,7 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
     **列出来并计数**，提示"将更新 N 个作业（程序）"，**用户确认后再写盘**；
   - 无论哪种，都只更新显式指定集合所覆盖的链，meta 里注明"局部更新"与时间。
 
-### 6.3 与插件配合
+### 6.4 与插件配合
 
 | 入口 | 行为 |
 |---|---|
@@ -389,7 +418,7 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 | 命令 `链接资料：从 CSV 导入` | 选文件 → 复制到 `.project/gal_file.csv` → `link import` |
 | 命令 `链接资料：查看状态` | `link status` → 输出通道 |
 
-### 6.4 去掉的东西（用户明确要求）
+### 6.5 去掉的东西（用户明确要求，属 P1-6）
 
 - **`link.maxAgeDays` 配置 + `link-data-stale` 诊断**：删掉（"7 天失效"这套不再用）；
 - **后台自动同步**：`onStart`/`interval` 相关字段与实现删掉（`internal/linksync.Config` 里的
