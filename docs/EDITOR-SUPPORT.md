@@ -3,7 +3,7 @@
 > 更新：2026-10-22（P8）  
 > 用途：说清楚同一套 `bdl-lsp` 在两个客户端里"哪些能力完整、哪些降级、
 > 哪些是客户端本身不支持"，避免把客户端限制当成 LSP 缺陷。  
-> 配套：[README](../README.md)、[FEATURES](FEATURES.md)、[DEPLOY-ZED](DEPLOY-ZED.md)、
+> 配套：[README](../README.md)、[FEATURES](FEATURES.md)、
 > [TESTING](TESTING.md)、[VSCode 手册](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/USER-GUIDE.md)、
 > [Zed 手册](https://github.com/darcyjoven/zed-bdl/blob/main/docs/USER-GUIDE.md)。
 
@@ -97,7 +97,7 @@ grammar/缩进等编辑行为，不承载 LSP 配置。`settings` 会在服务�
 |---|---|---|
 | 语义高亮 | Zed 的渲染走 Tree-sitter query；截至本版本不消费 LSP semantic tokens | `highlights.scm` 覆盖 300/76 个关键字；自定义符号靠 `outline.scm` + 悬停 |
 | 链接资料视图 | 需要 VSCode `TreeDataProvider` 与自定义 LSP 请求（`bdl/linkTree` 等） | 用 `tiptop link status` 看统计；跳转仍可通过 LSP |
-| 部署诊断 | Zed 扩展不能执行任意命令，也没有 Problems 面板注入 API | `.zed/tasks.json` 调 `tiptop deploy`，看终端输出（见 [DEPLOY-ZED](DEPLOY-ZED.md)） |
+| 部署诊断 | Zed 扩展不能执行任意命令，也没有 Problems 面板注入 API | `.zed/tasks.json` 调 `tiptop deploy`，看终端输出（Zed 侧暂停；模板见 zed-extension 文档） |
 | 一键部署当前文件 | VSCode 有 `bdl.deployCurrentFile` 命令 | Zed 用 task：`tiptop deploy -workspace "$ZED_WORKTREE_ROOT" "$ZED_FILE"` |
 
 > 如果未来 Zed 扩展 API 支持任意命令或 pull diagnostics，优先补：

@@ -72,7 +72,7 @@ const (
 //     实测误报率高，默认 off，等 P7-D 链接资料补齐类型信息后再评估；
 //   - function-not-found：P7-C 内置符号表 + P7-D 链接资料 + P7-D-2 外部
 //     函数过滤全部落地后，全量语料只剩 1358 条（0.09 条/文件，见
-//     PLAN-P7 §10.7/§11），噪声已可接受，默认改为 warning。
+//     全量语料实测），噪声已可接受，默认改为 warning。
 //     没有链接资料时整项**不产生任何诊断**，所以对未启用的项目零影响；
 //   - file-too-large 是提示不是错误，默认 information。
 var defaultLevel = map[Code]config.DiagnosticLevel{

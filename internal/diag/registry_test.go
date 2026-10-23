@@ -64,7 +64,7 @@ func TestDefaultLevelsMatchDecisions(t *testing.T) {
 		CodeVariableSourceUnresolved: config.LevelWarning,
 		CodeRecordMemberUnknown:      config.LevelOff,
 		// P7-D-2 起默认 warning：链接资料 + 外部函数过滤把全量语料的
-		// function-not-found 压到 0.09 条/文件（见 PLAN-P7 §11）。
+		// function-not-found 压到 0.09 条/文件（全量语料实测）。
 		CodeFunctionNotFound:          config.LevelWarning,
 		CodeFileTooLarge:              config.LevelInfo,
 		CodeGlobalsFileNotFound:       config.LevelWarning,

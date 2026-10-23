@@ -3,8 +3,9 @@
 > 盘点：2026-10-23
 > 版本：`bdl-lsp 0.3.4` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
-> 本文是**唯一**的"还剩什么"清单。`TODO.md` 是历史清单（按阶段记录勾选），
-> 其头部已补指针与版本（原 §A6）。
+> 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
+> （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
+> 仍然有效的决策抢救进 [PLUGIN-PLAN.md](PLUGIN-PLAN.md) 附录 A。
 > 新会话接手先读 [HANDOVER.md](HANDOVER.md)，再看本文。
 
 ---
@@ -56,6 +57,37 @@
 - `docs/HANDOVER.md` 与 `README.md` 的版本/仓库数/命令同步（原停留在 0.3.1、三个仓库）；
 - `examples/deploy.json` 移到 `tiptop/examples/deploy.json`（同 A2 性质：只被
   `tiptop deploy` 消费），并更新四处引用（README、DEPLOY-ZED、PLAN-P5-DEPLOY、VSCode USER-GUIDE）。
+
+> 上表提到的 `TODO.md` / `DEPLOY-ZED.md` / `PLAN-P5-DEPLOY.md` 等文件已在随后的文档清理中删除
+> （见 §P 的"已完成"），这些行保留为当时的改动记录。
+
+---
+
+## P. VSCode 插件改版（**发布前**；schema 除外）
+
+> 设计与分析（含根因证据）：**[PLUGIN-PLAN.md](PLUGIN-PLAN.md)**。本节只列可勾选的待办。
+> 原则：三档使用模式（§1），**默认 = 零配置轻量档**（不配任何东西、不碰敏感信息、只解析语法）。
+
+| # | 事项 | 做法要点 | 验收 |
+|---|---|---|---|
+| P0-1 | **并发崩溃（最高优先）** | 后台工作区索引与请求处理共享 tree-sitter 状态 → SIGSEGV。隔离索引侧的 Pool/Query（或统一串行化）；索引也遵守一个更大的文件阈值 | [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 从 CRASH 变 OK；同一场景进 CI 回归 |
+| P0-2 | 表单侧名字被误报"变量不存在" | 补 `(input record:)`、`clear`、`construct` FROM 侧跳过；再加语义兜底（名字命中已引用表单的 item/SCREEN RECORD 就不报 T5） | `saapt310.4gl` 的 4 条误报归零；全语料 T5 总数不上升 |
+| P0-3 | 未解析/超时**要告知用户** + 强制解析 | 解析超时原先只写日志；改为发诊断；`editor/title` 加"强制解析当前文件"命令 | 默认限制下打开 4 万行文件，能看到提示与按钮 |
+| P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
+| P1-2 | `.link` → `.project` | 读时兼容 `.link` 并提示迁移（提供迁移命令）；写只写 `.project/`；CSV/`secrets.json`/`deploy.json` 都落 `.project/` | 旧项目仍可用；新资料只出现在 `.project/` |
+| P1-3 | link **局部同步** | `link sync` 新增 `-modules`、`-files`（`<模组>/4gl/<程序>.4gl`），合并进现有 `links.jsonl`；视图「反查引用程序」旁加"重新同步"；"更新当前文件"命令 | 单文件更新秒级返回，其余链不变 |
+| P1-4 | 三档模式与默认值 | `link.enable`/`deploy.enable` 默认 **false**；命令用 `when` 隐藏；不连库、不写盘、无后台任务 | 新机器装上后零配置可用且无配置提示 |
+| P1-5 | 设置重分组为 5 类 | 基础 / 生产环境（DB+部署，**带"只写 workspace 设置"警告**）/ 链接 / 部署 / 数据库字段；生产配置由插件合成 `.project/deploy.json`，用户不手写 | 设置面板只有这 5 组；无手写 JSON 路径 |
+| P1-6 | 去掉 7 天过期与自动同步 | 删 `link.maxAgeDays`、`link-data-stale`、`linksync` 的 `onStart/interval` | 资料过期不再自动提示；同步只由命令触发 |
+| P1-7 | 用户文档重写为插件说明 | `vscode-extension/docs/USER-GUIDE.md` 按最终形态重写 → 作为 README/市场说明（同源） | 文档与 UI/命令一一对应；截图清单更新 |
+| P2-1 | schema（**发布后一版**） | `.project/.schema` 数据 + 独立视图（正则查询、展开加载、右键同步）+ hover 扩展（`LIKE t.col`、`record LIKE t.*`）+ 同步策略 | 见 PLUGIN-PLAN §7；数据附件待提供 |
+
+**已完成（2026-10-23 第二轮）**：
+
+- ✅ 文档清理：删除 `TODO.md`、`PLAN-DETAILED-P1.md`、`PLAN.md`、全部 `PLAN-P*.md`、`DEPLOY-ZED.md`；
+  有效决策抢救进 [PLUGIN-PLAN](PLUGIN-PLAN.md) 附录 A；
+- ✅ 复现脚本 [`scripts/repro-index-crash.py`](../scripts/repro-index-crash.py) 落地（全量语料 8/8 崩溃、
+  单文件工作区 0/8，退出码可直接进 CI）。
 
 ---
 
@@ -130,7 +162,7 @@
 | # | 事项 | 状态 |
 |---|---|---|
 | E1 | P7-D 链接资料分片 | 触发条件 >8 MB；当前 415 KB，**远未到** |
-| E2 | 跨文件重命名 | **刻意不做**：索引里的调用点是名字匹配，可能命中同名局部变量，漏改比不支持更糟。见 `PLAN-P6-INDEX.md §4` |
+| E2 | 跨文件重命名 | **刻意不做**：索引里的调用点是名字匹配，可能命中同名局部变量，漏改比不支持更糟（见 [PLUGIN-PLAN](PLUGIN-PLAN.md) 附录 A） |
 | E3 | 使用处语义着色 | 需要全文件符号解析，成本高收益低 |
 | E4 | Code Action 批量修复（fix all） | 未排期 |
 | E5 | 纯 Go SFTP | 仅在确有需求时评估 |
@@ -160,15 +192,16 @@
 ## G. 建议的推进顺序
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
-2. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
-3. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
-4. §D（等用户决定是否恢复 Zed）
-5. §E / §F（持续跟踪）
+2. **§P 插件改版**（发布前）：先 P0-1（并发崩溃）→ P0-2/P0-3 → P1-*；P2-1（schema）发布后一版
+3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
+4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
+5. §D（等用户决定是否恢复 Zed）
+6. §E / §F（持续跟踪）
 
 ---
 
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md。§A 已完成；从 §B（需要机器/真实环境的验证）里挑一项做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P0-1（并发崩溃）开始做。
 ```

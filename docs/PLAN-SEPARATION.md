@@ -8,7 +8,7 @@
 > **2026-10-23 补记（实施差异）**：实际执行比下文更彻底——`bdl-lsp` 的
 > `link` / `deploy` 子命令**全部移除**（**未**保留只读的 `link status`），
 > `cmd/link-audit` 也**未**迁到 tiptop（审计用途已由固化在
-> [PLAN-P7.md](PLAN-P7.md) 的数字覆盖）。分离的文档/脚本收尾残留见
+> 当时 P7 记录里的数字覆盖）。分离的文档/脚本收尾残留见
 > [PENDING.md](PENDING.md) §A。
 
 ---

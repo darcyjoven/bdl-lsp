@@ -57,7 +57,7 @@ func TestCorpusGrammarBaseline(t *testing.T) {
 // knownCorpusErrors 是 P7-C-2（2026-10-21）冻结的基线：
 // 18 个文件在整份语料里解析失败，逐个确认过都是"语料自身的问题"
 // （拼写、截断、多程序拼接、.per 文档附录里的全角标点），不是语法缺口。
-// 详细分类见 docs/PLAN-P7.md §10.10。
+// 详细分类见本文件的基线清单。
 var knownCorpusErrors = map[string]struct{}{
 	"tiptop/demo/per/apmi252.per":             {},
 	"tiptop/demo/per/aooi010.per":             {},

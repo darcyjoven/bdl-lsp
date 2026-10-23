@@ -20,7 +20,7 @@
 | 1 | 语法高亮（`.4gl` / `.global` / `.per`） | 🧑 用户提供 | v1 | ✅ VSCode TextMate + Zed query |
 | 2 | 函数、变量跳转 | 🧑 用户提供 | v1 | ✅ 单文件内；GLOBALS 跨文件见 #12 |
 | 3 | 4GL 格式化（关键字大小写 + 缩进）；`.per` **不**格式化 | 🧑 用户提供 | v1 | ✅ P4 完成 |
-| 4 | 4GL 中校验字段是否存在 | 🧑 用户提供 | v1（显式字段）；record `.*` 最后 | ✅ P3b 已完成（语料 2.8% 可疑率、e2e 18/18），见 [PLAN-P3B-FIELD.md](PLAN-P3B-FIELD.md) |
+| 4 | 4GL 中校验字段是否存在 | 🧑 用户提供 | v1（显式字段）；record `.*` 最后 | ✅ P3b 已完成（语料 2.8% 可疑率、e2e 18/18） |
 | 5 | 4GL 与 `.per` 文件的联动功能 | 🧑 用户提供 | v1 | ✅ P3b：.per 变更刷新 4gl 诊断、relatedInformation 跳转 |
 | 6 | Go 实现的 LSP 服务 | 🧑 用户提供 | v1 | ✅ |
 | 7 | VSCode 插件 | 🧑 用户提供 | v1 | ✅（v0.1.1 VSIX，e2e 33/33） |
@@ -28,7 +28,7 @@
 | 9 | 基于 `tree-sitter-bdl` / `tree-sitter-per` | 🧑 用户提供 | v1 | ✅ |
 | 10 | 三个仓库的 Git 管理 | 🧑 用户提供 | 已完成 | ✅ |
 | 11 | 文档/脚本/中间产物集中 `bdl-lsp` | 🧑 用户提供 | 已完成 | ✅ |
-| 12 | GLOBALS 模组全局变量：跳转到 global 文件、来源标注、两类警告（可关闭） | 🧑 用户提供 | P3a | ✅ 已完成（语料 8403 处引用验证、e2e 16/16），见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) |
+| 12 | GLOBALS 模组全局变量：跳转到 global 文件、来源标注、两类警告（可关闭） | 🧑 用户提供 | P3a | ✅ 已完成（语料 8403 处引用验证、e2e 16/16） |
 
 ### 1.1 记录（record）`.*` 校验的说明
 
@@ -51,7 +51,7 @@
 > 其来源，也没有实现跳转到 global 文件，如果 global 文件没有找到，要警告，
 > 且变量来源没有找到的也要警告，变量来源找不到警告做成配置项目，允许关闭。
 
-拆解为 5 个功能点（详见 [PLAN-P3A-GLOBALS.md](PLAN-P3A-GLOBALS.md) §1.1）：
+拆解为 5 个功能点：
 
 | # | 功能点 | 类别 |
 |---|---|---|
@@ -107,7 +107,7 @@
 
 ### 3.3 P7（2026-10-21 立项，待执行）
 
-> 完整设计：[PLAN-P7.md](PLAN-P7.md)。
+> 完整设计：本表 + [PENDING](PENDING.md) §E/F。
 
 | # | 功能 | 说明 | 阶段 |
 |---|---|---|---|
@@ -138,7 +138,7 @@
 | 51 | 链接资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）· `link-data-stale`（超 `maxAgeDays` 未更新 → hint）；都落在 `.link/` 里的文件上，不污染源码 | P7-D（✅ 0.1.4） |
 | 52 | 链接配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules/maxAgeDays`；资料目录与内置表一样按 mtime 热重载（2s 节流），导入后无需重启编辑器 | P7-D（✅ 0.1.4） |
 | 53 | **忽略列表** | `bdl.ignore.files/fields/forms`（glob，支持 `**`）：文件命中 → 不发布任何诊断且排除出工作区索引；字段命中 → 只屏蔽 `field-not-in-form`；表单命中 → 屏蔽该表单的字段类诊断。配置热更新立即生效；忽略不关闭解析/悬停/导航 | P8（✅ 0.2.2） |
-| 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `tiptop deploy`；Zed 用 task `$ZED_FILE`（见 [DEPLOY-ZED](DEPLOY-ZED.md)）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
+| 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `tiptop deploy`；Zed 用 task `$ZED_FILE`（Zed 侧暂停，模板见 zed-extension 文档）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
 | 55 | **GLOBALS 索引按文档隔离** | 符号查找、变量来源检查、函数可见性只看**当前文档**引入的 `.global`；文档关闭/删除导入行时清掉缓存；同一 `.global` 引入两次按定义位置去重。修掉"同时打开多个文档时来源重复、变量来源诊断随开着哪些文件而变" | P3a 收尾（✅ 0.3.1） |
 
 ---

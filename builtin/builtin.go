@@ -3,7 +3,7 @@
 //
 // # 为什么放插件侧，不进 grammar
 //
-// 见 docs/PLAN-P7.md §4.2：内置名一旦成为 grammar 的 keyword token，
+// 内置名一旦成为 grammar 的 keyword token，
 // 高亮会按关键字染色并冒充用户自定义的同名符号（BDL 标识符大小写不敏感，
 // `status` 是很常见的变量名），重命名与补全的语义判定也会全线复杂化。
 // grammar 的职责是语法，名字表不是它的职责。

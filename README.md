@@ -17,9 +17,8 @@
 > 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.4` / `tiptop 0.1.2` / `vscode-bdl 0.5.1`）：语言智能、GLOBALS、字段/表单、
 > 工作区索引、内置符号、忽略列表均已落地；链接资料的采集/导入与部署已分离到 tiptop。
 > 剩下的是真实环境验证，见 [PENDING.md](docs/PENDING.md)。
-> P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告，
-> 见 [docs/PLAN-P3A-GLOBALS.md](docs/PLAN-P3A-GLOBALS.md)；
-> P3b：4GL 字段存在性校验与 .per 内部一致性，见 [docs/PLAN-P3B-FIELD.md](docs/PLAN-P3B-FIELD.md)。
+> P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告。
+> P3b：4GL 字段存在性校验与 .per 内部一致性。功能基线见 [FEATURES](docs/FEATURES.md)。
 > 已确认：四个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
 > Zed 新 id `4gl-full`、Genero 以 2.50 为基线。
 > 暂不排期：Genero 5.0、GitHub Release/无感下载、市场/注册表发布。
@@ -47,15 +46,13 @@
 - **[测试指南（TESTING）](docs/TESTING.md)** —— 测试矩阵、Linux/Windows 命令、语料回归
 - **[编辑器能力差异（EDITOR-SUPPORT）](docs/EDITOR-SUPPORT.md)** —— VSCode vs Zed
 - [功能清单](docs/FEATURES.md) —— 功能基线（标注来源：用户提供 / 协助规划）
-- [P1 详细计划](docs/PLAN-DETAILED-P1.md) —— 当前阶段的实现清单与验收
-- [粗略计划](docs/PLAN.md) —— 目标、范围、架构、里程碑、风险
 - [技术链与工具](docs/TECH-STACK.md) —— 版本、选型理由、构建命令、本机环境注意事项
 - [调研记录](docs/RESEARCH.md) —— 语料统计、CST 结构、可行性验证结果
 - [环境配置](docs/ENVIRONMENT.md) —— Linux/Windows 工具链、验证命令、环境待办
-- [待办与待确认](docs/TODO.md) —— 已确认决策、环境清单、下一步
+- **[未完成事项（PENDING）](docs/PENDING.md)** —— 现在还剩什么（唯一清单）
+- **[插件改版计划（PLUGIN-PLAN）](docs/PLUGIN-PLAN.md)** —— VSCode 插件发布前/后的设计与根因分析
 - **[生产项目工作区搭建](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/PROJECT-SETUP.md)** —— 从 `/u1/toppord` 打包 → Git → 链接资料 → 部署测试
-- 阶段实现记录：[P3a GLOBALS](docs/PLAN-P3A-GLOBALS.md)｜[P3b 字段校验](docs/PLAN-P3B-FIELD.md)｜[P4 格式化](docs/PLAN-P4-FORMAT.md)｜[P5 部署](docs/PLAN-P5-DEPLOY.md)｜[P6 补全](docs/PLAN-P6-COMPLETION.md)｜[P6 重命名](docs/PLAN-P6-RENAME.md)｜[P6 CodeAction](docs/PLAN-P6-CODEACTION.md)｜[P6 语义高亮](docs/PLAN-P6-SEMTOK.md)｜[P6 record 成员](docs/PLAN-P6-RECORDMEMBER.md)
-- 部署用法：由 [tiptop](https://github.com/darcyjoven/tiptop) 提供；[示例配置](../tiptop/examples/deploy.json)｜[Zed tasks 模板](docs/DEPLOY-ZED.md)
+- 部署用法：由 [tiptop](https://github.com/darcyjoven/tiptop) 提供；[示例配置](../tiptop/examples/deploy.json)
 - 分离计划（已完成）：[PLAN-SEPARATION.md](docs/PLAN-SEPARATION.md)
 
 ## 目录约定

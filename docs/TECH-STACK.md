@@ -1,6 +1,6 @@
 # 技术链与工具规划
 
-> 配套文档：[粗略计划](PLAN.md)、[调研记录](RESEARCH.md)  
+> 配套文档：[未完成事项](PENDING.md)、[调研记录](RESEARCH.md)  
 > 本文件记录**已验证**的版本与命令，以及后续选型的理由。所有版本在进入实现时写入锁文件（`go.mod`/`go.sum`、`pnpm-lock.yaml`、`Cargo.lock`）。
 > v1 验证平台：**Linux + Windows**；macOS 在 v1 之后补齐。环境安装清单见 [ENVIRONMENT.md](ENVIRONMENT.md)。
 

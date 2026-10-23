@@ -3,7 +3,7 @@
 > 更新：2026-10-22（P8：忽略列表 / grammar v1 tag / 编辑器能力差异）  
 > 用途：说明"改了什么之后该跑什么、在 Linux/Windows 上分别怎么跑、期望看到什么"。  
 > 配套：[HANDOVER](HANDOVER.md)（当前基线）、[ENVIRONMENT](ENVIRONMENT.md)（工具链安装）、
-> [TODO](TODO.md)（未完成项）。
+> [PENDING](PENDING.md)（未完成项）。
 
 ---
 
@@ -214,7 +214,7 @@ make bench                 # python3 scripts/lsp-bench.py（didOpen/didChange）
 | 改 Zed query / 清单 | `make zed-check` |
 | 改部署（在 tiptop） | `cd ../tiptop && make lint && go test ./...` + `tiptop deploy -dry-run` |
 | 改索引 | `go test ./internal/wsindex/ ./internal/server/` + `make bench` |
-| 只改文档 | 无需跑测试；但要更新 [TODO](TODO.md) 勾选与 [HANDOVER](HANDOVER.md) 状态 |
+| 只改文档 | 无需跑测试；但要更新 [PENDING](PENDING.md) 勾选与 [HANDOVER](HANDOVER.md) 状态 |
 
 ---
 

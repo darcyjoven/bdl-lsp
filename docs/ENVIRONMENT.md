@@ -2,7 +2,7 @@
 
 > 目标：在 **Linux + Windows** 上完成 v1 开发与验证；macOS 在 v1 之后补齐。  
 > 本文只列“需要装什么、怎么验证、卡住怎么查”，不包含功能代码。  
-> 配套：[粗略计划](PLAN.md)、[技术链](TECH-STACK.md)、[待办](TODO.md)。  
+> 配套：[技术链](TECH-STACK.md)、[未完成事项](PENDING.md)。  
 > **本机（沙箱）已安装的组件与验证结果见第 9 节。**
 
 ---
@@ -643,6 +643,6 @@ bash scripts/env-check.sh
 
 - [技术链与工具](TECH-STACK.md)
 - [调研记录](RESEARCH.md)
-- [待办](TODO.md)
+- [未完成事项](PENDING.md)
 - Zed 扩展文档：<https://zed.dev/docs/extensions/languages>
 - Tree-sitter：<https://tree-sitter.github.io/tree-sitter/>

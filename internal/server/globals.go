@@ -571,7 +571,7 @@ func (s *Server) unresolvedSourceChecks(doc *document.Document, fi *index.FileIn
 // functionNotFoundChecks 检查函数调用处的函数名是否在当前模块及可用模组
 // 中有定义，找不到时报告 function-not-found。
 //
-// 可见集（PLAN-P7 §5.7）：
+// 可见集：
 //
 //	本文件 ∪ GLOBALS 引入 ∪ 链接文件 ∪ 全局模组(sub/lib/qry)
 //

@@ -105,21 +105,21 @@ workspace/didChangeConfiguration
 
 | 功能 | 阶段 | 记录文档 |
 |---|---|---|
-| 高亮（TextMate，grammar 生成）+ 语法诊断 | P1/P2 | [PLAN-DETAILED-P1](PLAN-DETAILED-P1.md) |
+| 高亮（TextMate，grammar 生成）+ 语法诊断 | P1/P2 | — |
 | 大纲 / 悬停 / 定义 / 引用 | P1 | 同上 |
-| GLOBALS 模组全局变量（跨文件跳转/来源/两类警告） | P3a | [PLAN-P3A-GLOBALS](PLAN-P3A-GLOBALS.md) |
-| 4GL 字段 ↔ `.per` 校验 + `.per` 内部一致性 | P3b | [PLAN-P3B-FIELD](PLAN-P3B-FIELD.md) |
-| 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化） | P4 | [PLAN-P4-FORMAT](PLAN-P4-FORMAT.md) |
-| 部署 + 远程编译（rsync 主 / scp 备） | P5 | [PLAN-P5-DEPLOY](PLAN-P5-DEPLOY.md)、[DEPLOY-ZED](DEPLOY-ZED.md) |
-| 补全（关键字/符号/表单字段） | P6 | [PLAN-P6-COMPLETION](PLAN-P6-COMPLETION.md) |
-| 重命名（仅当前文件） | P6 | [PLAN-P6-RENAME](PLAN-P6-RENAME.md) |
-| Code Action（拼错→「改为 X」） | P6 | [PLAN-P6-CODEACTION](PLAN-P6-CODEACTION.md) |
-| 语义高亮（仅自定义符号） | P6 | [PLAN-P6-SEMTOK](PLAN-P6-SEMTOK.md) |
-| record `BY NAME` 成员校验（**默认 off**） | P6 | [PLAN-P6-RECORDMEMBER](PLAN-P6-RECORDMEMBER.md) |
-| Zed 大纲层级 + Windows GLOBALS 路径 | P7-A | [PLAN-P7](PLAN-P7.md) |
-| 诊断级别注册表 + 降噪（289304 → 7886） | P7-B | [PLAN-P7](PLAN-P7.md) |
-| 内置符号表（96→97 条，三层可配置、可热更新） | P7-C-1 | [PLAN-P7](PLAN-P7.md) §10.6 |
-| 链接资料索引（导入/状态/可见性/`link-data-*`） | **P7-D 核心** | [PLAN-P7](PLAN-P7.md) §10.7 |
+| GLOBALS 模组全局变量（跨文件跳转/来源/两类警告） | P3a | [FEATURES](FEATURES.md) |
+| 4GL 字段 ↔ `.per` 校验 + `.per` 内部一致性 | P3b | [FEATURES](FEATURES.md) |
+| 4GL 格式化（关键字大小写 + 缩进；`.per` 不格式化） | P4 | — |
+| 部署 + 远程编译（rsync 主 / scp 备） | P5 | — |
+| 补全（关键字/符号/表单字段） | P6 | — |
+| 重命名（仅当前文件） | P6 | — |
+| Code Action（拼错→「改为 X」） | P6 | — |
+| 语义高亮（仅自定义符号） | P6 | — |
+| record `BY NAME` 成员校验（**默认 off**） | P6 | — |
+| Zed 大纲层级 + Windows GLOBALS 路径 | P7-A | — |
+| 诊断级别注册表 + 降噪（289304 → 7886） | P7-B | — |
+| 内置符号表（96→97 条，三层可配置、可热更新） | P7-C-1 | — |
+| 链接资料索引（导入/状态/可见性/`link-data-*`） | **P7-D 核心** | — |
 | 忽略列表（文件/字段/表单，glob + `**`） | P8 | [TESTING](TESTING.md)、[FEATURES](FEATURES.md) |
 | 编辑器能力差异（VSCode/Zed） | P8 | [EDITOR-SUPPORT](EDITOR-SUPPORT.md) |
 | grammar tag / go-tree-sitter v0.25 | P8 | [TESTING](TESTING.md) §3.3 |
@@ -214,7 +214,7 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 9. **URI ↔ 路径的转换不能手写**（P7-A 踩）：`PathOfURI` 只剥 `file://` 与 `%20`，
    遇到 VSCode 在 Windows 上编码的 `%3A`（盘符冒号）就解出 `/c%3A/...` 非法路径。
    Zed 不编码冒号所以正常 → 表现为"VSCode 认不到、Zed 认得到"。
-   修法与用例表见 [PLAN-P7](PLAN-P7.md) §2.2。
+   修法与用例表见 `internal/fileuri/fileuri_test.go`（`TestToPathWindows`）。
 10. **Zed `outline.scm` 的 `@item` 必须唯一**：一条 `DEFINE a INT, b STRING` 是
     **单节点多 `name:` 字段**，若 `@item` 绑整条语句，多个 match 的区间完全重合，
     Zed 会按区间把它们判成父子层级（VSCode 不受影响，它走 `documentSymbol`）。
@@ -426,8 +426,8 @@ source scripts/dev-env.sh     # 必须！否则 Go/Rust/node/vsce 都可能找�
 | A | Windows 实机（构建 / e2e / GLOBALS 路径 / scp 部署） | Windows 10/11 + MinGW + VSCode | [TESTING](TESTING.md) §5 |
 | B | Zed GUI（dev extension、outline、LSP 启动） | 有显示器的机器 | `make zed-check` + 手工 |
 | C | 真实 Genero 服务器（远程编译诊断行号） | SSH + `fglcomp`/`fglform` | `tiptop deploy -dry-run` → `tiptop deploy` |
-| D | `record-member-unknown` 默认级别 | 真实使用反馈 | [PLAN-P6-SCHEMA](PLAN-P6-SCHEMA.md) §4.1 |
-| E | P7-D 分片（资料 > 8 MB） | 更大的真实链接导出 | [PLAN-P7](PLAN-P7.md) |
+| D | `record-member-unknown` 默认级别 | 真实使用反馈 | 见 [PENDING](PENDING.md) §B5 |
+| E | 链接资料分片（资料 > 8 MB） | 更大的真实链接导出 | 见 [PENDING](PENDING.md) §E1 |
 | F | macOS 构建/验证 | macOS 机器 | [TESTING](TESTING.md) §5 |
 
 暂不排期：Genero 5.0 语法、GitHub Release / 二进制自动下载、Marketplace /
@@ -501,16 +501,14 @@ cd ../tiptop && source ../bdl-lsp/scripts/dev-env.sh && make build
 
 | 文档 | 内容 |
 |---|---|
-| **[PENDING](PENDING.md)** | **未完成事项（唯一清单）**：分离收尾、验证缺口、发布项 |
+| **[PENDING](PENDING.md)** | **未完成事项（唯一清单）**：插件改版（§P）、验证缺口、发布项 |
 | [README](../README.md) | 仓库总览、快速开始、能力表 |
-| [PLAN](PLAN.md) | 目标、架构、里程碑、风险（§7.1–7.7 是各功能设计） |
 | [FEATURES](FEATURES.md) | 功能基线清单（编号 1–40）+ 阶段映射 |
-| [TODO](TODO.md) | 已完成/待办逐项清单（最详细的进度记录；§下一轮 = 真实环境验证） |
 | [TESTING](TESTING.md) | **测试矩阵**：L1–L6、Linux/Windows 命令、语料回归、常见失败 |
 | **[WINDOWS-CHECKLIST](WINDOWS-CHECKLIST.md)** | **Windows 实机逐条清单**（可直接勾选）：装包、内置二进制、UI 取证、⭐修复点回归 |
 | [EDITOR-SUPPORT](EDITOR-SUPPORT.md) | **VSCode/Zed 能力差异**：语义高亮、诊断、配置、部署 |
-| [PLAN-P7](PLAN-P7.md) | **P7 立项**：缺陷根因、内置符号、链接资料设计、待确认决策 |
+| [PLUGIN-PLAN](PLUGIN-PLAN.md) | **VSCode 插件改版计划**：三档模式、根因分析（并发崩溃）、发布前/后任务 |
 | [ENVIRONMENT](ENVIRONMENT.md) | 工具链、沙箱约束 |
 | [TECH-STACK](TECH-STACK.md) | 版本与选型理由 |
 | [RESEARCH](RESEARCH.md) | 语料统计、CST 结构 |
-| `PLAN-P*.md` | 各阶段实现记录：需求映射、决策、踩坑、验收输出 |
+| [PLAN-SEPARATION](PLAN-SEPARATION.md) | link/deploy 分离的设计与实施结果 |

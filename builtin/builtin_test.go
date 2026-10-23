@@ -51,7 +51,7 @@ func TestLookupCaseInsensitive(t *testing.T) {
 	}
 	if _, ok := set.Lookup("cl_null"); ok {
 		// 这是 lib/4gl/cl_null.4gl 里的用户函数，绝不能进内置表
-		// （PLAN-P7 §4.3 明确警告过：会掩盖真实的链接缺失）。
+		// （历史决策明确警告过：会掩盖真实的链接缺失）。
 		t.Error("cl_null 是用户函数，不应出现在内置表里")
 	}
 }
