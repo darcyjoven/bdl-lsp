@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.9` · `tiptop 0.1.4` · `4gl-full 0.5.4` |
+| 被测版本 | `bdl-lsp 0.3.10` · `tiptop 0.1.5` · `4gl-full 0.5.5` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -166,24 +166,24 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.4-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.5-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.5.4-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.5.5-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.5.4-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.5.5-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
 Get-ChildItem "$ext\bin"                       # 期望：bdl-lsp.exe、tiptop.exe、BUILD-INFO.json、若干 .dll
 Get-Content    "$ext\bin\BUILD-INFO.json"
-& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.9
-& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.4
+& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.10
+& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.5
 & "$ext\bin\bdl-lsp.exe" check "$ws\topcust\aap\4gl\broken.4gl"
 ```
 
@@ -203,6 +203,10 @@ code "$ws"
 - [ ] 1.5 打开 `$ws` 后，状态栏/输出里语言服务器**运行中**（命令 `Genero BDL: 显示语言服务器信息`）
   - 记录：____
 - [ ] 1.6 重启机器或重启 VSCode 后再打开一次，服务器仍能起来（排除"只在首次会话可用"）
+- [ ] 1.7 **轻量档默认（P1-4）**：侧边栏**没有**「链接资料」视图；命令面板里搜
+      `Genero BDL: 链接资料` 一条都没有（默认关）；工作区里**没有**被新建 `.project/` 目录
+- [ ] 1.8 设置界面里设置分成 **5 组**：基础 / 生产环境 / 链接资料 / 部署 / 数据库字段
+      （组标题不再带 "Genero BDL: " 前缀）
   - 记录：____
 
 ---
@@ -239,7 +243,9 @@ code "$ws"
 
 ---
 
-## 3. ⭐ 本轮修复点回归（0.3.5–0.3.8 / 0.1.2–0.1.3 / 0.5.1–0.5.3）
+## 3. ⭐ 本轮修复点回归（0.3.5–0.3.10 / 0.1.3–0.1.5 / 0.5.1–0.5.5）
+
+> 本节涉及链接资料的项目，都**先打开** `bdl.link.enable`（P1-4 之后默认关）。
 
 > 这些是本轮为了让 Windows 变绿而改的东西。**CI 只能证明单测过**，
 > 真正的客户端行为（VSCode 收不收得到诊断、点击能不能打开）必须在真机上看。
@@ -366,7 +372,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 - [ ] 4.1 构建成功，产物 `artifacts\bin\bdl-lsp.exe` 存在（PE 文件）
   - 记录：____
-- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.9`
+- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.10`
   - 记录：____
 - [ ] 4.3 `-Check` 的样例冒烟通过（期望 `共 2 个文件，0 个有问题`）
   - 记录：____
@@ -389,7 +395,14 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 ### 5.1 准备部署配置
 
-在 `$ws` 下建 `.bdl-lsp\deploy.json`（可从 `tiptop\examples\deploy.json` 复制），填真实主机/账号/远程根。
+**不用手写**：打开「部署」总开关（默认关），并在「生产环境」一组填主机 / 端口 /
+账号 / 远程根 —— 插件会在部署前把它合成为 `$ws\.project\deploy.json`（带 `createdBy` 标记）。
+手写仍然支持（`tiptop deploy -config <文件>`）。
+
+- [ ] 6.0 填一半（例如只填主机）时执行部署：弹出的提示要**说清缺哪一项**
+      （"部署需要先配置：… remoteRoot"），而不是含糊失败
+- [ ] 6.0b 合成出来的 `$ws\.project\deploy.json` 里 `createdBy` 是 `vscode-bdl <版本>`；
+      把该文件手改一下（删掉 `createdBy`）再部署一次 → 原文件被备份成 `deploy.json.bak`
 
 - [ ] 5.1.1 `deploy -list` 列出目标
   ```powershell
@@ -400,6 +413,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
   - 记录：____
 
 ### 5.1b ⭐ link 局部同步（`-modules` / `-files`）
+
+> **前置**：`bdl.link.enable` 现在**默认关**（轻量档）。先在设置界面
+> 「链接资料」一组里把总开关打开，否则界面里看不到链接视图/命令。
 
 > 只重算受影响作业的链，其余链保留——改一两个程序不用整份重跑（全量 10–20 秒）。
 
@@ -416,6 +432,9 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
   - 记录：____
 
 ### 5.1c ⭐ 链接资料命令（在 VSCode 里，不用开终端）
+
+> **前置**：`bdl.link.enable` **默认关**，先打开它，命令面板里才会出现
+> `Genero BDL: 链接资料：…` 系列命令。
 
 命令面板 `Ctrl+Shift+P` → 输入 `Genero BDL: 链接资料`：
 
@@ -518,7 +537,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.9` / `tiptop 0.1.4` / `4gl-full 0.5.4`
+- 被测版本：`bdl-lsp 0.3.10` / `tiptop 0.1.5` / `4gl-full 0.5.5`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

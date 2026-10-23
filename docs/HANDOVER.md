@@ -4,7 +4,7 @@
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 > **还剩什么**看 [PENDING.md](PENDING.md)（唯一清单）。
 >
-> 版本：`bdl-lsp` **0.3.9**（link 局部更新）/ `tiptop` **0.1.4** / `vscode-bdl` **0.5.4**（链接命令进面板） / `zed-bdl` **0.1.1**（暂停）。
+> 版本：`bdl-lsp` **0.3.10** / `tiptop` **0.1.5** / `vscode-bdl` **0.5.5**（轻量档默认 + 设置五组 + 部署配置合成） / `zed-bdl` **0.1.1**（暂停）。
 > **Windows CI 自 2026-10-23 起 Linux + Windows 双绿**（见 [PENDING](PENDING.md) §B9）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 各仓库（含 tiptop）独立记版本，不要求一致。
@@ -66,9 +66,9 @@ GLOBALS、字段/表单、索引、内置符号、忽略列表、编辑器文档
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.9` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
-| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.4` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.4` | VSCode 插件（平台包内置 `bdl-lsp` 与 `tiptop`；链接资料命令进面板） |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.10` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
+| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.5` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.5` | VSCode 插件（平台包内置 `bdl-lsp` 与 `tiptop`；轻量档默认 + 设置五组） |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件（**暂停**） |
 
 > HEAD 不写死——每轮都变（这份文档已因此过期过两次）。用

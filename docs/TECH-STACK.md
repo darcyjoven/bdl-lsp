@@ -217,7 +217,7 @@ SHA256SUMS
 | 项 | 方案 |
 |---|---|
 | 编辑器设置 | VSCode `settings.json`（`bdl.*`）；Zed `settings.json` + 初始化选项；含 `bdl.generoVersion`（默认 2.50） |
-| 工作区配置 | `.bdl-lsp/config.json`、`.bdl-lsp/deploy.json`（两个编辑器共用）；`bdl.generoVersion` 可覆盖 |
+| 工作区配置 | `.bdl-lsp/config.json`、`.project/deploy.json`（插件从设置合成，两个编辑器共用）；`bdl.generoVersion` 可覆盖 |
 | 配置校验 | 启动时校验并给出可读错误；未知字段警告 |
 | 日志 | `slog`；stderr + 可选文件；简单大小轮转（不引入额外库） |
 | 缓存 | `$XDG_CACHE_HOME/bdl-lsp` 或系统临时目录；不放仓库 |

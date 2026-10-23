@@ -47,8 +47,16 @@
 3. **不往项目里写文件**：不开 `.project/`、不生成日志到工作区。
 4. 需要升级到①/②时：**只在设置面板里开开关**，不要求手写 JSON、不要求找命令行。
 
-> 现状差距：`bdl.link.enable` 与 `bdl.deploy.enable` 现在默认 **true**，
-> `record-member-unknown` 等诊断默认也在响。按本档要求，**默认值要按上表重排**（见 §5.3）。
+> **已落地（P1-4，2026-10-23）**：`bdl.link.enable`、`bdl.deploy.enable`、
+> `bdl.schema.enable` 三个开关的默认值都重排为 **false**（轻量档），
+> 相关命令用 `when: config.bdl.<组>.enable` 门控（默认隐藏），
+> 并且 e2e 钉住了"轻量档不往工作区写 `.project/`"。
+>
+> 一处刻意的例外：**服务端 Go 侧的兜底默认仍是"开"**（`Settings.LinkEnabled()`/
+> `SchemaEnabled()` 在客户端没下发设置时返回 true）。原因：那不是面向用户的开关，
+> 而是"没有配置来源"时的兜底（例如非 VSCode 客户端、测试夹具）；
+> 编辑器侧（package.json + 代码里的显式默认）才是用户拿到的默认值，已全部改为 false。
+> 审计工具（`diag-audit`）本来就显式 `EnableLinks()`，不受影响。
 
 ---
 
@@ -339,7 +347,7 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 - 涉及改动：`bdl-lsp`（`link.DefaultDataDir`、`config` 默认值、诊断消息文案）、
   `tiptop`（CLI 默认目录、secrets/csv 落点）、插件（默认 `dataDir`、新建目录的时机）。
 
-### 5.2 设置重分组（5 类）
+### 5.2 设置重分组（5 类）· **已实现 2026-10-23**
 
 | 新分组（settings 里的显示名） | 旧键 → 新键 | 默认（轻量档） |
 |---|---|---|
@@ -349,14 +357,15 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 | **4. 部署** | `deploy.enable`（**默认 false**）、`deploy.target` | 关闭 |
 | **5. 数据库字段**（发布后） | `schema.enable`（默认 false）、`schema.dataDir`（`.project/.schema`） | 关闭 |
 
-设置面板的注意点：
-- 组的标题不要重复"Genero BDL："前缀（面板本身已经分组显示）——用户点名要求。
+设置面板的注意点（**均已实现**）：
+- 组的标题**不再重复 "Genero BDL：" 前缀**（面板本身已经分组显示）——用户点名要求；
+  现在就是 `基础 / 生产环境 / 链接资料 / 部署 / 数据库字段` 五个裸标题。
 - **生产环境组要有一条醒目警告**：*这些值请写在 **Workspace** 设置里；
   并且**不要让 `settings.json`（无论工作区的还是 `~/.vscode/settings.json`）进 git 管理***
   （密码类的值本插件一律不放进设置，见 §5.3；但主机名/账号仍不该提交）。
 - `link.enable=false` 时，链接相关命令用 `when` 隐藏（§4.2）。
 
-### 5.3 "不要文件配置"怎么落地（已确认方案）
+### 5.3 "不要文件配置"怎么落地 · **已实现 2026-10-23**
 
 用户只改 **VSCode 设置**；插件是 `.project/*.json` 的**唯一写入者**：
 
@@ -365,8 +374,17 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 - 数据库：设置 → 插件拼 `tiptop link sync -host … -service … -user …`（密码从
   `.project/secrets.json` 或环境变量取，**永不进 settings**）。
 - 好处：tiptop 不用改配置模型；用户侧不出现"手写 JSON"。
-- 风险：合成文件是"插件与 tiptop 的契约"，需要版本标记（文件里写 `"createdBy": "vscode-bdl 0.6.x"`），
-  并在插件里检测"用户手改过"的情况（mtime 比对）给出提示。
+
+**实现**（`src/deployconfig.ts`）：
+
+| 项 | 实现 |
+|---|---|
+| 合成 | `ensureDeployConfig(root, version)`：把 `bdl.prod.deploy.*` + `bdl.deploy.target` 翻成 tiptop 的 `targets/upload/compile` JSON，写到 `<root>/.project/deploy.json` |
+| 标记 | 文件里写 `createdBy: "vscode-bdl <版本>"`、`generatedAt`、`doc`（"改设置，不要手改本文件"） |
+| tiptop 侧 | `Config` 结构体加 `createdBy/generatedAt/doc` 字段——解析用 `DisallowUnknownFields`，不认这三个字段就会直接报错；默认配置目录也从 `.bdl-lsp/` 改成 `.project/`（旧目录只读兼容，`TestLoadConfigLegacyDirFallback` 钉住） |
+| 手改/外来文件 | 目标文件存在但**没有 `createdBy`**（例如手写的历史文件）→ 覆盖前备份成 `deploy.json.bak`。原计划的"mtime 比对"没做：分不清"手改"与"设置变了"，而备份一次既安全又不会误报 |
+| 缺设置 | 主机/账号/远程根缺任一项 → 明确说缺哪一项（e2e 断言 `missing` 列表），并给"打开设置"按钮；不再让 tiptop 抛出看不懂的错 |
+| 顺手修掉 | `bdl.deployListTargets` 原来错用了**语言服务器**二进制（部署已分离，命令必然失败）→ 改用 tiptop，并带上合成后的 `-config` |
 
 ---
 

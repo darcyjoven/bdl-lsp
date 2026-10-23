@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.9` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.10` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,9 +14,9 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.9 | 语言服务；`link`/`deploy` 已分离出去 |
-| `tiptop` | 0.1.4 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
-| `vscode-bdl` | 0.5.4 | 平台包内置两个二进制；CI 四平台打包 |
+| `bdl-lsp` | 0.3.10 | 语言服务；`link`/`deploy` 已分离出去 |
+| `tiptop` | 0.1.5 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
+| `vscode-bdl` | 0.5.5 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
 
 **最近完成的（不再追踪）**：P1–P8 全部功能 · 0.3.1 GLOBALS 按文档隔离 ·
@@ -75,11 +75,11 @@
 | ✅ P0-2 | ~~表单侧名字被误报"变量不存在"~~ **已修复 2026-10-23** | ① 语法跳过新增 `(input record: …)`（`INPUT ARRAY … FROM s_x.*` 落在 `record:` 字段）与 `CLEAR` 操作数；② 语义兜底 `form.Resolver.FormSideNames()`（item / SCREEN RECORD / `= table.column` 列名），`reparseFull`+`AuditFile` 改成先跑字段校验再跑 T5；③ 回归测试 `internal/server/t5form_test.go` | `saapt310.4gl` 4 条 → **0**；全语料 T5 **24284 → 19580（−4704，−19.4%）**，`function-not-found`/`field-not-in-form` 一条不变 |
 | P0-2b | T5 剩余量级（**待确认语义**） | 剩余 19580 条的主体是**跨模块的模块级变量**（`L_AC` 1828、`G_RVV` 1715…）：它们在**别的模块**里确有 `DEFINE`，但不在当前文件或其 GLOBALS 里。算不算误报，取决于"模块级 DEFINE 是否跨模块可见"，需要真实项目口径 | 确认是噪声后再设计（类似链接可见性矩阵，属较大改动） |
 | ✅ P0-3 | ~~未解析/超时**要告知用户** + 强制解析~~ **已实现 2026-10-23** | ① 解析超时以前只写日志 → 新增诊断码 `parse-timeout`；② `file-too-large` / `parse-timeout` 默认级别从 information 上调为 **warning**（"文件没被检查"必须看得见）；③ 新增自定义请求 `bdl/forceParse` + 命令 `bdl.forceParseCurrentFile`，`editor/title` 仅在出现这两条诊断时显示按钮（`bdl.parseSkipped` 上下文）；④ 有效期：`didClose` 时移除标记 | 新增测试：超限→提示→强制解析后能出大纲且不再提示→关闭再打开提示回来；超时→`parse-timeout` 提示。见 `internal/server/forceparse_test.go` |
-| P1-1 | 二进制与**命令入口** | 确认平台包含 `bin/bdl-lsp(.exe)`+`bin/tiptop(.exe)`（CI 断言 VSIX 内容）；补 `onCommand:` 激活；链接导入/同步/状态、部署、schema 命令进面板；未配置数据库时给明确提示 | 命令面板可用可跑；没配库时不静默失败 |
+| ✅ P1-1 | ~~二进制与**命令入口**~~ **已实现 2026-10-23** | `src/linktools.ts`：6 条命令（`importCsv`/`syncCurrent`/`syncModules`/`syncAll`/`status` + 视图按钮 `links.resync`），复用部署命令的二进制解析与输出通道；会写盘的一律先 `-dry-run` 解析"**受影响作业 N 个（名字）**"再确认（0 个直接提示）；没配 DB 时给"打开设置 / 改用 CSV 导入"按钮，且已有 `gal_file.csv` 时直接走 CSV 局部导入；`activationEvents` 补 6 条 `onCommand:`，命令面板 `when: config.bdl.link.enable` | e2e 40/40（含影响面解析、总开关关闭时命令不报错）；"VSIX 内容自检"**本来就有**（`bundle-vsix.yml` 校验 bin/dist/syntaxes 且拒绝夹带仓库文件），无需新增 |
 | ✅ P1-2 | ~~`.link` → `.project`~~ **已实现 2026-10-23** | ① 默认值三处（`link.DefaultDataDir` / LSP 配置 / 插件设置）改 `.project`；② 读兼容：新目录没有资料而 `.link/` 有 → 读旧目录并记 `legacyDir`；③ 新诊断码 `link-data-legacy-dir`（hint，挂在旧目录 `links.jsonl` 上）；④ 插件命令 `bdl.migrateLinkDir` + 看到提示时弹出"迁移/稍后"，搬完自动重启服务器；⑤ tiptop/脚本/文档全部改 `.project/` | 旧项目仍可用且有迁移提示；`TestLegacyLinkDirStillReadWithHint`；e2e 命令清单含迁移命令 |
 | ✅ P1-3 | ~~link **局部同步**~~ **已实现 2026-10-23**（后端；**插件侧的命令入口属 P1-1**，已随 P1-1 落地） | tiptop：`link import`/`sync` 新增 `-modules`、`-files`（+ `import` 的 `-dry-run`）：只重算受影响作业的链并**合并**进现有 `links.jsonl`（其余链保留）；只扫受影响文件（亚秒级）；`source=golang` + 默认 SQL 时条件下推到 Oracle；meta 记 `partial`，`link status` 显示局部更新；无全量基线时报错 | `link/partial_test.go`、`linksync/filter_test.go`；实测"公共文件被 2 个作业引用 → 受影响作业 2 个（PROG1, PROG2）"；合并后其余链保留 |
-| P1-4 | 三档模式与默认值 | `link.enable`/`deploy.enable` 默认 **false**；命令用 `when` 隐藏；不连库、不写盘、无后台任务 | 新机器装上后零配置可用且无配置提示 |
-| P1-5 | 设置重分组为 5 类 | 基础 / 生产环境（DB+部署）/ 链接 / 部署 / 数据库字段；生产配置由插件合成 `.project/deploy.json`（用户不手写、**不需要任何 gitignore 提示**）。生产组必须带警告：**只写 workspace 设置，且 `settings.json` 不要进 git 管理** | 设置面板只有这 5 组；无手写 JSON 路径；警告可见 |
+| ✅ P1-4 | ~~三档模式与默认值~~ **已实现 2026-10-23** | 默认 = **轻量档**：`bdl.link.enable`/`bdl.deploy.enable`/`bdl.schema.enable` 默认 **false**；相关命令用 `when: config.bdl.*.enable` 门控（默认隐藏）；不连库、不后台跑任务、不往工作区写文件 | e2e：五组设置 + 三项默认 false（含运行时实际值）+「轻量档不往项目里写文件」；代码里显式传默认值处（`linkEnabled`/`deployEnabled`/`client.ts`）一并改 false。**例外**：服务端 Go 侧兜底默认仍是"开"（无客户端设置时的兜底，见 PLUGIN-PLAN §1 注） |
+| ✅ P1-5 | ~~设置重分组为 5 类~~ **已实现 2026-10-23** | ① 五组裸标题：基础 / 生产环境 / 链接资料 / 部署 / 数据库字段（`schema.*` 挪进第五组，新增 `schema.dataDir=.project/.schema`）；② 生产环境组新增 `prod.deploy.*`（13 键），每个键都写明"只写 Workspace、别把 `settings.json` 进 git、密码不放设置里"；③ **部署配置不手写**：`src/deployconfig.ts` 合成 `<项目>/.project/deploy.json`（带 `createdBy`），tiptop 结构体加元字段、默认目录改 `.project`（旧 `.bdl-lsp/` 只读兼容），外来文件覆盖前备份 `.bak`，缺设置时说清缺哪项；④ 顺手修掉「列出部署目标」错用语言服务器二进制 | e2e **42/42**（新增五组+默认轻量、轻量档不写项目、部署配置合成含备份与缺项）；tiptop `config_path_test.go` 三条 |
 | P1-6 | 去掉 7 天过期与自动同步 | 删 `link.maxAgeDays`、`link-data-stale`、`linksync` 的 `onStart/interval` | 资料过期不再自动提示；同步只由命令触发 |
 | P1-7 | 用户文档重写为插件说明 | `vscode-extension/docs/USER-GUIDE.md` 按最终形态重写 → 作为 README/市场说明（同源） | 文档与 UI/命令一一对应；截图清单更新 |
 | P2-1 | schema（**发布后一版**） | `.project/.schema` 数据 + 独立视图（正则查询、展开加载、右键同步）+ hover 扩展（`LIKE t.col`、`record LIKE t.*`）+ 同步策略 | 见 PLUGIN-PLAN §7；样例数据已在 `artifacts/schema/demo.csv`（58,100 行，表头两处拼写错误需容错） |
@@ -95,7 +95,13 @@
 - ✅ **P0-3 实现并验证**：`parse-timeout` 码 + 两条提示级别上调为 warning +
   `bdl/forceParse` 请求与 `bdl.forceParseCurrentFile` 命令（标题栏按钮按需出现）。
 - ✅ **P1-2 实现并验证**：`.link/` → `.project/`（默认值 + 读兼容 + 迁移提示 + 一键迁移命令 +
-  三仓文档/脚本同步），tiptop 0.1.3 / bdl-lsp 0.3.8 / vscode-bdl 0.5.3。
+  三仓文档/脚本同步）。
+- ✅ **P1-3 实现并验证**：`link import`/`sync` 的 `-modules`/`-files`（+`-dry-run`）只重算受影响
+  作业并合并写回；SQL 下推只对默认 SQL；meta 记 `partial`。
+- ✅ **P1-1 实现并验证**：链接资料 6 条命令进 VSCode + 预演确认 + 生产环境设置节；e2e 40/40。
+- ✅ **P1-4 实现并验证**：默认轻量档（三开关默认 false + 命令门控 + 不写工作区）。
+- ✅ **P1-5 实现并验证**：设置五组（裸标题）+ `prod.deploy.*` + 插件合成
+  `.project/deploy.json`；e2e 42/42。
 
 ---
 
@@ -201,8 +207,8 @@
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
 2. **§P 插件改版**（发布前）：P0-1 ✅、P0-2 ✅、P0-3 ✅、P1-2 ✅ →
-   P1-3 ✅ → **P1-1（链接/部署命令进 VSCode 面板，含"更新当前文件"用 P1-3 的 -files + dry-run 确认）**
-   → P1-4/P1-5（三档默认 + 设置五组）→ P1-6 → P1-7；P2-1（schema）发布后一版
+   P1-3 ✅ → P1-1 ✅ → P1-4 ✅ + P1-5 ✅ →
+   **P1-6（去掉 7 天过期与自动同步）** → P1-7（用户文档重写）；P2-1（schema）发布后一版
 3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
 4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
 5. §D（等用户决定是否恢复 Zed）
@@ -213,5 +219,5 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P1-1（命令进 VSCode）开始做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P1-6（去掉 7 天过期与自动同步）开始做。
 ```
