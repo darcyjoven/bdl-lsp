@@ -219,8 +219,6 @@ type LinkSettings struct {
 	ModuleRoots []string `json:"moduleRoots"`
 	// GlobalModules 是对所有程序可见的模组，默认 ["sub","lib","qry"]。
 	GlobalModules []string `json:"globalModules"`
-	// MaxAgeDays 是资料过期提示阈值（天），0 = 不提示。
-	MaxAgeDays int `json:"maxAgeDays"`
 	// 注意：这里**没有**采集（sync）配置。
 	// 生成 .project/ 资料是 tiptop 的职责，bdl-lsp 只读它。
 	// 见 docs/PLAN-SEPARATION.md。
@@ -420,9 +418,6 @@ func (m *Manager) merge(s *Settings) {
 	if s.Link.GlobalModules != nil {
 		m.cur.Link.GlobalModules = s.Link.GlobalModules
 	}
-	if s.Link.MaxAgeDays > 0 {
-		m.cur.Link.MaxAgeDays = s.Link.MaxAgeDays
-	}
 	if s.Builtins.Enable != nil {
 		v := *s.Builtins.Enable
 		m.cur.Builtins.Enable = &v
@@ -501,9 +496,6 @@ func (s Settings) Validate() []string {
 			problems = append(problems, fmt.Sprintf("link.globalModules[%d] 为空", i))
 		}
 	}
-	if s.Link.MaxAgeDays < 0 {
-		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
-	}
 
 	for i, p := range s.Builtins.Paths {
 		if strings.TrimSpace(p) == "" {
@@ -552,9 +544,6 @@ func (s Settings) Validate() []string {
 		if strings.TrimSpace(p) == "" {
 			problems = append(problems, fmt.Sprintf("link.globalModules[%d] 为空", i))
 		}
-	}
-	if s.Link.MaxAgeDays < 0 {
-		problems = append(problems, fmt.Sprintf("link.maxAgeDays 不能为负（%d）", s.Link.MaxAgeDays))
 	}
 
 	for i, p := range s.Builtins.Paths {

@@ -195,21 +195,23 @@ func TopChains(idx *Index, n int) []*Chain {
 
 // Status 汇总一份已加载的链接资料（`tiptop link status` 用）。
 type Status struct {
-	DataDir       string
-	Present       bool
-	Meta          *Meta
-	Stats         Stats
+	DataDir string
+	Present bool
+	Meta    *Meta
+	Stats   Stats
+	// Age 只用于展示"生成于 N 天前"（信息，不是告警：P1-6 去掉了过期提示）。
 	Age           time.Duration
-	Stale         bool
-	MaxAgeDays    int
 	Error         string
 	GlobalModules []string
 	GlobalFiles   int
 }
 
 // LoadStatus 读取资料目录并汇总状态（不解析任何源码，快）。
-func LoadStatus(dataDir string, maxAgeDays int, globalModules []string) Status {
-	st := Status{DataDir: dataDir, MaxAgeDays: maxAgeDays, GlobalModules: globalModules}
+//
+// P1-6：不再有"过期"判定——同步只由命令触发，插件也不会因为资料"旧"而报警。
+// Age 仍然返回，供界面展示"生成于 N 天前"。
+func LoadStatus(dataDir string, globalModules []string) Status {
+	st := Status{DataDir: dataDir, GlobalModules: globalModules}
 	idx, err := Load(dataDir)
 	if err != nil {
 		st.Error = err.Error()
@@ -223,9 +225,6 @@ func LoadStatus(dataDir string, maxAgeDays int, globalModules []string) Status {
 	st.Stats = idx.Stats()
 	if st.Meta != nil {
 		st.Age = st.Meta.Age()
-		if maxAgeDays > 0 && !st.Meta.GeneratedTime().IsZero() {
-			st.Stale = st.Age > time.Duration(maxAgeDays)*24*time.Hour
-		}
 	}
 	return st
 }

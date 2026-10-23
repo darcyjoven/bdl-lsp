@@ -20,7 +20,7 @@
 | P1-3 | 功能 | `link sync` 局部更新（无参=全量 / 模块 / 具体 4gl）+ 合并进现有资料 | tiptop | 高（发布前） |
 | P1-4 | 设计 | 三档使用模式与默认值（默认 = 零配置轻量档） | 插件 + 两个后端 | 高（发布前） |
 | P1-5 | 设置 | 设置重分组为 5 类；生产环境配置（DB/部署）不再用文件配置 | 插件 | 中（发布前） |
-| P1-6 | 功能 | 去掉 7 天过期与后台自动同步；改为用户主动更新（含"更新当前文件资料"） | 三处 | 中（发布前） |
+| P1-6 | **功能 · 已实现** | 去掉 7 天过期与后台自动同步；改为用户主动更新 | 三处 | ✅ 已实现（2026-10-23） |
 | P1-7 | 文档 | 用户文档重写为插件说明（README/市场说明） | 插件 | 中（发布前，最后做） |
 | P2-1 | 新功能 | **schema**：`.project/.schema`、视图、正则查询、hover 扩展、同步策略 | 插件 + tiptop | **发布后一版** |
 
@@ -456,11 +456,16 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 | 命令 `链接资料：从 CSV 导入` | 选文件 → 复制到 `.project/gal_file.csv` → `link import` |
 | 命令 `链接资料：查看状态` | `link status` → 输出通道 |
 
-### 6.5 去掉的东西（用户明确要求，属 P1-6）
+### 6.5 去掉的东西 · **已实现 2026-10-23**
 
-- **`link.maxAgeDays` 配置 + `link-data-stale` 诊断**：删掉（"7 天失效"这套不再用）；
-- **后台自动同步**：`onStart`/`interval` 相关字段与实现删掉（`internal/linksync.Config` 里的
-  `Enable/Interval/OnStart`），资料何时更新由用户点命令决定。
+- ✅ **`link.maxAgeDays` 配置 + `link-data-stale` 诊断**：已删——注册表（15 → 14 个码）、
+  `internal/config` 的字段与两处校验、服务端 `publishLinkStatus` 的过期分支、
+  `link.Status` 的 `Stale/MaxAgeDays`、`link.LoadStatus` 的签名、扩展的设置项与下发字段、
+  `tiptop link status -max-age` 全部清掉；`docs/DIAGNOSTICS.md` 重新生成。
+  反向测试：`TestLinkVeryOldDataIsSilent`（2020 年的 meta 必须**完全静默**）；
+- ✅ **后台自动同步**：已删——`linksync.Scheduler` 整段是**死代码**（全仓无人构造），
+  `Config.Interval/OnStart` 一并删除；资料何时更新完全由用户点命令决定。
+  `tiptop link status` 的"生成时间（N 天前）"保留为信息展示，不再是"过期告警"。
 - 文档/设置里同步删除，避免"看起来还有这个功能"（这正是 §A3 那类残留的根源）。
 
 ---

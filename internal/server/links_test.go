@@ -369,8 +369,11 @@ func TestLinkInvalidDataReportsDiagnostic(t *testing.T) {
 	}
 }
 
-// TestLinkStaleDataReportsHint 验证过期资料报 hint（不是错误）。
-func TestLinkStaleDataReportsHint(t *testing.T) {
+// TestLinkVeryOldDataIsSilent P1-6：资料再旧也**不再**报警。
+//
+// 去掉"7 天过期"提示是用户明确要求（同步只由命令触发，插件不该因为资料旧就提示）。
+// 这条测试与原来那条相反：老的 meta 必须静默。
+func TestLinkVeryOldDataIsSilent(t *testing.T) {
 	f := newLinkFixture(t)
 	f.write(t, "apm", "entry", "MAIN\n    DISPLAY 1\nEND MAIN\n")
 	f.writeLinks(t,
@@ -384,18 +387,30 @@ func TestLinkStaleDataReportsHint(t *testing.T) {
 
 	h := f.initialize(t)
 	h.sendDidOpen(f.uri("apm", "entry"), "bdl", readFileString(t, f.dirs["apm"], "entry"), 1)
-	target := testURI(dir, "links.meta.json")
-	diags := drainUntilCode(t, h, target, "link-data-stale", 10*time.Second)
-	if n := countOf(diags, "link-data-stale"); n == 0 {
-		t.Fatalf("过期资料应报 link-data-stale，实际诊断码 %v", codes(diags))
+	// 资料正常（只是旧），所以资料文件上不该有任何提示。
+	// 用软读帧（超时不失败）而不是 drainDiagnostics：这里期待的就是"没有发布"。
+	watch := map[string]bool{
+		testURI(dir, "links.meta.json"): true,
+		testURI(dir, "links.jsonl"):     true,
 	}
-	for _, raw := range diags {
-		d, _ := raw.(map[string]any)
-		if c, _ := d["code"].(string); c != "link-data-stale" {
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		msg := h.readMessageSoft(time.Until(deadline))
+		if msg == nil {
+			break
+		}
+		if msg["method"] != "textDocument/publishDiagnostics" {
 			continue
 		}
-		if sev, _ := d["severity"].(float64); sev != 4 {
-			t.Errorf("过期提示应为 hint(4)，实际 %v", d["severity"])
+		params, _ := msg["params"].(map[string]any)
+		uri, _ := params["uri"].(string)
+		if !watch[uri] {
+			continue
+		}
+		diags, _ := params["diagnostics"].([]any)
+		if len(diags) != 0 {
+			t.Errorf("%s 上不应有任何提示（P1-6 已去掉过期告警），实际：%v",
+				filepath.Base(uri), codes(diags))
 		}
 	}
 }

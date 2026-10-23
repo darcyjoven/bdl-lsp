@@ -4,7 +4,7 @@
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 > **还剩什么**看 [PENDING.md](PENDING.md)（唯一清单）。
 >
-> 版本：`bdl-lsp` **0.3.10** / `tiptop` **0.1.5** / `vscode-bdl` **0.5.5**（轻量档默认 + 设置五组 + 部署配置合成） / `zed-bdl` **0.1.1**（暂停）。
+> 版本：`bdl-lsp` **0.3.11** / `tiptop` **0.1.6** / `vscode-bdl` **0.5.6**（去掉过期与自动同步） / `zed-bdl` **0.1.1**（暂停）。
 > **Windows CI 自 2026-10-23 起 Linux + Windows 双绿**（见 [PENDING](PENDING.md) §B9）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 各仓库（含 tiptop）独立记版本，不要求一致。
@@ -66,9 +66,9 @@ GLOBALS、字段/表单、索引、内置符号、忽略列表、编辑器文档
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.10` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
-| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.5` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
-| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.5` | VSCode 插件（平台包内置 `bdl-lsp` 与 `tiptop`；轻量档默认 + 设置五组） |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.11` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
+| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.6` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
+| `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.6` | VSCode 插件（平台包内置两个二进制；轻量档默认 + 设置五组） |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件（**暂停**） |
 
 > HEAD 不写死——每轮都变（这份文档已因此过期过两次）。用
@@ -154,8 +154,8 @@ server.path / server.logLevel / trace.server
 diagnostics.<码>                    唯一诊断入口；默认 warning（例外见注册表）
 diagnostics.syntax-error            默认 warning
 diagnostics.record-member-unknown   默认 off
-diagnostics.file-too-large          默认 information
-diagnostics.link-data-stale         默认 hint
+diagnostics.file-too-large          默认 warning（0.3.7 起；information 太容易漏）
+diagnostics.parse-timeout           默认 warning
 format.keywords / indentStyle / indentSize    unchanged / auto / 0
 limits.maxFileBytes / maxFileLines / maxIssues / parseTimeoutMS
                                     2MB / 20000 / 200 / 2000
@@ -167,12 +167,12 @@ builtins.enable / .paths / .disable true / [] / []
 ignore.files                        []         ← P8：整文件静默 + 不进索引
 ignore.fields                       []         ← P8：只屏蔽 field-not-in-form
 ignore.forms                        []         ← P8：屏蔽该表单的字段类诊断
-link.enable                         true       ← P7-D
-link.dataDir                        .link
+link.enable                         true（客户端没下发时的兜底；插件默认 false）
+link.dataDir                        .project   （旧 .link 只读兼容）
 link.moduleRoots                    []          （空 = 自动探测 tiptop/topcust）
 link.globalModules                  [sub lib qry]
-link.maxAgeDays                     7           （0 = 不提示过期）
-   ↳ 没有 sync.* 配置：采集已于 0.3.2 移出到 tiptop（`tiptop link sync`）
+   ↳ 没有 sync.* / maxAgeDays 配置：采集已于 0.3.2 移出到 tiptop（`tiptop link sync`），
+     7 天过期提示已于 0.3.11 删除（P1-6：同步只由命令触发）
 deploy.target                       ""          （VSCode 扩展设置，非 LSP 配置；deploy 由 tiptop 执行）
 ```
 

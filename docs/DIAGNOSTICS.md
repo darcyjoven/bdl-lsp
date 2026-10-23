@@ -28,7 +28,6 @@
 | `globals-file-not-found` | `warning` | `GLOBALS "路径"` 的目标文件找不到（路径写错或文件未随代码分发） |
 | `link-data-invalid` | `warning` | 链接资料格式不合法（JSONL 解析失败、schema 版本过高） |
 | `link-data-legacy-dir` | `hint` | 链接资料仍在旧目录 `.link/`；`bdl.migrateLinkDir` 可一键迁移到 `.project/`（迁移前会先确认） |
-| `link-data-stale` | `hint` | 链接资料超过 `bdl.link.maxAgeDays` 未更新 |
 | `missing-node` | `warning` | grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等） |
 | `parse-timeout` | `warning` | 解析超时（`bdl.limits.parseTimeoutMs`），本轮已跳过诊断；可提高上限或对当前文件执行「强制解析」 |
 | `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关） |

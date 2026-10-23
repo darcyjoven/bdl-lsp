@@ -261,8 +261,11 @@ func (s *Server) maybePublishLinkStatus(ctx context.Context) {
 
 // publishLinkStatus 发布链接资料自身的诊断（格式坏了 / 过期了）。
 //
-// 落在资料文件上（links.meta.json / links.jsonl）而不是随便一份源码：
-// 用户点开就知道该重新导入了，而不是困惑"为什么这个文件有提示"。
+// 落在资料文件上（links.jsonl）而不是随便一份源码：用户点开就知道是资料的问题，
+// 而不是困惑"为什么这个文件有提示"。
+//
+// P1-6：只保留"资料坏了"与"还在旧目录"两类提示；不再有"过期"提示
+// （同步只由命令触发，不再因为资料旧而报警）。
 func (s *Server) publishLinkStatus(ctx context.Context) {
 	if s == nil || s.links == nil || s.rootPath == "" {
 		return
@@ -275,18 +278,13 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 	dataDir := s.links.dataDir
 	loadErr := s.links.err
 	legacyDir := s.links.legacyDir
-	idx := (*link.Index)(nil)
-	if s.links.resolver != nil {
-		idx = s.links.resolver.Index()
-	}
 	s.links.mu.RUnlock()
 	if dataDir == "" {
 		return
 	}
 
 	// 0) 旧目录：资料能用，但位置该搬家了（`.link/` → `.project/`）。
-	// 报在**旧目录**的 links.jsonl 上，用户一点就知道该搬哪个目录；
-	// 这里不 return，后面的"坏资料 / 过期"判定照旧。
+	// 报在**旧目录**的 links.jsonl 上，用户一点就知道该搬哪个目录。
 	if legacyDir != "" {
 		if sev, enabled := diag.SeverityFor(diag.CodeLinkDataLegacyDir, settings); enabled {
 			uri := fileURI(filepath.Join(legacyDir, link.LinksFileName))
@@ -314,32 +312,6 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 		return
 	}
 
-	// 2) 过期：报在 links.meta.json 上（能看出是什么时候导入的）。
-	if idx == nil || idx.Meta() == nil {
-		return
-	}
-	maxAge := settings.Link.MaxAgeDays
-	if maxAge <= 0 {
-		maxAge = 7
-	}
-	meta := idx.Meta()
-	age := meta.Age()
-	if meta.GeneratedTime().IsZero() || age < time.Duration(maxAge)*24*time.Hour {
-		return
-	}
-	severity, enabled := diag.SeverityFor(diag.CodeLinkDataStale, settings)
-	if !enabled {
-		return
-	}
-	uri := fileURI(filepath.Join(dataDir, link.MetaFileName))
-	s.publishExtra(ctx, uri, []protocol.Diagnostic{{
-		Range:    protocol.Range{},
-		Severity: severity,
-		Source:   "bdl-lsp",
-		Message: fmt.Sprintf("链接资料已 %d 天未更新（生成于 %s）。过期资料会让 function-not-found 误报，建议重新运行 `tiptop link import`",
-			int(age.Hours()/24), meta.GeneratedAt),
-		Code: string(diag.CodeLinkDataStale),
-	}})
 }
 
 // publishExtra 发布"不属于任何已打开文档"的诊断。

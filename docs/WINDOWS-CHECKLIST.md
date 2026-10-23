@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.10` · `tiptop 0.1.5` · `4gl-full 0.5.5` |
+| 被测版本 | `bdl-lsp 0.3.11` · `tiptop 0.1.6` · `4gl-full 0.5.6` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -166,24 +166,24 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.5-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.6-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.5.5-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.5.6-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.5.5-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.5.6-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
 Get-ChildItem "$ext\bin"                       # 期望：bdl-lsp.exe、tiptop.exe、BUILD-INFO.json、若干 .dll
 Get-Content    "$ext\bin\BUILD-INFO.json"
-& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.10
-& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.5
+& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.11
+& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.6
 & "$ext\bin\bdl-lsp.exe" check "$ws\topcust\aap\4gl\broken.4gl"
 ```
 
@@ -275,14 +275,15 @@ New-Item -ItemType Directory -Force -Path "$ws\.project" | Out-Null
   - 记录：____
 
 ```powershell
-# 3.6「过期」检查需要一份**有效**的资料，否则会先走 3.4 的坏资料分支
+# 3.6「旧资料不再告警」检查：写一份 2020 年的 meta
 [IO.File]::WriteAllText("$ws\.project\links.jsonl",
   '{"schema":1,"program":"globals_main","module":"AAP","main":"globals_main","files":[["AAP","globals_main"]]}' + "`n")
 [IO.File]::WriteAllText("$ws\.project\links.meta.json",
   '{"schema":1,"generatedAt":"2020-01-01T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}')
 ```
 
-- [ ] 3.6 重启服务器后出现 `link-data-stale`（**hint 级**，Problems 面板可能要放宽级别才显示；挂在 `links.meta.json` 上）
+- [ ] 3.6 **P1-6 起"过期"不再提示**：重启服务器后 Problems 面板**没有**任何来自
+      `.project\links.meta.json` / `links.jsonl` 的提示（只有资料坏掉或还在旧 `.link/` 目录时才提示）
   - 记录：____
 
 > 查完把这套假资料清掉（`Remove-Item "$ws\.project\links.jsonl","$ws\.project\links.meta.json"`），
@@ -372,7 +373,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 - [ ] 4.1 构建成功，产物 `artifacts\bin\bdl-lsp.exe` 存在（PE 文件）
   - 记录：____
-- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.10`
+- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.11`
   - 记录：____
 - [ ] 4.3 `-Check` 的样例冒烟通过（期望 `共 2 个文件，0 个有问题`）
   - 记录：____
@@ -494,7 +495,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 |---|---|
 | 部署时提示"缺少 rsync"并回退 scp | **设计如此**：Windows 默认没有 rsync，v1 的 Windows 验收就是走 scp 回退 |
 | `record-member-unknown` 一条都不报 | 该诊断出厂默认 `off`（`LIKE table.*` 引用太多，误报风险高） |
-| Problems 面板看不到 `link-data-stale` | 它是 **hint** 级，面板默认过滤可能不显示；放宽级别即可见 |
+| 资料明明很久没更新，却没提示 | **设计如此**（P1-6 去掉 7 天过期提示）：同步只由命令触发，插件不因为资料"旧"而报警 |
 | 刚打开大项目时 `Ctrl+T` 搜不全 | 工作区索引在后台建（几十秒），期间结果不全属正常 |
 | `fglcomp: command not found` | 这是**远端**的问题（目标机没装 Genero），与本机扩展无关 |
 | 打开大文件时出现 `file-too-large` / `parse-timeout` 警告 | **有意为之**（P0-3）：这个文件确实没被检查，点标题栏的"强制解析"即可；不想要就调大 `bdl.limits.*` |
@@ -522,7 +523,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 | 3.1–3.3 | ⭐ 路径/盘符 | ⬜ | |
 | 3.2b | ⭐ 旧目录迁移 | ⬜ | |
 | 3.2c | ⭐ 大文件提示 + 强制解析 | ⬜ | |
-| 3.4–3.6 | ⭐ `.project` 诊断落点 | ⬜ | |
+| 3.4–3.6 | ⭐ `.project` 诊断落点 + 旧资料不告警（P1-6） | ⬜ | |
 | 3.7–3.8 | ⭐ 索引位置可打开 | ⬜ | |
 | 3.9–3.10 | ⭐ secrets.json | ⬜ | |
 | 3.11 | ⭐ gofmt / CRLF | ⬜ | |
@@ -537,7 +538,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.10` / `tiptop 0.1.5` / `4gl-full 0.5.5`
+- 被测版本：`bdl-lsp 0.3.11` / `tiptop 0.1.6` / `4gl-full 0.5.6`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：
