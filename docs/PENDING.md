@@ -42,7 +42,7 @@
 | A5 | `docs/EDITOR-SUPPORT.md` 命令名过期 | 改 `tiptop link status` / `tiptop deploy` |
 | A6 | `docs/TODO.md` §5/§6 归属 | §5/§6 顶部加归属注记；头部补 0.3.1 / 0.3.2 与分离；**历史勾选未改写** |
 | A7 | 当前文档的命令与归属 | `FEATURES`/`TESTING`/`PLAN` 更正命令与归属；`PLAN-P5-DEPLOY`/`PLAN-P7`/`PLAN-SEPARATION` 顶部加"当时记录 + 归属变更"注记，正文不动 |
-| A8 | tiptop 没有自己的 CI | 新增 `tiptop/.github/workflows/build.yml`：Linux + Windows，CGO 构建 + `go test -race` + `make lint`，检出 bdl-lsp 兄弟目录满足 `replace`。本地用同一套命令跑通；注入必失败测试 → `go test` 变红（已复原）。**"CI 真变红"仍需 push 后由 Actions 证明** |
+| A8 | tiptop 没有自己的 CI | 新增 `tiptop/.github/workflows/build.yml`：Linux + Windows，CGO 构建 + `go test -race` + `make lint`，检出 bdl-lsp 兄弟目录满足 `replace`。已 push：Actions 第 1 次运行 **Linux 全绿**；Windows 卡在测试步（见 **B9**）。同时修掉 `bdl-lsp/scripts/build.ps1` 里让 Windows job 从来跑不到测试步的旧 grammar 检查 |
 
 **顺手清掉的同类残留**（不在原清单，性质相同）：
 
@@ -72,9 +72,14 @@
 | B6 | P3a `variable-source-unresolved` 人工标注 | `scripts/globals-audit.sh` **未做** | 抽 100 处人工标注，算出误报率 |
 | B7 | `expression name:` 跳过规则抽查 | 已修，未逐条复核 | 跑语料差异清单，人工抽查是否误伤 |
 | B8 | Windows URI 根因假说 | 未上机验证 | 打印两侧 `initialize` 入参再判断，不要先改代码 |
+| B9 | **Windows `go test` 在 CI 红**（2026-10-23 新增证据） | CI 的 Windows job 已能**构建 + 二进制自检通过**（构建那一步的 `build.ps1` 旧检查已修），但 `go test -race ./...` 失败；失败用例名需要 GitHub 日志（本地 `gh` 未鉴权，API 403）。tiptop 的 Windows job 同样卡在测试步 | 拿到日志 → 修掉平台相关用例，两个仓库的 windows job 变绿 |
 
 **优先级**：B1 和 B2 最值得做——CI 已经产出这两个平台的包，但**从来没有人装过**。
 "CI 绿"不等于"能装上跑起来"。
+
+> **B9 已经推翻了一条旧假设**：bdl-lsp 的 Windows job 从 workflow 写进去那天起
+> 就红在"构建"，根因是 `scripts/build.ps1` 还在检查 `..\tree-sitter-bdl|per`
+> 兄弟目录（grammar 打 tag 后已不需要）。Linux job 一直绿，所以没人注意。
 
 ---
 
@@ -143,6 +148,8 @@
 | F4 | Windows 无 rsync → scp 回退 | 稳定性/性能未实测 |
 | F5 | 沙箱 `HOME`/`GOPROXY` 对文档/CI 的影响 | 本地构建需 `source scripts/dev-env.sh` |
 | F6 | macOS 延后带来的构建差异 | CI 能构建，但**无人验证过产物**（同 B2） |
+| F7 | **Windows 上 `.link/secrets.json` 密码来源不可用** | 该文件按 unix 权限位校验（`perm & 077 != 0` 即拒绝），而 Windows 的 mode 位是 Go 合成的：可写文件一律 0666 → 一律判"权限过松"。Windows 上只能用 `BDL_ORA_PASSWORD` 环境变量。修法（未做）：Windows 跳过权限校验，或在文档里明确写死"Windows 用环境变量" |
+| F8 | **Windows `go test` 未绿** | 见 B9；两个仓库的 Windows 测试步都红，先要到日志才能定位 |
 
 ---
 
