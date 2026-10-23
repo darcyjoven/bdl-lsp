@@ -79,8 +79,13 @@ type Server struct {
 	fieldDiags    map[string][]protocol.Diagnostic
 	recheckTimers map[string]*time.Timer
 	debounceMu    sync.Mutex
-	// parseMu 串行化请求处理与防抖重算（见 handle 注释）：
-	// 两者都会替换/关闭文档语法树，不能真正并行。
+	// parseMu 串行化**所有**会替换/关闭文档语法树的路径，不能真正并行：
+	//   - 请求处理（handle）
+	//   - 防抖重算（scheduleSourceRecheck 的 timer）
+	//   - 链接预热完成后的补发（requestRediagnose；注意它可能是**同步**回调，
+	//     所以只能丢到后台等锁，不能在回调里直接加锁——见 links.go 注释）
+	// 任何新增的"后台 → 文档树"路径都必须走 requestRediagnose 一类入口，
+	// 否则会重现 2026-10-23 的 ts_node_parent 段错误（P0-1）。
 	parseMu sync.Mutex
 
 	mu        sync.Mutex
