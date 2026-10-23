@@ -399,6 +399,22 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 - [ ] 5.1.2 `deploy -dry-run` 打印"要传什么、要编译什么"，且**不上传**
   - 记录：____
 
+### 5.1b ⭐ link 局部同步（`-modules` / `-files`）
+
+> 只重算受影响作业的链，其余链保留——改一两个程序不用整份重跑（全量 10–20 秒）。
+
+```powershell
+# 先看"会影响几个作业"（不写盘）
+& "$ext\bin\tiptop.exe" link import -csv .project\gal_file.csv -root "$ws" -files topcust/aap/4gl/globals_main.4gl -dry-run
+# 按模组更新
+& "$ext\bin\tiptop.exe" link sync -root "$ws" -modules lib,sub,qry -dry-run
+```
+
+- [ ] 5.1b.1 `-dry-run` 输出里有 **"受影响作业 N 个（程序名…）"**，且没有写盘
+- [ ] 5.1b.2 去掉 `-dry-run` 执行后：`link status -root "$ws"` 出现 **"局部更新 … 作业 N 个 / 重算链 M 条"**，
+      且**其他作业的链仍在**（对比更新前后 `links.jsonl` 的程序列表）
+  - 记录：____
+
 ### 5.2 真实单文件部署 + scp 回退
 
 - [ ] 5.2.1 Windows 无 rsync → 输出里出现**显式回退**：
