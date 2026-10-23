@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.9` · `tiptop 0.1.4` · `4gl-full 0.5.3` |
+| 被测版本 | `bdl-lsp 0.3.9` · `tiptop 0.1.4` · `4gl-full 0.5.4` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -166,16 +166,16 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.3-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.4-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.5.3-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.5.4-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.5.3-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.5.4-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
@@ -415,6 +415,24 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
       且**其他作业的链仍在**（对比更新前后 `links.jsonl` 的程序列表）
   - 记录：____
 
+### 5.1c ⭐ 链接资料命令（在 VSCode 里，不用开终端）
+
+命令面板 `Ctrl+Shift+P` → 输入 `Genero BDL: 链接资料`：
+
+- [ ] 5.1c.1 设置里有 **「Genero BDL: 生产环境」** 一节（主机/端口/服务名/只读账号），
+      描述里写明"只写 Workspace、`settings.json` 不要进 git、密码用 `BDL_ORA_PASSWORD`
+      或 `.project/secrets.json`"
+- [ ] 5.1c.2 **没配数据库**时执行 `链接资料：全量更新`：弹出明确提示，带
+      「打开设置」「改用 CSV 导入」两个按钮（不是静默失败、不是看不懂的报错）
+- [ ] 5.1c.3 `链接资料：从 CSV 导入`：选一个 CSV → 提示已复制到 `.project/gal_file.csv`
+      → 选"全量导入" → 输出通道能看到 tiptop 的进度与统计
+- [ ] 5.1c.4 打开一个公共 `.4gl`（被多个作业引用）执行 `链接资料：更新当前文件`：
+      预演对话框里显示 **"将更新 N 个作业：…"**；取消不会写盘；确认后其他作业的链仍在
+      （用 `链接资料：查看状态` 看"局部更新"行）
+- [ ] 5.1c.5 链接资料视图里「反查引用程序」那一行有 **重新同步** 按钮，点它等同 5.1c.4
+- [ ] 5.1c.6 关掉 `bdl.link.enable`：命令面板里这些命令消失，视图按钮也消失
+  - 记录：____
+
 ### 5.2 真实单文件部署 + scp 回退
 
 - [ ] 5.2.1 Windows 无 rsync → 输出里出现**显式回退**：
@@ -500,7 +518,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.9` / `tiptop 0.1.4` / `4gl-full 0.5.3`
+- 被测版本：`bdl-lsp 0.3.9` / `tiptop 0.1.4` / `4gl-full 0.5.4`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

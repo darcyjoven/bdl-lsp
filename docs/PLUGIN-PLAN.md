@@ -233,7 +233,7 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 
 ---
 
-## 4. P1-1：打包与命令入口
+## 4. P1-1：打包与命令入口 · **命令入口已实现 2026-10-23**
 
 ### 4.1 事实核查（先纠正一个前提）
 
@@ -248,35 +248,55 @@ INPUT ARRAY g_tc_shb_2 WITHOUT DEFAULTS FROM s_tc_shb_2.*
 | 装了平台包但**平台不匹配**（x64 包装在 arm64 上） | 解析失败 | 提示里带上"包与系统/芯片不匹配，重装对应包" |
 | 用 `bdl.server.path` 指了本地二进制 | 看起来"依赖本地程序" | 保持可用，但 `显示语言服务器信息` 要如实显示来源 |
 
-- **新增 CI 自检**：`bundle-vsix.yml` 在打包后断言 VSIX 内确实有 `extension/bin/bdl-lsp.exe`
-  与 `extension/bin/tiptop.exe`（现在只校验打包成功，不校验内容）。
+- **CI 自检（已存在，无需新增）**：`bundle-vsix.yml` 的「校验 VSIX 内容」步骤早就断言了
+  `extension/bin/<bdl-lsp>`、`extension/bin/<tiptop>`、`BUILD-INFO.json`、`dist/extension.js`、
+  `syntaxes/`、`language-configuration/` 都在包里，并且拒绝夹带 `src|test|.github|node_modules|scripts`。
+  这一条不用再做，只需在文档里说清楚（原计划的"新增"是多余的）。
 
-### 4.2 命令入口（用户要求："从 VSCode 中启动，而不是让用户找可执行文件"）
+### 4.2 命令入口（已实现）
 
-新增/补齐命令（`contributes.commands` + 命令面板 + 视图按钮）：
+状态：**全部落地**（`src/linktools.ts`，`registerLinkToolCommands`）。除下表外，
+`activationEvents` 补了 6 条 `onCommand:`，命令面板条目用 `when: config.bdl.link.enable`
+控制显隐（总开关关掉时隐藏，与部署命令一致）。
+
+实现要点（与设计的一致性/偏差）：
+
+| 项 | 实现 |
+|---|---|
+| 二进制定位 | 复用部署命令那一套（`currentTools()` → `resolveTools()`；内置 `bin/` → `bdl.tools.path` → `PATH` → 工作区），失败时给"打开设置"按钮 |
+| 输出 | 专用通道「Genero BDL 链接资料」，stdout/stderr 实时写入，失败自动 `show(true)` |
+| 预演确认 | 会写盘的命令一律先跑 `-dry-run`，解析报告里的"**受影响作业 N 个（名字…）**"（`parseAffectedJobs`，解析不出就退化成"看输出再确认"，不卡死）；确认后才真跑 |
+| 0 个作业 | 直接提示"没有匹配到任何作业（这个文件可能不属于任何链接链）"，不弹确认 |
+| 数据库未配置 | `promptNoOracle`：明确说明去哪填、密码放哪，并给「打开设置」「改用 CSV 导入」两个按钮；若 `.project/gal_file.csv` 已存在，**直接走 CSV 局部导入**（不必先配数据库） |
+| CSV 导入 | 选文件 → 复制到 `<项目>/<dataDir>/gal_file.csv`（覆盖源文件，用户要求）→ 再问"全量导入 / 只更新当前文件 / 取消" |
+| 生产环境设置 | 新增设置节 **Genero BDL: 生产环境**（`bdl.prod.oracle.host/port/service/user`），描述里写明"只写 Workspace、`settings.json` 别进 git、密码用环境变量或 `.project/secrets.json`"——这是 §5.3 的一部分，提前落地 |
+| 视图按钮 | `bdl.links.resync` 同时出现在 `view/title`（导航组）与 `view/item/context`（"反查引用程序"那一行的 inline 按钮），`when` 带 `config.bdl.link.enable` |
+| 测试 | e2e：命令注册清单纳入 6 条新命令、`parseAffectedJobs` 三个断言、"`link.enable=false` 时链接命令仍注册且执行不抛错"、设置分组含「生产环境」；e2e 40/40 |
+
+原始设计要求（保留备查）：
 
 | 命令 | 作用 | 归属 |
 |---|---|---|
-| `bdl.link.importCsv` | 选 CSV → `tiptop link import` → 落 `.project/`（覆盖源文件） | 插件 |
+| ✅ `bdl.link.importCsv` | 选 CSV → `tiptop link import` → 落 `.project/`（覆盖源文件） | 插件 |
 | `bdl.link.syncAll` | 全量 `tiptop link sync`（需要 DB 配置） | 插件 |
 | `bdl.link.syncCurrent` | 只更新**当前打开文件**相关的链接资料（§6） | 插件 |
 | `bdl.link.syncModules` | 选 lib/sub/qry 等模块更新（§6） | 插件 |
 | `bdl.link.status` | 打印资料统计到输出通道 | 插件 |
 | `bdl.links.refresh`（已有） | 重新加载资料 | 插件 |
-| `bdl.links.resync`（新增，用户点名） | 链接资料视图里"反查引用程序"处的**重新同步** | 插件 |
+| ✅ `bdl.links.resync`（新增，用户点名） | 链接资料视图里"反查引用程序"处的**重新同步** | 插件 |
 | `bdl.deploy.*`（已有 4 条） | 部署（配置来自设置，见 §5.3） | 插件 |
-| `bdl.forceParseCurrentFile` | 强制解析当前文件（§2.4） | 插件 |
+| ✅ `bdl.forceParseCurrentFile` | 强制解析当前文件（§2.4，P0-3 已实现） | 插件 |
 
-配套：
-- `activationEvents` 现在只有 `onLanguage:bdl|per` → **命令在没打开 `.4gl` 时不会激活**，
-  必须补 `onCommand:` 系列（或 `onStartupFinished` + 命令条件）。
+配套（均已完成）：
+- `activationEvents` 原来只有 `onLanguage:bdl|per` → **命令在没打开 `.4gl` 时不会激活**，
+  已补 6 条 `onCommand:`。
 - **没配置数据库时**：这些命令不是静默失败，而是给出明确提示（"还没有配置数据库连接：
   打开设置 → Genero BDL → 生产环境，或在 `.project/secrets.json` 写密码"），并提供
   "打开设置"按钮（`vscode.openSettings` 带 query）。
 - 所有会写盘的命令，写之前给一次确认（"将写入 `.project/links.jsonl`，是否继续"），
   避免用户在不知情时改动项目。
 
-### 4.3 稳定性提示
+### 4.3 稳定性提示（仍待做，并入 P1-6/P1-7）
 
 `显示输出` 里要有：语言服务器**异常退出**（非 0 退出码）时的明确日志 + 自动重启一次 + 通知用户。
 配合 §2.1 的崩溃修好后，这条是"兜底可见"。

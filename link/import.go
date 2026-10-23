@@ -359,38 +359,43 @@ func SelectPrograms(data []byte, modules, files []string) (*PartialSelection, er
 
 // ParseFileSpec 解析 `-files` 的一项，返回模组与程序代码。
 //
-//	"aap/4gl/saapt310.4gl" → ("aap", "saapt310")
-//	"aap/saapt310"         → ("aap", "saapt310")
-//	"saapt310.4gl"         → ("", "saapt310")
+//	"aap/4gl/saapt310.4gl"        → ("aap", "saapt310")
+//	"topcust/aap/4gl/saapt310.4gl" → ("aap", "saapt310")   ← 工作区相对路径
+//	"aap/saapt310"                → ("aap", "saapt310")
+//	"saapt310.4gl"                → ("", "saapt310")
 //
-// 模组取"第一个不是类型目录的路径段"（类型目录见 typeDirs）；
-// 代码取最后一段去掉扩展名。Windows 风格的反斜杠也接受。
+// 模组取"**紧挨着类型目录**的那一段"（`<模组>/4gl/x.4gl`）；
+// 没有类型目录时取文件名前一段（`<模组>/x.4gl`）。
+// 这一步很关键：插件传进来的是工作区相对路径（顶层还可能有 `tiptop/`、
+// `topcust/` 这类项目目录），取"第一个段"会认错模组。
 func ParseFileSpec(raw string) (module, code string) {
 	raw = strings.TrimSpace(strings.ReplaceAll(raw, "\\", "/"))
 	if raw == "" {
 		return "", ""
 	}
-	segs := strings.Split(raw, "/")
+	var segs []string
+	for _, seg := range strings.Split(raw, "/") {
+		if seg != "" {
+			segs = append(segs, seg)
+		}
+	}
+	if len(segs) == 0 {
+		return "", ""
+	}
 	last := segs[len(segs)-1]
 	code = last
 	if i := strings.LastIndex(last, "."); i > 0 {
 		code = last[:i]
 	}
-	return firstModuleSegment(segs), code
-}
-
-// firstModuleSegment 从路径段里取模组名：第一个不是"类型目录"的段。
-func firstModuleSegment(segs []string) string {
 	for i, seg := range segs {
-		if i == len(segs)-1 {
-			break // 最后一段是文件名
+		if typeDirs[strings.ToLower(seg)] && i > 0 {
+			return segs[i-1], code
 		}
-		if seg == "" || typeDirs[strings.ToLower(seg)] {
-			continue
-		}
-		return seg
 	}
-	return ""
+	if len(segs) >= 2 {
+		return segs[len(segs)-2], code
+	}
+	return "", code
 }
 
 // importGroup 是导入过程中的一个「程序编号」分组。

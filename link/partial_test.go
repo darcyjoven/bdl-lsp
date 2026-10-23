@@ -74,7 +74,9 @@ func TestParseFileSpec(t *testing.T) {
 		{"aap/saapt310", "aap", "saapt310"},
 		{"saapt310.4gl", "", "saapt310"},
 		{`aap\4gl\saapt310.4gl`, "aap", "saapt310"},
-		{"tiptop/aap/4gl/saapt310.4gl", "tiptop", "saapt310"},
+		{"topcust/aap/4gl/saapt310.4gl", "aap", "saapt310"},
+		{"tiptop/axc/4gl/axcp500.4gl", "axc", "axcp500"},
+		{"aap/per/x.per", "aap", "x"},
 		{"", "", ""},
 	}
 	for _, c := range cases {
