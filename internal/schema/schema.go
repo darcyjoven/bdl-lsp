@@ -1,47 +1,117 @@
-// Package schema 解析 Genero/Oracle 的 **数据库 schema 文件**（`.sch`），
-// 建立"表 → 列"的索引（P6：数据库 schema 索引）。
+// Package schema 读取数据库"字段资料"（PLUGIN-PLAN P2-1）。
 //
-// 为什么需要：`DEFINE r RECORD LIKE maj_file.*` 这种声明在语料里出现
-// **21144 次**，记录的成员全部来自数据库表结构，语法树里看不到。没有 schema
-// 索引时，`record-member-unknown` 只能对这些记录整体静默（否则成片误报），
-// 而它们恰好是记录成员用得最多的地方。
+// 资料由 tiptop 生产（`tiptop schema import`，来源是 Oracle 导出 CSV），
+// 落在项目里的 `.project/.schema/`：
 //
-// # 语料里的两种语句
+//	tables.json           总索引：表 → {name, desc, columns, file}
+//	tables/<TABLE>.json   一张表的列（展开/悬停时才读）
 //
-//	create table mmb_file ( mmb01 varchar2(20) NOT NULL, ... );   -- 3127 个文件
-//	alter table bmy_file add ta_bmy01 varchar(40);               -- 182 个文件追加列
-//
-// 还有 `create unique index` / `create index` 等无关语句（138 处），以及
-// 语料里的手写笔误（`varchar2(40);:`）。解析必须**宽容**：认不出来就跳过，
-// 绝不能因为一行坏数据让整张表消失——少一列会导致"成员不存在"误报。
+// 设计取向（与链接资料一致）：
+//   - bdl-lsp **只读**，写盘是 tiptop 的职责；
+//   - 一个表一个文件 + 惰性加载：语料量级（上千表 / 几万列）下，
+//     悬停只读一个表文件，视图展开也只读当前展开的表；
+//   - 旧版"扫各模组下分散的 sch/*.sch"已按用户要求**下线**（P2-1），
+//     现在只有这一种来源。
 package schema
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 )
 
-// Column 是表的一列。
+// ErrNoData 表示数据目录里没有字段资料（还没导入过）。
+var ErrNoData = errors.New("没有字段资料（.project/.schema/tables.json 不存在）")
+
+// FileName 是总索引文件名。
+const FileName = "tables.json"
+
+// SubDir 是每表文件所在的子目录名。
+const SubDir = "tables"
+
+// SchemaVersion 是资料格式版本（与 tiptop 的写入端一致）。
+const SchemaVersion = 1
+
+// Column 是表里的一列。
 type Column struct {
 	// Name 是原始写法，Lower 是小写（Genero 大小写不敏感）。
-	Name  string
-	Lower string
-	// Type 是类型原文（如 `varchar2(20)`），供悬停/补全展示。
-	Type string
+	Name  string `json:"name"`
+	Lower string `json:"-"`
+	// Desc 是中文说明（Oracle 导出里的 column_desc），可能为空。
+	Desc string `json:"desc,omitempty"`
+	// Type 是类型原文（如 CHAR / NUMBER / VARCHAR2）。
+	Type string `json:"type,omitempty"`
+	// Length 是 data_length（为 0 时写入端已回退 char_length）。
+	Length     int `json:"length,omitempty"`
+	CharLength int `json:"charLength,omitempty"`
+	Precision  int `json:"precision,omitempty"`
+	Scale      int `json:"scale,omitempty"`
+	// Nullable 表示可空。
+	Nullable bool `json:"nullable,omitempty"`
+	// DefaultLength 是 Oracle 导出里 `default_legth` 列的值。实测它是**默认长度**
+	// （0/2/4/8…）而不是默认值表达式，所以只保留数据、不在悬停/补全里展示。
+	DefaultLength string `json:"defaultLength,omitempty"`
 }
 
-// Table 是一张表。
+// Display 返回 `CHAR(10)` 这样的展示文本（长度/精度按类型拼装）。
+func (c Column) Display() string {
+	t := strings.ToUpper(strings.TrimSpace(c.Type))
+	if t == "" {
+		return ""
+	}
+	switch {
+	case c.Scale > 0:
+		return fmt.Sprintf("%s(%d,%d)", t, c.Precision, c.Scale)
+	case c.Precision > 0 && strings.Contains(t, "NUMBER"):
+		return fmt.Sprintf("%s(%d)", t, c.Precision)
+	case c.Length > 0:
+		return fmt.Sprintf("%s(%d)", t, c.Length)
+	default:
+		return t
+	}
+}
+
+// HoverLine 返回悬停/补全里的一行：`ima01 · CHAR(10) · 物料编号`。
+func (c Column) HoverLine() string {
+	parts := []string{c.Name}
+	if d := c.Display(); d != "" {
+		parts = append(parts, d)
+	}
+	if c.Desc != "" {
+		parts = append(parts, c.Desc)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// Table 是一张表的列。
 type Table struct {
-	Name    string
-	Lower   string
+	Name  string
+	Lower string
+	Desc  string
+	// Columns 按资料里的顺序。
 	Columns []Column
-	// AlterOnly 表示只见到 `alter table` 而没见到 `create table`
-	// （建表语句不在工作区里）。这类表的列可能不全，校验时要保守。
-	AlterOnly bool
 
 	byName map[string]bool
+}
+
+// Column 按名查列（大小写不敏感）。
+func (t *Table) Column(name string) (Column, bool) {
+	if t == nil {
+		return Column{}, false
+	}
+	lower := strings.ToLower(name)
+	for _, c := range t.Columns {
+		if c.Lower == lower {
+			return c, true
+		}
+	}
+	return Column{}, false
 }
 
 // Has 报告表里是否有某一列（大小写不敏感）。
@@ -52,129 +122,210 @@ func (t *Table) Has(col string) bool {
 	return t.byName[strings.ToLower(col)]
 }
 
-// Index 是全部 schema 文件的合并结果。
-type Index struct {
-	mu     sync.RWMutex
-	tables map[string]*Table
-	// Files 是解析过的文件数（供日志/诊断展示）。
-	Files int
-	// Problems 是解析时遇到的可疑语句（最多留 50 条，供审计）。
-	Problems []string
+// Entry 是总索引里的一张表。
+type Entry struct {
+	Name    string `json:"name"`
+	Desc    string `json:"desc,omitempty"`
+	Columns int    `json:"columns"`
+	File    string `json:"file"`
 }
 
-// New 返回空索引。
-func New() *Index {
-	return &Index{tables: make(map[string]*Table, 1<<12)}
+// indexFile 是 tables.json 的结构。
+type indexFile struct {
+	Schema     int               `json:"schema"`
+	ImportedAt string            `json:"importedAt,omitempty"`
+	Source     string            `json:"source,omitempty"`
+	RowsTotal  int               `json:"rowsTotal,omitempty"`
+	Tables     map[string]*Entry `json:"tables"`
 }
 
-// Table 按名字查表（大小写不敏感），返回 nil 表示"没有这张表的信息"。
-func (ix *Index) Table(name string) *Table {
-	if ix == nil {
-		return nil
-	}
-	ix.mu.RLock()
-	defer ix.mu.RUnlock()
-	return ix.tables[strings.ToLower(strings.TrimSpace(name))]
+// tableFile 是单张表文件的结构。
+type tableFile struct {
+	Table   string   `json:"table"`
+	Desc    string   `json:"desc,omitempty"`
+	Columns []Column `json:"columns"`
 }
 
-// Len 返回表数。
-func (ix *Index) Len() int {
-	if ix == nil {
-		return 0
-	}
-	ix.mu.RLock()
-	defer ix.mu.RUnlock()
-	return len(ix.tables)
+// Data 是一份已加载的字段资料（表文件按需读取并缓存）。
+type Data struct {
+	dir        string
+	Schema     int
+	ImportedAt string
+	Source     string
+	RowsTotal  int
+	entries    map[string]*Entry // 大写表名 → 条目
+	names      []string          // 排序后的表名（原写法）
+
+	mu    sync.Mutex
+	cache map[string]*Table
 }
 
-// TableNames 返回全部表名（排序后，供测试/审计）。
-func (ix *Index) TableNames() []string {
-	if ix == nil {
-		return nil
-	}
-	ix.mu.RLock()
-	defer ix.mu.RUnlock()
-	out := make([]string, 0, len(ix.tables))
-	for name := range ix.tables {
-		out = append(out, name)
-	}
-	sort.Strings(out)
-	return out
-}
-
-// Merge 合并一份解析结果（线程安全）。
-func (ix *Index) Merge(stmts []Stmt) {
-	ix.mu.Lock()
-	defer ix.mu.Unlock()
-	for _, st := range stmts {
-		switch st.Kind {
-		case StmtCreate:
-			// 同一张表可能在两个模组目录里各有一份定义（语料实测 69 处，
-			// 如 tiptop/amm/sch 与 topcust/*/sch 都有 ada_file）。
-			// 取**并集**而不是覆盖：多出来的列最多让校验漏报，
-			// 覆盖则会把真实存在的列判成"不存在"——那是误报。
-			t := ix.tables[strings.ToLower(st.Table)]
-			if t == nil {
-				t = &Table{Name: st.Table, Lower: strings.ToLower(st.Table), byName: map[string]bool{}}
-				ix.tables[t.Lower] = t
-			}
-			// 先前的 ALTER 可能比 CREATE 先到（文件遍历顺序不保证，
-			// 实测 `.sch` 的目录顺序、并发导入都会命中）。此时**不能**
-			// 换一张新表——那会把 ALTER 已经加上的列全部丢掉，
-			// 结果取决于文件顺序，是间歇性的假"缺少列"。
-			// 清掉 AlterOnly 标记，保留已收集的列，再并入 CREATE 的列。
-			t.AlterOnly = false
-			for _, c := range st.Columns {
-				t.addColumn(c)
-			}
-		case StmtAlter:
-			t := ix.tables[strings.ToLower(st.Table)]
-			if t == nil {
-				t = &Table{Name: st.Table, Lower: strings.ToLower(st.Table), byName: map[string]bool{}, AlterOnly: true}
-				ix.tables[t.Lower] = t
-			}
-			for _, c := range st.Columns {
-				t.addColumn(c)
-			}
-		}
-	}
-}
-
-func (t *Table) addColumn(c Column) {
-	c.Lower = strings.ToLower(c.Name)
-	if c.Lower == "" || t.byName[c.Lower] {
-		return
-	}
-	t.byName[c.Lower] = true
-	t.Columns = append(t.Columns, c)
-}
-
-// LoadFiles 解析并合并一批 .sch 文件。
+// LoadData 读取数据目录里的总索引（不读任何表文件）。
 //
-// 单个文件读不出来/解析异常只记录在 Problems 里，不影响其它文件：
-// 索引是"锦上添花"，缺一张表最多是少报几条诊断。
-func LoadFiles(files []string) *Index {
-	ix := New()
-	for _, path := range files {
-		src, err := os.ReadFile(path)
-		if err != nil {
-			ix.addProblem(path + ": " + err.Error())
+// 目录不存在或没有 tables.json → ErrNoData（"还没导入过"是常态，不是错误）。
+func LoadData(dir string) (*Data, error) {
+	if dir == "" {
+		return nil, ErrNoData
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, FileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, ErrNoData
+		}
+		return nil, fmt.Errorf("读取 %s: %w", filepath.Join(dir, FileName), err)
+	}
+	var idx indexFile
+	if err := json.Unmarshal(raw, &idx); err != nil {
+		return nil, fmt.Errorf("解析 %s: %w", filepath.Join(dir, FileName), err)
+	}
+	if idx.Schema > SchemaVersion {
+		return nil, fmt.Errorf("字段资料版本 %d 高于本程序支持的 %d，请升级 bdl-lsp",
+			idx.Schema, SchemaVersion)
+	}
+	d := &Data{
+		dir:        dir,
+		Schema:     idx.Schema,
+		ImportedAt: idx.ImportedAt,
+		Source:     idx.Source,
+		RowsTotal:  idx.RowsTotal,
+		entries:    make(map[string]*Entry, len(idx.Tables)),
+		cache:      make(map[string]*Table, 64),
+	}
+	for key, e := range idx.Tables {
+		if e == nil {
 			continue
 		}
-		stmts, problems := Parse(src)
-		for _, p := range problems {
-			ix.addProblem(path + ": " + p)
+		upper := strings.ToUpper(key)
+		cp := *e
+		if cp.Name == "" {
+			cp.Name = key
 		}
-		ix.Merge(stmts)
-		ix.Files++
+		if cp.File == "" {
+			cp.File = upper + ".json"
+		}
+		d.entries[upper] = &cp
+		d.names = append(d.names, cp.Name)
 	}
-	return ix
+	sort.Strings(d.names)
+	return d, nil
 }
 
-func (ix *Index) addProblem(msg string) {
-	ix.mu.Lock()
-	defer ix.mu.Unlock()
-	if len(ix.Problems) < 50 {
-		ix.Problems = append(ix.Problems, msg)
+// Len 是表数。
+func (d *Data) Len() int {
+	if d == nil {
+		return 0
 	}
+	return len(d.entries)
+}
+
+// TableNames 返回全部表名（按字典序，原写法）。
+func (d *Data) TableNames() []string {
+	if d == nil {
+		return nil
+	}
+	return append([]string(nil), d.names...)
+}
+
+// Entry 按名查索引条目（大小写不敏感）。
+func (d *Data) Entry(name string) (*Entry, bool) {
+	if d == nil {
+		return nil, false
+	}
+	e, ok := d.entries[strings.ToUpper(name)]
+	return e, ok
+}
+
+// Table 返回一张表的列（**惰性**读表文件并缓存）。
+//
+// 返回 false 表示资料里没有这张表，或者表文件读不出来/坏了——
+// 调用方一律按"没有更精确的信息"处理，不报错（宁可不报）。
+func (d *Data) Table(name string) (*Table, bool) {
+	if d == nil {
+		return nil, false
+	}
+	upper := strings.ToUpper(name)
+	e, ok := d.entries[upper]
+	if !ok {
+		return nil, false
+	}
+	d.mu.Lock()
+	if t, hit := d.cache[upper]; hit {
+		d.mu.Unlock()
+		return t, t != nil
+	}
+	d.mu.Unlock()
+
+	t := d.readTable(upper, e)
+	d.mu.Lock()
+	d.cache[upper] = t // nil 也缓存：坏文件不要每次悬停都重读
+	d.mu.Unlock()
+	return t, t != nil
+}
+
+func (d *Data) readTable(upper string, e *Entry) *Table {
+	raw, err := os.ReadFile(filepath.Join(d.dir, SubDir, e.File))
+	if err != nil {
+		return nil
+	}
+	var tf tableFile
+	if err := json.Unmarshal(raw, &tf); err != nil {
+		return nil
+	}
+	t := &Table{Name: e.Name, Lower: strings.ToLower(e.Name), Desc: tf.Desc, byName: map[string]bool{}}
+	if t.Desc == "" {
+		t.Desc = e.Desc
+	}
+	for _, c := range tf.Columns {
+		if c.Name == "" {
+			continue
+		}
+		if c.Lower == "" {
+			c.Lower = strings.ToLower(c.Name)
+		}
+		t.Columns = append(t.Columns, c)
+		t.byName[c.Lower] = true
+	}
+	return t
+}
+
+// Search 按**正则**过滤表名（大小写不敏感），返回匹配的表与表总数。
+//
+// pattern 为空表示不过滤。正则**非法**时：返回全部表 + err（界面把 err 显示出来）。
+// 为什么是"全部"而不是"零条"：查询框是边打边过滤的，用户打到一半
+// （`(apg|aph`）时正则必然非法；这时显示"没有匹配"会让人以为资料死了，
+// 显示全部 + 一行"正则无效"更不吓人，也不会闪。
+//
+// limit<=0 表示不限制。
+func (d *Data) Search(pattern string, limit int) (matched []*Entry, total int, err error) {
+	if d == nil {
+		return nil, 0, nil
+	}
+	total = len(d.names)
+	if pattern == "" {
+		matched = d.allEntries()
+	} else {
+		re, cerr := regexp.Compile("(?i)" + pattern)
+		if cerr != nil {
+			err = cerr
+			matched = d.allEntries()
+		} else {
+			for _, name := range d.names {
+				if re.MatchString(name) {
+					matched = append(matched, d.entries[strings.ToUpper(name)])
+				}
+			}
+		}
+	}
+	if limit > 0 && len(matched) > limit {
+		matched = matched[:limit]
+	}
+	return matched, total, err
+}
+
+func (d *Data) allEntries() []*Entry {
+	out := make([]*Entry, 0, len(d.names))
+	for _, name := range d.names {
+		out = append(out, d.entries[strings.ToUpper(name)])
+	}
+	return out
 }

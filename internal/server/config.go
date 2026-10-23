@@ -73,6 +73,10 @@ func (s *Server) handleDidChangeConfiguration(ctx context.Context, req jsonrpc2.
 	// 每次配置变更都重载即可。
 	s.newBuiltinLoader()
 
+	// P2-1：字段资料（enable/dataDir）变化同样重载。只读总索引（几十 KB），
+	// 每次配置变更重载即可，不必比较路径。
+	s.loadSchemaIndex()
+
 	// P7-D：链接资料的 enable/dataDir/moduleRoots/globalModules 变化都要重载。
 	s.newLinkResolver()
 	if s.links != nil {

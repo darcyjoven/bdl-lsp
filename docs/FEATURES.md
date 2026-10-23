@@ -100,7 +100,7 @@
 | 28 | Code Action / Quick Fix | 字段不存在时提示、忽略诊断、跳转 `.per` |
 | 29 | 语义高亮（semantic tokens） | VSCode + Zed |
 | 30 | 调用层级（call hierarchy） | 函数调用关系 |
-| 31 | 数据库 schema 索引 | 校验 `table.column` 是否存在 |
+| 31 | 数据库字段资料 | 校验 `table.column` 是否存在（来源见 38f，P2-1 起是 `.project/.schema`） |
 | 32 | `.per` 结构可视化 | `SCREEN RECORD` 结构、item 列表 |
 | 33 | 范围格式化 / SQL 片段格式化 | 只格式化选中部分 |
 | 34 | 部署增强 | 多目标、回滚、编译产物归档 |
@@ -117,7 +117,9 @@
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
 | 39 | 程序链接资料索引 | `tiptop link import/status`（tiptop；bdl-lsp 只读取资料）；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
 | 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
-| 38f | 数据库 schema 索引（P6） | 解析工作区 3127 个 `.sch`（2879 表，118 ms，`initialize` 同步）；`RECORD LIKE t.*` 记录成员可校验（开启 `diagnostics.record-member-unknown` 后语料仅剩 24 条），`rec.` 补全给出表的全部列 | P6（✅ 0.2.1） |
+| 38f | **数据库字段资料（P2-1）** | 来源改为 **Oracle 导出 CSV** → `.project/.schema/{tables.json, tables/<表>.json}`（`tiptop schema import`；实测 2648 表 / 58096 列 / 2.4 s）。读侧 `internal/schema` 只读总索引、表文件**展开才加载**并缓存；旧"扫各模组 `sch/*.sch`"与 `schema.paths` 已下线 | P6 → **P2-1（✅ 0.3.12）** |
+| 38g | 字段资料的悬停扩展（P2-1） | `DEFINE x LIKE t.col` → 追加 `t.col · 类型(长度) · 中文说明`；`RECORD LIKE t.*` → 列出该表字段（超 20 行折叠，实测 `ima_file` 317 列）；直接悬停表名 → 表摘要 | P2-1（✅ 0.3.12） |
+| 38h | 字段资料视图与请求（P2-1） | 自定义请求 `bdl/schemaTables`（服务端正则过滤 + `total/matched/returned`）与 `bdl/schemaColumns`（展开才取）；VSCode 独立视图「数据库字段」、正则查询框、右键同步单表/复制 `LIKE t.col`/打开表文件 | P2-1（✅ 0.6.0） |
 | 38e | 工作区符号索引（P6） | 后台索引全工作区（7756 文件 24.7 s，增量 22 ms）并持久化快照；`workspace/symbol` / 跳转 / 引用覆盖未打开文件。可达模组（本模组 + sub/lib/qry）+ 唯一命中两条保守规则 | P6（✅ 0.2.0） |
 | 38d | 诊断码表防漂移（P7-B 收尾） | `make diagnostics-check` 校验注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode `package.json`（存在性、type=object、级别枚举）；文档由 `make diagnostics-write` 生成，并入 `make lint` | P7-B（✅ 0.1.9） |
 | 39d | 链接资料视图（P7-E） | 自定义请求 `bdl/linkTree` / `bdl/linkReferences`；VSCode 独立 TreeView「链接资料」（程序 → 链内文件三级，点击跳转）+ 反查引用程序（默认不查、分页 50）；实测最大链组装 3.4 ms | P7-E（✅ 0.1.7） |

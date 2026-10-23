@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.11` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.12` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,18 +14,24 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.11 | 语言服务；`link`/`deploy` 已分离出去 |
-| `tiptop` | 0.1.6 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
-| `vscode-bdl` | 0.5.6 | 平台包内置两个二进制；CI 四平台打包 |
-| `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
+| `bdl-lsp` | 0.3.12 | 语言服务；`link`/`deploy`/`schema` 已分离出去 |
+| `tiptop` | 0.1.7 | 链接资料 + 表字段采集 + 部署；自带 CI（Linux + Windows 双绿） |
+| `vscode-bdl` | 0.6.0 | 平台包内置两个二进制；新增「数据库字段」视图 |
+| `zed-bdl` | 0.1.1 | **追平中**（用户 2026-10-23 重启，见 §D） |
 
 **最近完成的（不再追踪）**：P1–P8 全部功能 · 0.3.1 GLOBALS 按文档隔离 ·
 0.3.2 link/deploy 分离 · 0.5.0 部署改 tiptop · CI 多平台一键打包 ·
 `schema.Merge` 顺序相关缺陷修复 · **§A 分离收尾残留（0.3.3 / 0.1.1 / 0.5.1，2026-10-23，见 §A）** ·
 **Windows CI 修复（0.3.4 / 0.1.2，2026-10-23，见 §B8/B9、§F7/F8）**。
 
-**代码侧没有"必须做"的功能项了。** 剩下的是两类：需要机器/真实环境的验证（§B）、
-发布相关（§C）。（Zed 扩展 §D **暂停**，§E/§F 持续跟踪。）
+**代码侧没有"必须做"的功能项了。** 剩下的是三类：需要机器/真实环境的验证（§B）、
+发布相关（§C）、**Zed 插件追平（§D，2026-10-23 重启）**。（§E/§F 持续跟踪。）
+
+> **§D 的关键决定（2026-10-23）**：
+> ① Zed **不**复刻 VSCode 的侧边栏 TreeView（Zed 无树视图 API）→
+>    链接资料改用 **Code Lens 挂在 MAIN 头上**（服务端 `textDocument/codeLens`）；
+> ② 该实现**两端共用** —— VSCode 侧作为**补充视图**与 TreeView 并存（§P 的 P1-8）；
+> ③ **link 分析保持原状**（不移到 tiptop）。
 
 ---
 
@@ -82,7 +88,8 @@
 | ✅ P1-5 | ~~设置重分组为 5 类~~ **已实现 2026-10-23** | ① 五组裸标题：基础 / 生产环境 / 链接资料 / 部署 / 数据库字段（`schema.*` 挪进第五组，新增 `schema.dataDir=.project/.schema`）；② 生产环境组新增 `prod.deploy.*`（13 键），每个键都写明"只写 Workspace、别把 `settings.json` 进 git、密码不放设置里"；③ **部署配置不手写**：`src/deployconfig.ts` 合成 `<项目>/.project/deploy.json`（带 `createdBy`），tiptop 结构体加元字段、默认目录改 `.project`（旧 `.bdl-lsp/` 只读兼容），外来文件覆盖前备份 `.bak`，缺设置时说清缺哪项；④ 顺手修掉「列出部署目标」错用语言服务器二进制 | e2e **42/42**（新增五组+默认轻量、轻量档不写项目、部署配置合成含备份与缺项）；tiptop `config_path_test.go` 三条 |
 | ✅ P1-6 | ~~去掉 7 天过期与自动同步~~ **已实现 2026-10-23** | ① 删诊断码 `link-data-stale`（15 → 14 个码，`docs/DIAGNOSTICS.md` 重新生成）与服务端过期分支；② 删 `link.maxAgeDays`（Go 配置字段 + 两处校验 + 扩展设置 + `client.ts` 下发字段）；③ `link.Status` 去掉 `Stale/MaxAgeDays`，`LoadStatus(dir, modules)` 签名简化，`tiptop link status` 去掉 `-max-age` 与过期输出；④ 删 `linksync` 的 `Scheduler`（**全仓无人构造的死代码**）与 `Config.Interval/OnStart` | 反向测试 `TestLinkVeryOldDataIsSilent`：2020 年的 meta **完全静默**；三仓文档/清单同步清掉"过期"表述 |
 | P1-7 | 用户文档重写为插件说明 | `vscode-extension/docs/USER-GUIDE.md` 按最终形态重写 → 作为 README/市场说明（同源） | 文档与 UI/命令一一对应；截图清单更新 |
-| P2-1 | schema（**发布后一版**） | `.project/.schema` 数据 + 独立视图（正则查询、展开加载、右键同步）+ hover 扩展（`LIKE t.col`、`record LIKE t.*`）+ 同步策略 | 见 PLUGIN-PLAN §7；样例数据已在 `artifacts/schema/demo.csv`（58,100 行，表头两处拼写错误需容错） |
+| **P1-8** | **链接资料 Code Lens**（**补充视图**，与 TreeView 并存） | 服务端实现 `textDocument/codeLens`（bdl-lsp 侧，见 §D 的 Z-CL-1）：链内**子文件各一条 lens**，全部挂在该文件的 **MAIN 函数头上**，每条带自己的 `command` 可分别点击；**数量上限** `bdl.link.lensMax`（默认 10）控制行数，超出给一条「…共 N 个」汇总；函数级反查（每个函数定义上方「🔗 被 N 处调用」，调用点来自 `wsindex.CallsOf`） | **定位**：VSCode 已有侧边栏「链接资料」TreeView（三级树、可点、可分页），Code Lens 是**就地补充视图**——在 MAIN 头上多看一眼，不用切面板；**两者并存，不互相替代**。服务端实现**两端共用**（VSCode 同样支持 codeLens） |
+| ✅ P2-1 | ~~schema（发布后一版）~~ **已实现 2026-10-23** | ① **tiptop `schema import/status`**：Oracle 导出 CSV → `.project/.schema/{tables.json, tables/<大写表>.json}`，表头两处拼写容错、`-tables`/`-only-new`/`-dry-run`、原子写、坏索引报错且保留原文件；② **bdl-lsp**：`internal/schema` 改成"只读总索引 + 表文件展开才加载并缓存"，旧 `.sch` 扫描与 `schema.paths` **整包下线**；请求 `bdl/schemaTables`（服务端正则过滤 + total/matched/returned，非法正则退回全部 + filterError）与 `bdl/schemaColumns`；悬停三段（`LIKE t.col` 附单列、`RECORD LIKE t.*` 列字段（>20 折叠）、悬停表名给表摘要）；`rec.` 补全带类型与中文说明；③ **插件 0.6.0**：独立视图「数据库字段」（正则查询框、展开加载、右键同步单表/复制 `LIKE t.col`/打开表文件、"共 N 张表"）、`从 CSV 导入` 命令（先 `-dry-run` 预演再确认）；④ 开关仍是 `bdl.schema.enable`（默认关）+ `schema.dataDir` | **真实数据实测**：整份 `demo.csv`（58,096 行）→ 2648 表 / 58096 列 / 2.4 s；LSP 侧 `^IMA_` 匹配 1、`ima_file` 317 列；悬停 `RECORD LIKE ima_file.*` 列出字段并折叠、`LIKE ima_file.ima01` 显示 `VARCHAR2(40) · 料件编号`。测试：`internal/schema`（格式/版本/惰性/正则/展示）、`internal/server`（成员校验 3 例 + 悬停 3 例 + 补全 + 两个请求 + 关开关）、`internal/schemacli` 11 例、e2e 43/43（新增"数据库字段端到端查询与正则过滤"） |
 
 **已完成（2026-10-23 第二轮）**：
 
@@ -104,6 +111,8 @@
   `.project/deploy.json`；e2e 42/42。
 - ✅ **P1-6 实现并验证**：去掉 7 天过期（`link-data-stale` + `maxAgeDays`）与后台自动同步
   （死代码 `Scheduler`）；同步只由命令触发。
+- ✅ **P2-1 实现并验证**：数据库字段资料全链路（tiptop 导入 → bdl-lsp 读取/悬停/请求 → 插件视图）；
+  真实数据 2648 表 / 58096 列跑通。
 
 ---
 
@@ -153,20 +162,49 @@
 
 ---
 
-## D. Zed 扩展（暂停中，`zed-bdl 0.1.1`）
+## D. Zed 扩展（**追平中**，`zed-bdl 0.1.1`）
 
-**用户 2026-10-22 明确：暂停，本次不做。** 记录在此以免恢复时重新摸索。
+> **用户 2026-10-23 决定重启**：按 VSCode 的进度追平 Zed 插件。
+> **完整计划与设计依据见 [zed-extension/docs/PLAN.md](../../zed-extension/docs/PLAN.md)**
+> （约 800 行：平台能力核实、Code Lens 方案、差距矩阵、已知坑）。
+> 本节是**可勾选的待办清单**，按「是否需要动其他仓库」分成两类。
+>
+> **关键前提（已核实）**：Zed 无侧边栏树视图 API → 链接资料改用
+> **Code Lens 挂在 MAIN 头上**（服务端 `textDocument/codeLens`，
+> 与 §P 的 P1-8 **同一份实现**，两端共用）。
 
-| # | 事项 | 位置 |
+### D-A. 只需改 `zed-extension/`（不动其他仓库）
+
+| # | 事项 | 做法要点 | 验收 |
+|---|---|---|---|
+| Z-A1 | 文档纠错（9 条） | `bdl-lsp link/deploy` → `tiptop link/deploy`（这两个子命令 0.3.2 已移除）；删 `link.maxAgeDays` 与整块 `link.sync.*`；`link.dataDir` 默认 `.project`；`link.enable`/`schema.enable` 默认 **false**；诊断码表同步 14 个码；补 `prod.*` 说明；修「Zed 不支持任意命令」「不消费语义 token」两处错误结论；版本号 0.3.0→0.3.11 | `zed-extension/README.md` + `docs/USER-GUIDE.md`；全文 grep 无过期命令名 |
+| Z-A2 | **补轻量档默认**（真实行为差异） | VSCode 客户端在 `client.ts:147` 显式下发 `link/schema.enable=false`；**Zed 侧是原样透传**，服务端兜底返回 `true`（`internal/config/config.go:161,228`）→ Zed 用户开箱即用时链接资料与 schema 是**开着的**，与 VSCode 相反。修法：在 `language_server_workspace_configuration` 返回前把缺失的三开关补成 `false` | Zed 开箱即轻量档；与服务端兜底逻辑一致（兜底仍是"开"，那是无客户端设置时的安全兜底） |
+| Z-A3 | 语义高亮落地 | 加 `languages/bdl/semantic_token_rules.json`（+ `per/`）；文档教用户开 `{"languages":{"Genero BDL":{"semantic_tokens":"combined"}}}`（**默认 off**，必须写清）；`verify-manifest.py` 加校验防误删 | 开 `semantic_tokens` 后自定义符号着色；`verify-manifest.py` 全绿 |
+| Z-A4 | slash command 入口 | 实现 `run_slash_command` + `extension.toml` 声明 `[slash_commands.*]`；4 条：`/bdl-link-status`、`/bdl-deploy-dry-run`、`/bdl-deploy-list`、`/bdl-force-parse`；走 `zed::process::Command` 调 tiptop（需新增「定位 tiptop」四级查找）；**采集/导入类（会写盘）不进 slash command**，只给 task | 命令面板/Agent 面板可用；新增校验：extension.toml 声明与 Rust `match` 分支一一对应（写错名不会编译错，只会静默不响应） |
+| Z-A5 | task 模板更新 | 命令名改 `tiptop`；补 `deploy -list`；补 4 条链接资料 task | `docs/USER-GUIDE.md` §7 |
+| Z-A6 | Code Lens **实机验证** | 两个关键行为决定实现方式：① `code_lens: "on"` 时**多条同 range 的 lens 是否各占一行**；② 点击 lens 的 `command` 能否打开目标文件 | **有 GUI 的机器**上实测（本沙箱做不了） |
+| Z-A7 | 「VSCode 独有 / Zed 降级」对照表 | USER-GUIDE 新增一节：Zed 无侧边栏树 → 用 MAIN 头上的 Code Lens；反查为**函数级** | 文档与实现一致 |
+| Z-A8 | `.project/deploy.json` 生成助手 | Rust 侧从 `prod.deploy.*` 合成（对应 VSCode `src/deployconfig.ts` 的 `ensureDeployConfig`） | 与 VSCode 行为一致 |
+| Z-A9 | 扩展版本 0.1.1 → 0.2.0 | 版本策略：每完成一轮完整改动 +1（与 HANDOVER 一致） | `extension.toml` + `Cargo.toml` 同步 |
+
+### D-B. 需要动其他仓库（🔒 需授权）
+
+| # | 事项 | 仓库 | 做法要点 | 验收 |
+|---|---|---|---|---|
+| 🔒 Z-B1 | **`workspace/executeCommand` 通道** | `bdl-lsp` | `ServerCapabilities`（`internal/server/server.go:363-394`）加 `ExecuteCommandProvider`；新增 `workspace/executeCommand` handler，把现有 `bdl/linkTree`/`bdl/linkReferences`/`bdl/forceParse` 三个自定义请求**转接**为标准命令（§6-①） | 协议级测试；VSCode 侧不受影响（继续用自定义请求） |
+| 🔒 Z-B2 | **Code Lens 服务端实现**（**两端共用**） | `bdl-lsp` | 实现 `textDocument/codeLens`：链内子文件各一条 lens 挂 MAIN 头上（数据来自 `link.Resolver.Tree()`，**纯内存查询**）；`bdl.link.lensMax` 配置（默认 10）；函数级反查用 `wsindex.Index.CallsOf`（调用点已存 `Name/File/Line/Col`）；**依赖 Z-B1**（点击命令） | 与 §P 的 P1-8 同一份实现；协议级测试 |
+| 🔒 Z-B3 | 二进制自动下载 | `bdl-lsp` + `tiptop` | Zed 扩展用 `latest_github_release` → `current_platform()` 拼资产名 → `download_file` → `make_file_executable`；**前置是 bdl-lsp 要有 GitHub Release**（§C1/C2/C3 未做） | 扩展侧安装即用，不用手工 `make build` |
+| 🔒 Z-B4 | 文档同步 | `bdl-lsp/docs` | 本节（§D）；`HANDOVER.md` 的 §0/§4/§8；`FEATURES.md` 补 Code Lens 行 | 三处口径一致 |
+
+### D-C. 已决定不做
+
+| # | 事项 | 原因 |
 |---|---|---|
-| D1 | 命令仍是 `bdl-lsp link` / `bdl-lsp deploy` | `docs/USER-GUIDE.md:130,314,320,323,326,329,339,343,349` 等；`docs/images/zed/README.md:15` |
-| D2 | 无内置二进制 | 需手工 `make build` + 配 `lsp.bdl-lsp.binary.path` |
-| D3 | 版本信息过期 | `docs/USER-GUIDE.md:3` 写"语言服务器 `bdl-lsp 0.3.0`"，实际 0.3.4 |
-| D4 | 部署 task 模板需改 tiptop | `docs/USER-GUIDE.md` §7.1 tasks.json 片段 |
-| D5 | 与 VSCode 的能力差距 | 无"链接资料"TreeView（Zed 无该 API）、无 `bdl.deploy.enable` / `bdl.link.enable` 开关、无"重启服务器"命令、设置只能写 JSON |
-
-**恢复时的工作量**：D1/D3/D4 纯文档（半小时）；D2 是设计问题（Zed 扩展能否
-内置平台二进制）；D5 大部分是 Zed API 限制，**无解**，只能文档说明。
+| ❌ | Zed 侧**复刻** VSCode 侧边栏 TreeView | Zed 无树视图 API；改用 MAIN 头上的 Code Lens（§D 关键前提） |
+| ❌ | 把链接树从 bdl-lsp **移到 tiptop** | **用户 2026-10-23 决策：link 分析保持原状。**（分析见 zed PLAN §3.6：移走省不下开销 —— `Resolver.Tree()` 本就是纯内存查询，真正解析源码的采集阶段早就在 tiptop） |
+| ❌ | Call Hierarchy（`prepareCallHierarchy`） | **语义不等价**：call hierarchy 基于源码调用点，链接资料来自数据库的程序-文件映射；"链接进链但没被调用"的文件它看不到，而那正是业务要看的 |
+| ❌ | LSP `documentLink` | **位置分散**在文中（每个子文件一个 link 节点散落各行），正是 Code Lens 要避免的 |
+| ❌ | slash command 里做**会写盘**的采集/导入 | 误触成本高；这类操作只给 task（显式确认） |
 
 **注意**：`zed-extension/extension.toml` 的 `language_servers.bdl-lsp` 仍指向
 `bdl-lsp`——这一层**不需要改**（语言服务器职责没变），只有"采集/部署"的命令名要改。
@@ -209,11 +247,17 @@
 
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
 2. **§P 插件改版**（发布前）：P0-1 ✅、P0-2 ✅、P0-3 ✅、P1-2 ✅ →
-   P1-3 ✅ → P1-1 ✅ → P1-4 ✅ + P1-5 ✅ → P1-6 ✅ →
-   **P1-7（用户文档按最终形态重写）**；随后 §B1/B2 实机验收 + §C 发布闭环；P2-1（schema）发布后一版
-3. **§B1 + B2**（需要机器；这两项决定"能不能交付给别人用"）
-4. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
-5. §D（等用户决定是否恢复 Zed）
+   P1-3 ✅ → P1-1 ✅ → P1-4 ✅ + P1-5 ✅ → P1-6 ✅ → **P2-1 ✅（schema，提前到发布前做）** →
+   现在只剩**发布闭环**：
+   §B1 Windows 实机（按 `WINDOWS-CHECKLIST.md` 走一遍）+ B2 macOS → §C1 打 tag → C2 Release（四个 VSIX + 二进制）→ C3 市场/注册表（暂缓，用户已定）
+   文档项：P1-7（用户文档重写）可与发布并行；§D/§E/§F 持续跟踪
+3. **§D Zed 追平**（2026-10-23 重启）：
+   - **Z-B1**（`bdl-lsp` 加 `workspace/executeCommand`）→ **Z-B2**（Code Lens 服务端实现，
+     **§P 的 P1-8 与它共用同一份**）→ Zed 侧 Z-A1…Z-A7；
+   - Zed 侧 **Z-A6（Code Lens 实机验证）**应**先做**——它决定 Z-B2 的实现方式；
+   - Z-B3（自动下载）依赖 §C1/C2/C3。
+4. **§B1 + §B2**（需要机器；这两项决定"能不能交付给别人用"）
+5. **§C1 + C2 + C3**（发布闭环；做完才算"可分发"）
 6. §E / §F（持续跟踪）
 
 ---
@@ -221,5 +265,11 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，从 §P 的 P1-7（用户文档重写）开始做。
+读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，开始**发布闭环**（§G 第 3–4 步）：
+先按 docs/WINDOWS-CHECKLIST.md 做 Windows 实机验收，再打 tag（C1）与 GitHub Release（C2）。
+```
+
+```text
+做 Zed 追平：读 zed-extension/docs/PLAN.md（完整计划）+ 本文件 §D（待办清单）。
+先做 Z-A6（Code Lens 实机验证），再做 Z-B1 → Z-B2。
 ```

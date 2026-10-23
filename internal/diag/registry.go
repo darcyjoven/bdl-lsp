@@ -110,7 +110,7 @@ var summaries = map[Code]string{
 	CodeFormDuplicateItem:         "表单 `ATTRIBUTES` 里重复定义了同名 item",
 	CodeFormLayoutTagUndefined:    "表单 `LAYOUT` 里引用了 `ATTRIBUTES` 未定义的 item tag",
 	CodeFormScreenRecordUndefined: "表单 `SCREEN RECORD` 引用了未定义的 item 或字段名",
-	CodeRecordMemberUnknown:       "`BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用 `.sch` 展开（默认关）",
+	CodeRecordMemberUnknown:       "`BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用字段资料（`.project/.schema`）展开（默认关）",
 	CodeFileTooLarge:              "文件超过解析上限（`bdl.limits.maxFileBytes` / `maxFileLines`），已跳过语法检查",
 	CodeParseTimeout:              "解析超时（`bdl.limits.parseTimeoutMs`），本轮已跳过诊断；可提高上限或对当前文件执行「强制解析」",
 	CodeFunctionNotFound:          "调用处的函数名在当前模块及可用模组中找不到定义（需链接资料）",

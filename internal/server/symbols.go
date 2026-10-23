@@ -274,6 +274,11 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 		if h := s.hoverBuiltin(doc, idx, offset, word); h != nil {
 			return reply(ctx, *h, nil)
 		}
+		// P2-1：把表名当普通标识符悬停时（`DEFINE r LIKE ima_file.*` 里的
+		// ima_file 本身、或 `rec.col` 里的表名），给出字段资料摘要。
+		if h := s.schemaHoverForTableName(word); h != nil {
+			return reply(ctx, *h, nil)
+		}
 		return reply(ctx, nil, nil)
 	}
 
@@ -291,6 +296,12 @@ func (s *Server) handleHover(ctx context.Context, reply jsonrpc2.Replier, req js
 	// 标注它是模组全局变量（跨模块共享）。
 	if len(matches) == 1 && matches[0].Scope == index.ScopeGlobals {
 		sb.WriteString("\n\n---\n模组全局变量（GLOBALS 块内定义，跨模块共享）")
+	}
+
+	// P2-1：声明里带 `LIKE t.col` / `LIKE t.*` 时追加字段资料
+	//（没有资料就不追加，见 schemaAppendixForSymbol）。
+	if len(matches) == 1 {
+		sb.WriteString(s.schemaAppendixForSymbol(matches[0].TypeText))
 	}
 
 	return reply(ctx, protocol.Hover{

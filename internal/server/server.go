@@ -48,8 +48,10 @@ type Server struct {
 	links *linkState
 	// ws 是工作区符号索引（P6）的运行时状态，始终非 nil。
 	ws *wsIndexState
-	// schema 是数据库 schema 索引（P6）；未启用/没有 .sch 时为 nil。
-	schema *schema.Index
+	// schema 是项目里的数据库字段资料（P2-1）；未启用/还没导入时为 nil。
+	schema *schema.Data
+	// schemaErr 是上次加载字段资料失败的原因（供视图显示；nil = 正常或还没导入）。
+	schemaErr error
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。
@@ -254,6 +256,10 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleLinkReferences(ctx, reply, req)
 	case MethodForceParse:
 		return s.handleForceParse(ctx, reply, req)
+	case MethodSchemaTables:
+		return s.handleSchemaTables(ctx, reply, req)
+	case MethodSchemaColumns:
+		return s.handleSchemaColumns(ctx, reply, req)
 	default:
 		return s.handleUnknown(ctx, reply, req)
 	}

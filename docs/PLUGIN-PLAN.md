@@ -4,7 +4,8 @@
 > 盘点：2026-10-23。**本文件是这次改版的唯一设计依据**，待办勾选在 [PENDING](PENDING.md) §P。
 >
 > 结论先说：**发布前 = 除 schema 外的全部**（含 `.project` 目录迁移、设置重分组、三档默认、
-> link 局部同步、命令入口、两个 bug）；**schema 功能（`.schema` 数据 + 视图 + 悬停扩展）= 发布后一版**。
+> link 局部同步、命令入口、两个 bug）；schema 功能（`.schema` 数据 + 视图 + 悬停扩展）
+> **已于 2026-10-23 实现**（见 §7）。
 
 ---
 
@@ -22,7 +23,7 @@
 | P1-5 | 设置 | 设置重分组为 5 类；生产环境配置（DB/部署）不再用文件配置 | 插件 | 中（发布前） |
 | P1-6 | **功能 · 已实现** | 去掉 7 天过期与后台自动同步；改为用户主动更新 | 三处 | ✅ 已实现（2026-10-23） |
 | P1-7 | 文档 | 用户文档重写为插件说明（README/市场说明） | 插件 | 中（发布前，最后做） |
-| P2-1 | 新功能 | **schema**：`.project/.schema`、视图、正则查询、hover 扩展、同步策略 | 插件 + tiptop | **发布后一版** |
+| P2-1 | **新功能 · 已实现** | **schema**：`.project/.schema`、视图、正则查询、hover 扩展、同步策略 | 插件 + tiptop | ✅ 已实现（2026-10-23） |
 
 ---
 
@@ -470,10 +471,30 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 
 ---
 
-## 7. P2-1：schema（发布后一版做）
+## 7. P2-1：schema（字段资料）· **已实现 2026-10-23**
 
-> 用户明确：**schema 功能放到正式发布之后一个版本**；本节只留设计，不排进发布前待办。
-> 数据来源附件（Oracle 导出，6 万多行）暂未拿到，格式按下面设计先定，拿到再校准。
+> 用户 2026-10-23 调整：**schema 与发布一起做**（不再留到发布后）。
+> 数据来源就是用户给的 Oracle 导出（`demo.csv`，58,100 行）。
+
+### 7.0 实现总览（与设计的一致性）
+
+| 设计（本节其余小节） | 实现 |
+|---|---|
+| `.project/.schema/{tables.json, tables/<TABLE>.json}` | ✅ 格式完全照设计（tiptop 写、bdl-lsp 只读） |
+| 一个总索引 + 每表一个文件、**展开才加载** | ✅ `internal/schema`：`LoadData` 只读总索引，`Table()` 惰性读表文件并缓存（坏文件也缓存，不反复重读） |
+| 不再读各模组下分散的 `sch/*.sch`，`schema.paths` 下线 | ✅ `.sch` 解析/扫描（`discover.go`/`parse.go`）整包删除，`schema.paths` 从 Go 配置、插件设置、文档里全部移除 |
+| 独立「数据库字段」视图 + 正则查询框 + 展开加载 | ✅ 新视图 `bdlSchema`（与「链接资料」并列，同一开关门控）；正则**在服务端**过滤（6 万表也不卡）；非法正则→显示全部 + 一行提示（边打边过滤时不该闪成"没有匹配"） |
+| 字段节点显示 `列名 · 类型(长度) · 中文说明` | ✅ 视图/悬停/补全三处同一套 `Column.HoverLine()` |
+| 右键：同步选中的表 / 复制列定义 / 打开资料文件 | ✅ `-tables <表>` 局部导入（先 `-dry-run` 确认）、复制 `LIKE t.col`、打开 `tables/<TABLE>.json` |
+| 「共 N 张表（显示 M）」 | ✅ `bdl/schemaTables` 同时返回 `total/matched/returned`，info 节点展示 |
+| 悬停扩展（`LIKE t.col` / `RECORD LIKE t.*` / 表名） | ✅ 见 §7.4（三段实现在 `internal/server/schemahover.go`） |
+| `rec.` 补全带中文说明 | ✅ 补全项 `detail` = 类型、`documentation` = 说明（新 `completion.MemberColumn`） |
+| 同步策略（全量/选表/只新表） | ✅ 落在 tiptop `schema import` 的 `-tables` / `-only-new` / `-dry-run` |
+| 与 link 一致：不后台静默同步 | ✅ 只有命令触发；导入/同步前都先 `-dry-run` 并让用户确认 |
+
+**一处刻意的差异**：设计里 7.2 的"查全表"指的是**直连 Oracle 查 `ALL_TAB_COLUMNS`**；
+本次只做了 **CSV 导入**（用户手上就是导出文件，`tiptop schema import -csv`），
+`tiptop schema sync`（直连库、按表 diff）留作以后可选——接口（`-source golang` 那套）已经在那里。
 
 ### 7.1 数据来源与模型（`.project/.schema/`）
 
@@ -504,7 +525,7 @@ data_length, char_length, data_precision, data_scale, nullable, default_length
 - 与旧 `.sch` 的关系：**不再读各模组下分散的 `sch/*.sch`**（用户明确不要），
   `schema.paths` 之类配置随之下线。
 
-### 7.2 同步策略（发布后）
+### 7.2 同步策略（已实现：tiptop `schema import` 的 -tables/-only-new/-dry-run）
 
 - 全量：查全表 → 与本地逐表 diff → 只重写变化的表文件（并在输出里给出"新增/变更/删除"计数）；
 - 选表：视图里多选表 → 只更新这些表（右键菜单）；
@@ -519,7 +540,7 @@ data_length, char_length, data_precision, data_scale, nullable, default_length
 - 右键表/字段：`同步选中的表`、`复制列定义`、`在 schema 文件中打开`；
 - 与 link 一样：**不后台静默同步**，所有同步都是点击触发，跑完给输出摘要。
 
-### 7.4 悬停扩展（发布后）
+### 7.4 悬停扩展（已实现）
 
 | 场景 | 现状 | 发布后 |
 |---|---|---|

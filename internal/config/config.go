@@ -151,13 +151,22 @@ func (s Settings) BuiltinsEnabled() bool {
 // 解析的是工作区里的 `.sch` 文件（`<模组根>/<模组>/sch/*.sch`），
 // 不连数据库、不读生产库信息。
 type SchemaSettings struct {
-	// Enable 关闭后不解析 .sch 文件（`LIKE t.*` 的记录退回"不校验"）。
+	// Enable 关闭后不读字段资料（`LIKE t.*` 的记录退回"不校验"、悬停不追加说明）。
 	Enable *bool `json:"enable,omitempty"`
-	// Paths 是额外的 schema 目录（相对工作区根，或绝对路径）。
-	Paths []string `json:"paths,omitempty"`
+	// DataDir 是字段资料目录（相对工作区根），默认 `.project/.schema`。
+	// 资料由 tiptop 生产（`tiptop schema import`）。
+	DataDir string `json:"dataDir,omitempty"`
 }
 
-// SchemaEnabled 报告 schema 索引是否启用（默认启用）。
+// SchemaDataDir 返回字段资料目录（默认 `.project/.schema`）。
+func (s Settings) SchemaDataDir() string {
+	if v := strings.TrimSpace(s.Schema.DataDir); v != "" {
+		return v
+	}
+	return ".project/.schema"
+}
+
+// SchemaEnabled 报告字段资料是否启用（客户端没下发时的兜底是启用）。
 func (s Settings) SchemaEnabled() bool {
 	if s.Schema.Enable == nil {
 		return true
@@ -402,8 +411,8 @@ func (m *Manager) merge(s *Settings) {
 		v := *s.Schema.Enable
 		m.cur.Schema.Enable = &v
 	}
-	if len(s.Schema.Paths) > 0 {
-		m.cur.Schema.Paths = append([]string(nil), s.Schema.Paths...)
+	if v := strings.TrimSpace(s.Schema.DataDir); v != "" {
+		m.cur.Schema.DataDir = v
 	}
 	if s.Link.Enable != nil {
 		v := *s.Link.Enable

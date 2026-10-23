@@ -65,7 +65,16 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 	// P6：`. `左侧是 `RECORD LIKE t.*` 时，把数据库列作为精确候选。
 	fi, _ := s.indexFor(doc)
 	if cctx.AfterDot {
-		cctx.Members, cctx.MemberDetail = s.schemaMembersForCompletion(fi, lineText)
+		cols, detail := s.schemaMembersForCompletion(fi, lineText)
+		cctx.MemberDetail = detail
+		if len(cols) > 0 {
+			cctx.MemberColumns = make([]completion.MemberColumn, 0, len(cols))
+			for _, c := range cols {
+				cctx.MemberColumns = append(cctx.MemberColumns, completion.MemberColumn{
+					Name: c.Name, Type: c.Display(), Desc: c.Desc, Table: detail,
+				})
+			}
+		}
 	}
 
 	// 注释/字符串里不补全：关键字会干扰写作。

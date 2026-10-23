@@ -50,6 +50,14 @@ type Item struct {
 	SortText string
 }
 
+// MemberColumn 是带说明的记录成员（来自数据库字段资料，P2-1）。
+type MemberColumn struct {
+	Name  string
+	Type  string
+	Desc  string
+	Table string
+}
+
 // Context 描述补全发生的位置。
 type Context struct {
 	// Lang 是 bdl 或 per。
@@ -72,6 +80,9 @@ type Context struct {
 	Members []string
 	// MemberDetail 是 Members 的右侧说明（如 "maj_file 的列"）。
 	MemberDetail string
+	// MemberColumns 是**带说明**的成员（数据库字段资料，P2-1）：
+	// 有它时优先使用，每一项自带类型与中文说明。
+	MemberColumns []MemberColumn
 }
 
 // Result 是一次补全的结果。
@@ -142,6 +153,22 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 	if ctx.AfterDot {
 		// 记录的已知成员优先：`maj.` → maj_file 的全部列（schema 索引）。
 		// 这类记录在语料里有 21144 处，靠表单字段猜几乎没有命中率。
+		if len(ctx.MemberColumns) > 0 {
+			for _, m := range ctx.MemberColumns {
+				doc := m.Desc
+				if doc != "" && m.Table != "" {
+					doc = m.Table + " · " + doc
+				}
+				add(Item{
+					Label: m.Name, Kind: KindField,
+					Detail: m.Type, Documentation: doc,
+					SortText: "0" + m.Name,
+				})
+			}
+			sortItems(items)
+			return Result{Items: truncate(items, max)}
+		}
+		// 没有带说明的成员时，退回"只有名字 + 统一说明"的旧形态。
 		if len(ctx.Members) > 0 {
 			for _, m := range ctx.Members {
 				add(Item{Label: m, Kind: KindField, Detail: ctx.MemberDetail, SortText: "0" + m})

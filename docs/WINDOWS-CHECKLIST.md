@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.11` · `tiptop 0.1.6` · `4gl-full 0.5.6` |
+| 被测版本 | `bdl-lsp 0.3.12` · `tiptop 0.1.7` · `4gl-full 0.6.0` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -166,24 +166,24 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.5.6-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.6.0-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.5.6-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.6.0-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.5.6-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.6.0-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
         -Filter "darcyjoven.4gl-full-*" | Sort-Object Name | Select-Object -Last 1).FullName
 Get-ChildItem "$ext\bin"                       # 期望：bdl-lsp.exe、tiptop.exe、BUILD-INFO.json、若干 .dll
 Get-Content    "$ext\bin\BUILD-INFO.json"
-& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.11
-& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.6
+& "$ext\bin\bdl-lsp.exe" version               # 期望：bdl-lsp 0.3.12
+& "$ext\bin\tiptop.exe"  version               # 期望：tiptop 0.1.7
 & "$ext\bin\bdl-lsp.exe" check "$ws\topcust\aap\4gl\broken.4gl"
 ```
 
@@ -373,7 +373,7 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 
 - [ ] 4.1 构建成功，产物 `artifacts\bin\bdl-lsp.exe` 存在（PE 文件）
   - 记录：____
-- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.11`
+- [ ] 4.2 `build.ps1` 末尾的 `version` 自检打印 `bdl-lsp 0.3.12`
   - 记录：____
 - [ ] 4.3 `-Check` 的样例冒烟通过（期望 `共 2 个文件，0 个有问题`）
   - 记录：____
@@ -453,6 +453,25 @@ powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 - [ ] 5.1c.6 关掉 `bdl.link.enable`：命令面板里这些命令消失，视图按钮也消失
   - 记录：____
 
+### 5.1d ⭐ 数据库字段资料（P2-1）
+
+> **前置**：`bdl.schema.enable` **默认关**，先打开它，侧边栏才会出现「数据库字段」视图。
+
+```powershell
+# 从 Oracle 导出 CSV 生成资料（也可以走命令面板「数据库字段：从 CSV 导入」）
+& "$ext\bin\tiptop.exe" schema import -csv .\gal_schema.csv -root "$ws"
+& "$ext\bin\tiptop.exe" schema status -root "$ws"
+```
+
+- [ ] 5.1d.1 侧边栏出现 **「数据库字段」** 视图，第一条显示"共 N 张表"（点 tooltip 能看到资料目录/导入时间/来源）
+- [ ] 5.1d.2 顶部 **正则查询框**：输入 `^IMA_` 只剩匹配的表（总数仍显示全部）；输入 `(ima`（半截正则）→ 显示**全部**并有一行"正则无效"
+- [ ] 5.1d.3 展开一张表 → 列出现（显示 `列名 · 类型(长度) · 中文说明`）；**第一次展开才加载**（表多时不卡）
+- [ ] 5.1d.4 在 `.4gl` 里写 `DEFINE r RECORD LIKE ima_file.*`，悬停 `r`：列出该表字段（超过 20 行显示"其余 N 个字段…"）
+- [ ] 5.1d.5 写 `DEFINE f LIKE ima_file.ima01`，悬停 `f`：多出一段 `字段资料：ima_file.ima01 · VARCHAR2(40) · 料件编号`
+- [ ] 5.1d.6 表上右键 →「复制列定义」得到 `LIKE ima_file.ima01`；「打开表资料文件」打开 `.project\.schema\tables\IMA_FILE.json`
+- [ ] 5.1d.7 关掉 `bdl.schema.enable`：视图与命令面板里的「数据库字段：…」命令都消失
+  - 记录：____
+
 ### 5.2 真实单文件部署 + scp 回退
 
 - [ ] 5.2.1 Windows 无 rsync → 输出里出现**显式回退**：
@@ -528,8 +547,11 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 | 3.9–3.10 | ⭐ secrets.json | ⬜ | |
 | 3.11 | ⭐ gofmt / CRLF | ⬜ | |
 | 4.1–4.5 | 源码构建 + 单测 | ⬜ | |
+| 5.1b | ⭐ link 局部同步（CLI） | ⬜ | |
+| 5.1c | ⭐ 链接资料命令（VSCode 内） | ⬜ | |
+| 5.1d | ⭐ 数据库字段资料（P2-1：视图/悬停/请求） | ⬜ | |
 | 5.1.1–5.2.5 | 部署（需服务器） | ⬜ | |
-| 6.1 | e2e 38/38 | ⬜ | |
+| 6.1 | e2e 43/43 | ⬜ | |
 
 **失败项汇总**（每条写：编号 / 期望 / 实际 / 日志或截图路径）：
 
@@ -538,7 +560,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.11` / `tiptop 0.1.6` / `4gl-full 0.5.6`
+- 被测版本：`bdl-lsp 0.3.12` / `tiptop 0.1.7` / `4gl-full 0.6.0`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

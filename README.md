@@ -137,7 +137,7 @@ bash scripts/corpus-smoke.sh 60
 | 语义高亮（自定义符号，仅 VSCode） | ✅ P6 |
 | record `BY NAME` 成员校验（默认 off） | ✅ P6 |
 | 工作区符号索引（跨文件跳转/引用/符号搜索） | ✅ P6 |
-| 数据库 schema 索引（`LIKE t.*` 成员、列补全） | ✅ P6 |
+| 数据库字段资料（`LIKE t.col` 悬停、`LIKE t.*` 成员、列补全带中文说明） | ✅ P2-1 |
 | 链接资料（跨文件可见性 / TreeView / `link-data-*`；**导入与状态在 tiptop**） | ✅ P7 |
 | 内置符号表（97 条，可配置/热更新） | ✅ P7 |
 | 忽略列表（文件/字段/表单 glob，含 `**`） | ✅ P8 |
