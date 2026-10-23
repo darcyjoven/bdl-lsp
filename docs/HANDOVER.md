@@ -19,6 +19,7 @@
 2. **§B 需要机器或真实环境的验证**：Windows 实机（最高价值：`scripts\build.ps1`、
    e2e、GLOBALS 路径 `axmt620.4gl`、部署 scp 回退）、macOS 实机、Zed GUI、
    真实 Genero 服务器（`fglcomp`/`fglform` 编译诊断行号映射）；
+   **Windows 逐条清单见 [WINDOWS-CHECKLIST.md](WINDOWS-CHECKLIST.md)**（可直接勾选）；
 3. **§C 发布**：GitHub Release、给 bdl-lsp 打 tag、去掉 tiptop `go.mod` 的 `replace`。
 
 等使用反馈的决策：`record-member-unknown` 默认级别（开启后全语料 24 条）、P7-D 分片（当前 415 KB）。
@@ -506,6 +507,7 @@ cd ../tiptop && source ../bdl-lsp/scripts/dev-env.sh && make build
 | [FEATURES](FEATURES.md) | 功能基线清单（编号 1–40）+ 阶段映射 |
 | [TODO](TODO.md) | 已完成/待办逐项清单（最详细的进度记录；§下一轮 = 真实环境验证） |
 | [TESTING](TESTING.md) | **测试矩阵**：L1–L6、Linux/Windows 命令、语料回归、常见失败 |
+| **[WINDOWS-CHECKLIST](WINDOWS-CHECKLIST.md)** | **Windows 实机逐条清单**（可直接勾选）：装包、内置二进制、UI 取证、⭐修复点回归 |
 | [EDITOR-SUPPORT](EDITOR-SUPPORT.md) | **VSCode/Zed 能力差异**：语义高亮、诊断、配置、部署 |
 | [PLAN-P7](PLAN-P7.md) | **P7 立项**：缺陷根因、内置符号、链接资料设计、待确认决策 |
 | [ENVIRONMENT](ENVIRONMENT.md) | 工具链、沙箱约束 |

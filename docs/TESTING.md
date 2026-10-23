@@ -220,6 +220,9 @@ make bench                 # python3 scripts/lsp-bench.py（didOpen/didChange）
 
 ## 5. 需要真实环境的测试（本沙箱做不了）
 
+> Windows 的**逐条可勾选清单**（装包、内置二进制、UI 取证、⭐本轮修复点）
+> 见 [WINDOWS-CHECKLIST.md](WINDOWS-CHECKLIST.md)——下表只列"要什么环境"。
+
 | 项目 | 环境 | 验收方式 |
 |---|---|---|
 | Windows 构建 + 运行 | Windows 10/11 + MinGW-w64 | CI `windows` job；`scripts\build.ps1 -Test -Check` |

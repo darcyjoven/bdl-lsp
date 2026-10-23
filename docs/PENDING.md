@@ -65,7 +65,7 @@
 
 | # | 事项 | 现状 | 验收 |
 |---|---|---|---|
-| B1 | **Windows 实机**（从未装过包） | ✅ CI 已双绿（构建 + 二进制自检 + `go test -race` + lint，见 B9），但**没有人在真机上装过 VSCode 扩展** | 装包 → 打开 `.4gl` → 语言服务器运行中、`tiptop version` 可执行、`scp` 部署、GLOBALS `%3A` URI 各跑一次 |
+| B1 | **Windows 实机**（从未装过包） | ✅ CI 已双绿（构建 + 二进制自检 + `go test -race` + lint，见 B9），但**没有人在真机上装过 VSCode 扩展** | 按 **[WINDOWS-CHECKLIST.md](WINDOWS-CHECKLIST.md)** 逐条勾选：装包 → 内置二进制 → LSP 在 UI 里的表现 → ⭐路径/`.link` 诊断 → scp 部署 |
 | B2 | **macOS 实机**（从未验证过） | CI 已产出 `darwin-x64` / `darwin-arm64` VSIX | 装包 → 打开 `.4gl` → 语言服务器运行中、`tiptop version` 可执行 |
 | B3 | 真实 Genero 服务器 | 无本机 `fglcomp`/`fglform` | `ssh` 通、`fglcomp -M` 可用、单文件部署 + 远程编译实跑一次 |
 | B4 | Zed dev extension 手工加载 | 无图形界面 | `zed: install dev extension` 能加载，LSP 起来，大纲层级正确 |
