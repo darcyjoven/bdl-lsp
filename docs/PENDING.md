@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.3` · `tiptop 0.1.1` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.4` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。`TODO.md` 是历史清单（按阶段记录勾选），
 > 其头部已补指针与版本（原 §A6）。
@@ -13,8 +13,8 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.3 | 语言服务；`link`/`deploy` 已分离出去 |
-| `tiptop` | 0.1.1 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows） |
+| `bdl-lsp` | 0.3.4 | 语言服务；`link`/`deploy` 已分离出去 |
+| `tiptop` | 0.1.2 | 采集 + 部署；依赖 bdl-lsp 公开包；自带 CI（Linux + Windows 双绿） |
 | `vscode-bdl` | 0.5.1 | 平台包内置两个二进制；CI 四平台打包 |
 | `zed-bdl` | 0.1.1 | **暂停**（用户 2026-10-22 决定） |
 
@@ -64,22 +64,24 @@
 
 | # | 事项 | 现状 | 验收 |
 |---|---|---|---|
-| B1 | **Windows 实机**（从未验证过） | 代码全部就绪 | CGO 构建、LSP 运行、`go test`、e2e、`scp` 部署、GLOBALS `%3A` URI 各跑一次 |
+| B1 | **Windows 实机**（从未装过包） | ✅ CI 已双绿（构建 + 二进制自检 + `go test -race` + lint，见 B9），但**没有人在真机上装过 VSCode 扩展** | 装包 → 打开 `.4gl` → 语言服务器运行中、`tiptop version` 可执行、`scp` 部署、GLOBALS `%3A` URI 各跑一次 |
 | B2 | **macOS 实机**（从未验证过） | CI 已产出 `darwin-x64` / `darwin-arm64` VSIX | 装包 → 打开 `.4gl` → 语言服务器运行中、`tiptop version` 可执行 |
 | B3 | 真实 Genero 服务器 | 无本机 `fglcomp`/`fglform` | `ssh` 通、`fglcomp -M` 可用、单文件部署 + 远程编译实跑一次 |
 | B4 | Zed dev extension 手工加载 | 无图形界面 | `zed: install dev extension` 能加载，LSP 起来，大纲层级正确 |
 | B5 | `record-member-unknown` 默认级别 | 默认 `off`（`LIKE table.*` 占 87% 引用） | 真实使用反馈后决定是否改 `warning` |
 | B6 | P3a `variable-source-unresolved` 人工标注 | `scripts/globals-audit.sh` **未做** | 抽 100 处人工标注，算出误报率 |
 | B7 | `expression name:` 跳过规则抽查 | 已修，未逐条复核 | 跑语料差异清单，人工抽查是否误伤 |
-| B8 | Windows URI 根因假说 | 未上机验证 | 打印两侧 `initialize` 入参再判断，不要先改代码 |
-| B9 | **Windows `go test` 在 CI 红**（2026-10-23 新增证据） | CI 的 Windows job 已能**构建 + 二进制自检通过**（构建那一步的 `build.ps1` 旧检查已修），但 `go test -race ./...` 失败；失败用例名需要 GitHub 日志（本地 `gh` 未鉴权，API 403）。tiptop 的 Windows job 同样卡在测试步 | 拿到日志 → 修掉平台相关用例，两个仓库的 windows job 变绿 |
+| B8 | ~~Windows URI 根因假说~~ | ✅ **已定位并修复（2026-10-23）**：不是客户端入参问题，而是**服务端自己手写 path→URI**（`internal/server/links.go` 的 `fileURI`、`wsindex.go` 的 `pathURI`）在 Windows 上产出非法的 `file://C:/…`（盘符落进 authority）。链接资料的诊断挂不上文件、索引位置打不开 | 见 B9 |
+| B9 | ~~Windows `go test` 在 CI 红~~ | ✅ **已解决（2026-10-23）**：bdl-lsp 与 tiptop 均 **Linux + Windows 双绿**。三类根因：① `scripts/build.ps1` 还在找兄弟 grammar 目录（构建步就红）；② 测试用 `"file://"+路径` 拼 URI（30 例连锁失败）；③ 生产侧同一个手写拼接（B8）；④ tiptop 缺 `.gitattributes`，Windows checkout 成 CRLF → `gofmt -l` 报全部文件 | 见 CI 运行记录 |
 
 **优先级**：B1 和 B2 最值得做——CI 已经产出这两个平台的包，但**从来没有人装过**。
 "CI 绿"不等于"能装上跑起来"。
 
-> **B9 已经推翻了一条旧假设**：bdl-lsp 的 Windows job 从 workflow 写进去那天起
-> 就红在"构建"，根因是 `scripts/build.ps1` 还在检查 `..\tree-sitter-bdl|per`
-> 兄弟目录（grammar 打 tag 后已不需要）。Linux job 一直绿，所以没人注意。
+> **Windows CI 这一轮还清掉了两条隐患**（都不在"等机器"的范畴，是真实缺陷）：
+> - 服务端 path→URI 手写拼接（B8）——Windows 用户看不到 `link-data-*` 诊断、索引位置打不开；
+> - tiptop `secrets.json` 的 0600 校验在 Windows 永远判"过松"（F7）——这条密码来源等于不可用。
+>
+> 教训已写进 [HANDOVER](HANDOVER.md) §7（坑 #37 手写 path→URI、#38 CRLF 与 gofmt）。
 
 ---
 
@@ -110,7 +112,7 @@
 |---|---|---|
 | D1 | 命令仍是 `bdl-lsp link` / `bdl-lsp deploy` | `docs/USER-GUIDE.md:130,314,320,323,326,329,339,343,349` 等；`docs/images/zed/README.md:15` |
 | D2 | 无内置二进制 | 需手工 `make build` + 配 `lsp.bdl-lsp.binary.path` |
-| D3 | 版本信息过期 | `docs/USER-GUIDE.md:3` 写"语言服务器 `bdl-lsp 0.3.0`"，实际 0.3.3 |
+| D3 | 版本信息过期 | `docs/USER-GUIDE.md:3` 写"语言服务器 `bdl-lsp 0.3.0`"，实际 0.3.4 |
 | D4 | 部署 task 模板需改 tiptop | `docs/USER-GUIDE.md` §7.1 tasks.json 片段 |
 | D5 | 与 VSCode 的能力差距 | 无"链接资料"TreeView（Zed 无该 API）、无 `bdl.deploy.enable` / `bdl.link.enable` 开关、无"重启服务器"命令、设置只能写 JSON |
 
@@ -148,8 +150,9 @@
 | F4 | Windows 无 rsync → scp 回退 | 稳定性/性能未实测 |
 | F5 | 沙箱 `HOME`/`GOPROXY` 对文档/CI 的影响 | 本地构建需 `source scripts/dev-env.sh` |
 | F6 | macOS 延后带来的构建差异 | CI 能构建，但**无人验证过产物**（同 B2） |
-| F7 | **Windows 上 `.link/secrets.json` 密码来源不可用** | 该文件按 unix 权限位校验（`perm & 077 != 0` 即拒绝），而 Windows 的 mode 位是 Go 合成的：可写文件一律 0666 → 一律判"权限过松"。Windows 上只能用 `BDL_ORA_PASSWORD` 环境变量。修法（未做）：Windows 跳过权限校验，或在文档里明确写死"Windows 用环境变量" |
-| F8 | **Windows `go test` 未绿** | 见 B9；两个仓库的 Windows 测试步都红，先要到日志才能定位 |
+| F7 | ~~Windows 上 `.link/secrets.json` 不可用~~ | ✅ 已修（tiptop 0.1.2）：该项按 unix 权限位校验，而 Windows 的 mode 位是 Go 合成的（可写文件一律 0666）→ 永远判"权限过松"。改为 `secretsPermTooLoose()`：Windows 跳过校验（ACL 不归我们判断），文档说明 |
+| F8 | ~~Windows `go test` 未绿~~ | ✅ 已修（2026-10-23）：见 B9，两个仓库 Linux + Windows 双绿 |
+| F9 | bdl-lsp 仍无 tag | 同 C2；tiptop 的 CI 因此只能追 `main`，版本漂移风险仍在（F1） |
 
 ---
 

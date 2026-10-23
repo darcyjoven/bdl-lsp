@@ -4,7 +4,8 @@
 > 用途：新会话开场只读这一份就能接手。细节在各阶段实现记录里。
 > **还剩什么**看 [PENDING.md](PENDING.md)（唯一清单）。
 >
-> 版本：`bdl-lsp` **0.3.3**（分离收尾清理）/ `tiptop` **0.1.1**（自带 CI）/ `vscode-bdl` **0.5.1** / `zed-bdl` **0.1.1**（暂停）。
+> 版本：`bdl-lsp` **0.3.4**（Windows 路径→URI 修复）/ `tiptop` **0.1.2** / `vscode-bdl` **0.5.1** / `zed-bdl` **0.1.1**（暂停）。
+> **Windows CI 自 2026-10-23 起 Linux + Windows 双绿**（见 [PENDING](PENDING.md) §B9）。
 > 版本策略（用户定）：从 0.1.1 起算，**每完成一轮完整改动并提交就 +1**；
 > 各仓库（含 tiptop）独立记版本，不要求一致。
 
@@ -64,8 +65,8 @@ GLOBALS、字段/表单、索引、内置符号、忽略列表、编辑器文档
 
 | 目录 | 远程 | 版本 | 内容 |
 |---|---|---|---|
-| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.3` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
-| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.1` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
+| `bdl-lsp/` | `github.com:darcyjoven/bdl-lsp.git` | `0.3.4` | Go LSP 服务器 + CLI（`serve`/`check`/`version`） |
+| `tiptop/` | `github.com:darcyjoven/tiptop.git` | `0.1.2` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI |
 | `vscode-extension/` | `github.com:darcyjoven/vscode-bdl.git` | `0.5.1` | VSCode 插件（平台包内置 `bdl-lsp` 与 `tiptop`；部署改调 tiptop） |
 | `zed-extension/` | `github.com:darcyjoven/zed-bdl.git` | `0.1.1` | Zed 插件（**暂停**） |
 
@@ -471,6 +472,28 @@ cd ../tiptop && source ../bdl-lsp/scripts/dev-env.sh && make build
     回归测试 `TestMergeOrderIndependent`（alter 先 / create 先两种顺序都断言）。
     教训：**任何"按顺序合并"的累积结构，都要问一句"顺序反过来还对吗"**——
     这类缺陷在本地跑十次九次是过的。
+
+37. **path→URI 绝不能手写拼接**（2026-10-23，Windows CI 一次抓出三处）：
+
+    `"file://" + filepath.ToSlash(path)` 在 Linux 上"看起来对"，在 Windows 上
+    得到 `file://C:/Users/...` —— 盘符落进 authority，是**非法 URI**。后果：
+    链接资料的 `link-data-*` 诊断挂在 `.link/` 文件上，URI 错了客户端收不到；
+    workspace index 给出的跨文件位置也打不开。
+
+    正解：一律走 `internal/fileuri.FromPath`（与 `fileuri.ToPath` 配对，
+    编码规则对齐 vscode-uri 的 `file:///C%3A/...`）。已改：`server/links.go`、
+    `server/wsindex.go`、`cmd/builtin-audit`、`cmd/diag-audit`。
+
+    测试侧同理：**测试里也不要拼 URI**，用 `testURI()`（内部走 FromPath），
+    否则 30 个用例在 Windows 上连锁失败。教训：URI 是**平台相关**的字符串，
+    "路径 ↔ URI"的转换只有 fileuri 包有资格做。
+
+38. **Windows 上 `gofmt -l` 报"所有文件未格式化" = CRLF**（2026-10-23）：
+
+    Git for Windows 会把文本文件 checkout 成 CRLF，gofmt 因此认为每个 `.go`
+    都不合规（Linux 一直绿，所以没人注意）。修法是在仓库根加
+    `.gitattributes`：`* text=auto eol=lf`（`*.ps1` 用 CRLF）。
+    bdl-lsp / vscode-bdl 早就有，tiptop 是这次补的。
 
     
 ## 10. 文档地图
