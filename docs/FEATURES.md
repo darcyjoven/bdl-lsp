@@ -113,7 +113,7 @@
 |---|---|---|---|
 | 35 | Zed 大纲层级修复 | **容器/叶子模型**：容器（函数/报表/MAIN/菜单）`@item` 绑整块 → 内部变量归属函数可折叠；叶子（DEFINE/TYPE/常量）`@item` 绑名字 → 同语句多变量平级 | P7-A / P7-B-3 |
 | 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
-| 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（13 个码）；默认 warning；拼错记 warn；旧专用键已删除 | P7-B（✅ 0.1.2） |
+| 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（当时 13 个码，现 **14** 个）；默认 warning；拼错记 warn；旧专用键已删除 | P7-B（✅ 0.1.2） |
 | 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
 | 39 | 程序链接资料索引 | `tiptop link import/status`（tiptop；bdl-lsp 只读取资料）；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
 | 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
