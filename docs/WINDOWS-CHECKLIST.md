@@ -9,7 +9,7 @@
 
 | 项 | 值 |
 |---|---|
-| 被测版本 | `bdl-lsp 0.3.13` · `tiptop 0.1.8` · `4gl-full 0.6.1` |
+| 被测版本 | `bdl-lsp 0.3.13` · `tiptop 0.1.8` · `4gl-full 0.6.2` |
 | 机器 | ____（Windows 版本 / 架构，如 Windows 11 23H2 x64） |
 | 执行人 / 日期 | ____ |
 | 总耗时 | ____ |
@@ -166,16 +166,16 @@ cd bdl-lsp   ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1 -Check
 cd ..\tiptop ; powershell -ExecutionPolicy Bypass -File scripts\build.ps1
 cd ..\vscode-extension
 npm install
-npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.6.1-win32-x64.vsix
+npm run package            # typecheck + 打包 → dist-vsix\4gl-full-0.6.2-win32-x64.vsix
 ```
 
-- [ ] 1.1 拿到 `4gl-full-0.6.1-win32-x64.vsix`
+- [ ] 1.1 拿到 `4gl-full-0.6.2-win32-x64.vsix`
   - 记录（来源与文件名）：____
 
 ### 1.2 安装并确认内置二进制可用
 
 ```powershell
-code --install-extension .\vsix\4gl-full-0.6.1-win32-x64.vsix --force
+code --install-extension .\vsix\4gl-full-0.6.2-win32-x64.vsix --force
 # 装完重启（或 Reload Window）VSCode
 
 $ext = (Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory `
@@ -569,7 +569,7 @@ powershell -ExecutionPolicy Bypass -File scripts\e2e-vscode.ps1
 
 **回归信息带回 Linux 侧**（贴到 `PENDING.md` §B1 或开 issue 时用）：
 
-- 被测版本：`bdl-lsp 0.3.13` / `tiptop 0.1.8` / `4gl-full 0.6.1`
+- 被测版本：`bdl-lsp 0.3.13` / `tiptop 0.1.8` / `4gl-full 0.6.2`
 - 机器与架构：
 - 失败项与最小复现：
 - 语言服务器输出（`Genero BDL: 显示输出` 整段）：

@@ -16,7 +16,7 @@
 |---|---|---|
 | `bdl-lsp` | 0.3.13 | 语言服务；`link`/`deploy`/`schema` 已分离出去 |
 | `tiptop` | 0.1.8 | 链接资料 + 表字段采集（CSV/直连库）+ 部署；自带 CI |
-| `vscode-bdl` | 0.6.1 | 平台包内置两个二进制；字段资料多选/进度/直连库同步 |
+| `vscode-bdl` | 0.6.2 | 首页改写为三档引导手册；字段资料多选/进度/直连库同步 |
 | `zed-bdl` | 0.1.1 | **追平中**（用户 2026-10-23 重启，见 §D） |
 
 **最近完成的（不再追踪）**：P1–P8 全部功能 · 0.3.1 GLOBALS 按文档隔离 ·
@@ -245,6 +245,9 @@
 
 ## G. 建议的推进顺序
 
+> ⚠️ **这一节是历史记录**。功能已全部完成，**剩余待办请看 [`NEXT.md`](NEXT.md)**
+>（发布闭环 C0/C0b/C1/C2/C3 + 真机验证 D1/D2 + 代码层遗留），新会话从那里的一句话开场。
+
 1. ~~**§A 全部**~~ —— ✅ 已完成 2026-10-23
 2. **§P 插件改版**（发布前）：P0-1 ✅、P0-2 ✅、P0-3 ✅、P1-2 ✅ →
    P1-3 ✅ → P1-1 ✅ → P1-4 ✅ + P1-5 ✅ → P1-6 ✅ → **P2-1 ✅（schema，提前到发布前做）** →
@@ -265,8 +268,7 @@
 ## 附：下一会话开场语
 
 ```text
-读 bdl-lsp/docs/PENDING.md 与 docs/PLUGIN-PLAN.md，开始**发布闭环**（§G 第 3–4 步）：
-先按 docs/WINDOWS-CHECKLIST.md 做 Windows 实机验收，再打 tag（C1）与 GitHub Release（C2）。
+读 bdl-lsp/docs/NEXT.md，从第 1 项「发布闭环」开始做：先按 docs/WINDOWS-CHECKLIST.md 做 Windows 实机验收，再打 tag（C1）并给 bundle-vsix.yml 加 release job（C2）。
 ```
 
 ```text
