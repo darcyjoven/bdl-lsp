@@ -489,7 +489,11 @@ tiptop link sync -files aap/4gl/saapt310.4gl[,cxm/4gl/x.4gl]  # 只更新这些 
 | 「共 N 张表（显示 M）」 | ✅ `bdl/schemaTables` 同时返回 `total/matched/returned`，info 节点展示 |
 | 悬停扩展（`LIKE t.col` / `RECORD LIKE t.*` / 表名） | ✅ 见 §7.4（三段实现在 `internal/server/schemahover.go`） |
 | `rec.` 补全带中文说明 | ✅ 补全项 `detail` = 类型、`documentation` = 说明（新 `completion.MemberColumn`） |
-| 同步策略（全量/选表/只新表） | ✅ 落在 tiptop `schema import` 的 `-tables` / `-only-new` / `-dry-run` |
+| 同步策略（全量/选表/只新表） | ✅ tiptop `schema sync`（**直连 Oracle**，0.1.8 补）/ `schema import`（CSV）：`-tables` / `-only-new` / `-prune` / `-dry-run`；表多时可用 `-tables-file` 传清单（命令行长度上限） |
+| 直连数据库 | ✅ `tiptop schema sync -source golang`：查 `ALL_TAB_COLUMNS` + `ALL_COL_COMMENTS`（`-owner` 默认取 `-user` 大写），复用 `internal/oradb`（密码来源与 link 采集完全一致：`${env:}` → `BDL_ORA_PASSWORD` → `.project/secrets.json`） |
+| 视图多选（选一个或多个表） | ✅ 树视图原生不能多选 → 用 `TreeItem.checkboxState` **复选框**：勾选多张 →「同步已选中的表」；另有「全选当前列表」「清除勾选」 |
+| 筛选结果批量 | ✅ 「同步当前筛选结果」：正则过滤后的整批表一次同步（>100 张自动改走 `-tables-file`） |
+| 进度显示（用户点名） | ✅ tiptop 统一进度协议（stderr，`进度\t阶段\t详情[\ti\tn]`，见 `internal/progress`）：**采集**（连接/已收到 N 行）→ **扫描源码 / 解析表 i/n** → **成链** → **写入完成**；插件用 `vscode.window.withProgress` 显示同一条文案并可取消；**link 与 schema 一致** |
 | 与 link 一致：不后台静默同步 | ✅ 只有命令触发；导入/同步前都先 `-dry-run` 并让用户确认 |
 
 **一处刻意的差异**：设计里 7.2 的"查全表"指的是**直连 Oracle 查 `ALL_TAB_COLUMNS`**；

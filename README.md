@@ -14,9 +14,10 @@
 - 部署到服务器并调用 `fglform` / `fglcomp` 编译、编译结果回传为诊断（**自 0.3.2 起由 [tiptop](https://github.com/darcyjoven/tiptop) 执行**）
 - Genero 以 **2.50** 为基线；5.0 暂不排期
 
-> 当前状态：**P1–P8 全部完成**（`bdl-lsp 0.3.11` / `tiptop 0.1.6` / `vscode-bdl 0.5.6`）：语言智能、GLOBALS、字段/表单、
-> 工作区索引、内置符号、忽略列表均已落地；链接资料的采集/导入与部署已分离到 tiptop。
-> 剩下的是真实环境验证，见 [PENDING.md](docs/PENDING.md)。
+> 当前状态：**功能已全部完成**（`bdl-lsp 0.3.13` / `tiptop 0.1.8` / `vscode-bdl 0.6.1`）：语言智能、GLOBALS、
+> 字段/表单、工作区索引、内置符号、忽略列表；链接资料采集/导入/局部同步与部署已分离到 tiptop；
+> 数据库字段资料（P2-1）含 CSV 与**直连 Oracle**采集、视图/悬停/补全、多选与筛选批量、进度显示。
+> 剩下的是**发布闭环**（Windows/macOS 实机验证、打 tag、Release），见 [PENDING.md](docs/PENDING.md)。
 > P3a：GLOBALS 模组全局变量的跨文件跳转、来源标注与两类可关闭警告。
 > P3b：4GL 字段存在性校验与 .per 内部一致性。功能基线见 [FEATURES](docs/FEATURES.md)。
 > 已确认：四个仓库远程、`ssh + rsync` 主 / `scp` 备、warning 默认、v1 验证 Linux + Windows、
@@ -27,9 +28,9 @@
 
 | 本地目录 | 远程仓库 | 内容 | 状态 |
 |---|---|---|---|
-| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | **v0.3.11 可用** |
-| `tiptop/` | `git@github.com:darcyjoven/tiptop.git` | 链接资料采集/导入/状态 + 部署（依赖 bdl-lsp 公开包），自带 CI | **v0.1.6 可用** |
-| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp` 与 `tiptop`） | **v0.5.6 可用**，e2e 42/42 |
+| `bdl-lsp/` | `git@github.com:darcyjoven/bdl-lsp.git` | Go 语言服务、CLI、测试脚本、中文文档、过程产物 | **v0.3.13 可用** |
+| `tiptop/` | `git@github.com:darcyjoven/tiptop.git` | 链接资料 + 表字段资料采集（CSV / 直连 Oracle）+ 部署 | **v0.1.8 可用** |
+| `vscode-extension/` | `git@github.com:darcyjoven/vscode-bdl.git` | VSCode 客户端、TextMate 语法、VSIX 打包（平台包内置 `bdl-lsp` 与 `tiptop`） | **v0.6.1 可用**，e2e 45/45 |
 | `zed-extension/` | `git@github.com:darcyjoven/zed-bdl.git` | Zed 扩展（Rust/WASM）、Tree-sitter 查询、LSP 启动配置 | **`4gl-full` v0.1.1**（暂停） |
 | `tree-sitter-bdl/` | `github.com/darcyjoven/tree-sitter-bdl` | `.4gl` / `.global` 语法（已有仓库） | 已存在 |
 | `tree-sitter-per/` | `github.com/darcyjoven/tree-sitter-per` | `.per` 语法（已有仓库） | 已存在 |

@@ -60,6 +60,9 @@ type ImportOptions struct {
 	// 链接资料只覆盖被链接到的文件，不用它补齐的话，"语料里存在但没被
 	// 链接"的函数会被误判成"不存在"而放过。
 	Corpus *CorpusIndex
+	// Progress 是"成链"阶段的进度回调（done/total，1 基；供 CLI 显示"成链 120/5398"）。
+	// 可能被多个 worker 调用？不会——成链是串行的，但实现方仍应保证线程安全。
+	Progress func(done, total int)
 	// Source / SourceDetail 记进 meta，例如 "db" / "DS.GAL_FILE@host:1521/svc"。
 	Source       string
 	SourceDetail string
@@ -164,7 +167,10 @@ func ImportCSV(data []byte, opts ImportOptions) (*ImportResult, error) {
 	scans := scanFiles(groups, order, opts)
 
 	// ---- 第三遍：成链 ----
-	for _, program := range order {
+	for i, program := range order {
+		if opts.Progress != nil && (i == 0 || (i+1)%500 == 0 || i+1 == len(order)) {
+			opts.Progress(i+1, len(order))
+		}
 		g := groups[program]
 		if len(g.files) == 0 {
 			continue

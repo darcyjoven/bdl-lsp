@@ -60,6 +60,8 @@ type ImportRequest struct {
 	// Progress 是可选的源码扫描进度回调（CLI 用；后台同步传 nil）。
 	// 可能被多个 worker 并发调用，实现方需保证线程安全。
 	Progress func(done, total int)
+	// ChainProgress 是"成链"阶段的进度回调（done/total，1 基）。串行调用。
+	ChainProgress func(done, total int)
 }
 
 // ImportOutcome 是导入结果 + 实际使用的布局信息。
@@ -115,6 +117,7 @@ func RunImport(req ImportRequest) (*ImportOutcome, error) {
 	}
 
 	res, err := ImportCSV(data, ImportOptions{
+		Progress:     req.ChainProgress,
 		Ignore:       builtinNames(),
 		Corpus:       corpus,
 		Scanner:      corpus,

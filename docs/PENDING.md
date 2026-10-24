@@ -1,7 +1,7 @@
 # 未完成事项
 
 > 盘点：2026-10-23
-> 版本：`bdl-lsp 0.3.12` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
+> 版本：`bdl-lsp 0.3.13` · `tiptop 0.1.2` · `vscode-bdl 0.5.1` · `zed-bdl 0.1.1`（**暂停**）
 >
 > 本文是**唯一**的"还剩什么"清单。历史的阶段清单（`TODO.md`）与各阶段实现记录
 > （`PLAN.md`、`PLAN-P*.md`、`PLAN-DETAILED-P1.md`、`DEPLOY-ZED.md`）已于 2026-10-23 删除，
@@ -14,9 +14,9 @@
 
 | 仓库 | 版本 | 状态 |
 |---|---|---|
-| `bdl-lsp` | 0.3.12 | 语言服务；`link`/`deploy`/`schema` 已分离出去 |
-| `tiptop` | 0.1.7 | 链接资料 + 表字段采集 + 部署；自带 CI（Linux + Windows 双绿） |
-| `vscode-bdl` | 0.6.0 | 平台包内置两个二进制；新增「数据库字段」视图 |
+| `bdl-lsp` | 0.3.13 | 语言服务；`link`/`deploy`/`schema` 已分离出去 |
+| `tiptop` | 0.1.8 | 链接资料 + 表字段采集（CSV/直连库）+ 部署；自带 CI |
+| `vscode-bdl` | 0.6.1 | 平台包内置两个二进制；字段资料多选/进度/直连库同步 |
 | `zed-bdl` | 0.1.1 | **追平中**（用户 2026-10-23 重启，见 §D） |
 
 **最近完成的（不再追踪）**：P1–P8 全部功能 · 0.3.1 GLOBALS 按文档隔离 ·
@@ -89,7 +89,7 @@
 | ✅ P1-6 | ~~去掉 7 天过期与自动同步~~ **已实现 2026-10-23** | ① 删诊断码 `link-data-stale`（15 → 14 个码，`docs/DIAGNOSTICS.md` 重新生成）与服务端过期分支；② 删 `link.maxAgeDays`（Go 配置字段 + 两处校验 + 扩展设置 + `client.ts` 下发字段）；③ `link.Status` 去掉 `Stale/MaxAgeDays`，`LoadStatus(dir, modules)` 签名简化，`tiptop link status` 去掉 `-max-age` 与过期输出；④ 删 `linksync` 的 `Scheduler`（**全仓无人构造的死代码**）与 `Config.Interval/OnStart` | 反向测试 `TestLinkVeryOldDataIsSilent`：2020 年的 meta **完全静默**；三仓文档/清单同步清掉"过期"表述 |
 | P1-7 | 用户文档重写为插件说明 | `vscode-extension/docs/USER-GUIDE.md` 按最终形态重写 → 作为 README/市场说明（同源） | 文档与 UI/命令一一对应；截图清单更新 |
 | **P1-8** | **链接资料 Code Lens**（**补充视图**，与 TreeView 并存） | 服务端实现 `textDocument/codeLens`（bdl-lsp 侧，见 §D 的 Z-CL-1）：链内**子文件各一条 lens**，全部挂在该文件的 **MAIN 函数头上**，每条带自己的 `command` 可分别点击；**数量上限** `bdl.link.lensMax`（默认 10）控制行数，超出给一条「…共 N 个」汇总；函数级反查（每个函数定义上方「🔗 被 N 处调用」，调用点来自 `wsindex.CallsOf`） | **定位**：VSCode 已有侧边栏「链接资料」TreeView（三级树、可点、可分页），Code Lens 是**就地补充视图**——在 MAIN 头上多看一眼，不用切面板；**两者并存，不互相替代**。服务端实现**两端共用**（VSCode 同样支持 codeLens） |
-| ✅ P2-1 | ~~schema（发布后一版）~~ **已实现 2026-10-23** | ① **tiptop `schema import/status`**：Oracle 导出 CSV → `.project/.schema/{tables.json, tables/<大写表>.json}`，表头两处拼写容错、`-tables`/`-only-new`/`-dry-run`、原子写、坏索引报错且保留原文件；② **bdl-lsp**：`internal/schema` 改成"只读总索引 + 表文件展开才加载并缓存"，旧 `.sch` 扫描与 `schema.paths` **整包下线**；请求 `bdl/schemaTables`（服务端正则过滤 + total/matched/returned，非法正则退回全部 + filterError）与 `bdl/schemaColumns`；悬停三段（`LIKE t.col` 附单列、`RECORD LIKE t.*` 列字段（>20 折叠）、悬停表名给表摘要）；`rec.` 补全带类型与中文说明；③ **插件 0.6.0**：独立视图「数据库字段」（正则查询框、展开加载、右键同步单表/复制 `LIKE t.col`/打开表文件、"共 N 张表"）、`从 CSV 导入` 命令（先 `-dry-run` 预演再确认）；④ 开关仍是 `bdl.schema.enable`（默认关）+ `schema.dataDir` | **真实数据实测**：整份 `demo.csv`（58,096 行）→ 2648 表 / 58096 列 / 2.4 s；LSP 侧 `^IMA_` 匹配 1、`ima_file` 317 列；悬停 `RECORD LIKE ima_file.*` 列出字段并折叠、`LIKE ima_file.ima01` 显示 `VARCHAR2(40) · 料件编号`。测试：`internal/schema`（格式/版本/惰性/正则/展示）、`internal/server`（成员校验 3 例 + 悬停 3 例 + 补全 + 两个请求 + 关开关）、`internal/schemacli` 11 例、e2e 43/43（新增"数据库字段端到端查询与正则过滤"） |
+| ✅ P2-1 | ~~schema（发布后一版）~~ **已实现 2026-10-23**（含 10-24 补的直连库同步/多选/进度） | ① **tiptop `schema import/status`**：Oracle 导出 CSV → `.project/.schema/{tables.json, tables/<大写表>.json}`，表头两处拼写容错、`-tables`/`-only-new`/`-dry-run`、原子写、坏索引报错且保留原文件；② **bdl-lsp**：`internal/schema` 改成"只读总索引 + 表文件展开才加载并缓存"，旧 `.sch` 扫描与 `schema.paths` **整包下线**；请求 `bdl/schemaTables`（服务端正则过滤 + total/matched/returned，非法正则退回全部 + filterError）与 `bdl/schemaColumns`；悬停三段（`LIKE t.col` 附单列、`RECORD LIKE t.*` 列字段（>20 折叠）、悬停表名给表摘要）；`rec.` 补全带类型与中文说明；③ **插件 0.6.0**：独立视图「数据库字段」（正则查询框、展开加载、右键同步单表/复制 `LIKE t.col`/打开表文件、"共 N 张表"）、`从 CSV 导入` 命令（先 `-dry-run` 预演再确认）；④ 开关仍是 `bdl.schema.enable`（默认关）+ `schema.dataDir` | **真实数据实测**：整份 `demo.csv`（58,096 行）→ 2648 表 / 58096 列 / 2.4 s；LSP 侧 `^IMA_` 匹配 1、`ima_file` 317 列；悬停 `RECORD LIKE ima_file.*` 列出字段并折叠、`LIKE ima_file.ima01` 显示 `VARCHAR2(40) · 料件编号`。测试：`internal/schema`（格式/版本/惰性/正则/展示）、`internal/server`（成员校验 3 例 + 悬停 3 例 + 补全 + 两个请求 + 关开关）、`internal/schemacli` 11 例、e2e 45/45（新增"端到端查询与正则过滤""勾选多张表批量同步"）。**10-24 补齐**：⑤ **直连 Oracle**（tiptop `schema sync -source golang`，`internal/oradb` 与 link 共用密码来源；`-owner`/`-tables-file`/`-prune`）；⑥ **多选**（树视图复选框 + 同步已选中的表）与**筛选结果批量**（同步当前筛选结果）；⑦ **进度显示**（tiptop 统一协议 `进度\t阶段\t详情\ti\tn`，插件 `withProgress` 显示且可取消；link 与 schema 一致） |
 
 **已完成（2026-10-23 第二轮）**：
 
