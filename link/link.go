@@ -61,6 +61,11 @@ const (
 
 	// LegacyDataDir 是最老的资料目录名（P1-2 之前），保留给需要单一旧目录名的调用方。
 	LegacyDataDir = ".link"
+
+	// ProjectDirName 是项目资料根（相对项目根）：`secrets.json` 放在它下面，
+	// 链接资料在 `link/`、字段资料在 `schema/`、部署配置在 `deploy/`（W6）。
+	// **密码只从 `<项目>/.project/secrets.json` 取**，不要用资料子目录拼路径。
+	ProjectDirName = ".project"
 )
 
 // LegacyDataDirs 是历史资料目录（**只读兼容**，按“新→旧”排列）：
