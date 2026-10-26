@@ -8,7 +8,7 @@
 |---|---|---|
 | `dev-env.sh` | Linux/macOS | 设置可写 `HOME`/`GOPATH`/`GOCACHE`/`CARGO_HOME`/`WASI_SDK_PATH`/`PATH` |
 | `dev-env.ps1` | Windows | 设置 `CGO_ENABLED`/`CC`/`CARGO_HOME`/`WASI_SDK_PATH`/`PATH` |
-| `env-check.sh` | Linux/macOS | 按 [ENVIRONMENT.md](../docs/ENVIRONMENT.md) 检查工具链，缺失项退出码 1 |
+| `env-check.sh` | Linux/macOS | 检查工具链（见仓库 [README](../README.md) 构建一节），缺失项退出码 1 |
 | `env-check.ps1` | Windows | 同上 |
 | `install-toolchain.sh` | Linux（无 root） | 安装 Rust/wasm target/wasi-sdk/gh/VSCode 到 `artifacts/toolchain/`；`--check` 只检查 |
 

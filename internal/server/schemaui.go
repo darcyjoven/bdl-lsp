@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/darcyjoven/bdl-lsp/internal/schema"
 	"go.lsp.dev/jsonrpc2"
@@ -146,12 +147,14 @@ func (s *Server) handleSchemaColumns(ctx context.Context, reply jsonrpc2.Replier
 // schemaDataDir 返回字段资料目录的绝对路径（供视图显示）。
 func (s *Server) schemaDataDir() string {
 	settings := s.settings()
-	dir := settings.SchemaDataDir()
+	configured := settings.SchemaDataDir()
 	if s.rootPath == "" {
-		return dir
+		return configured
 	}
-	if dir != "" && dir[0] != '/' && !(len(dir) > 1 && dir[1] == ':') {
-		return s.rootPath + "/" + dir
+	// W6：新布局优先、旧布局回退；返回绝对路径供 UI 显示。
+	dir := schema.ResolveDataDir(s.rootPath, configured)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(s.rootPath, dir)
 	}
 	return dir
 }

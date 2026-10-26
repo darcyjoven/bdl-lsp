@@ -112,7 +112,7 @@ fi
 # 无 root 时无法启动。VSCode e2e 请用 --ozone-platform=headless。
 if [ -x "$TOOLCHAIN/xvfb/usr/bin/Xvfb" ]; then
   ln -sfn ../xvfb/usr/bin/Xvfb "$BIN/Xvfb"
-  log "Xvfb 已解包（无 root 时不可用，见 ENVIRONMENT.md）"
+  log "Xvfb 已解包（无 root 时不可用；VSCode e2e 请用 --ozone-platform=headless）"
 fi
 
 log "完成。运行： source scripts/dev-env.sh && bash scripts/env-check.sh"

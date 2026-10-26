@@ -153,17 +153,17 @@ func (s Settings) BuiltinsEnabled() bool {
 type SchemaSettings struct {
 	// Enable 关闭后不读字段资料（`LIKE t.*` 的记录退回"不校验"、悬停不追加说明）。
 	Enable *bool `json:"enable,omitempty"`
-	// DataDir 是字段资料目录（相对工作区根），默认 `.project/.schema`。
-	// 资料由 tiptop 生产（`tiptop schema import`）。
+	// DataDir 是字段资料目录（相对工作区根），默认 `.project/schema`（W6）。
+	// 旧布局 `.project/.schema` 只读兼容。资料由 tiptop 生产（`tiptop schema import`）。
 	DataDir string `json:"dataDir,omitempty"`
 }
 
-// SchemaDataDir 返回字段资料目录（默认 `.project/.schema`）。
+// SchemaDataDir 返回字段资料目录（默认 `.project/schema`）。
 func (s Settings) SchemaDataDir() string {
 	if v := strings.TrimSpace(s.Schema.DataDir); v != "" {
 		return v
 	}
-	return ".project/.schema"
+	return ".project/schema"
 }
 
 // SchemaEnabled 报告字段资料是否启用（客户端没下发时的兜底是启用）。
@@ -222,7 +222,8 @@ type IgnoreSettings struct {
 type LinkSettings struct {
 	// Enable 关闭后不做任何链接相关诊断（默认启用）。
 	Enable *bool `json:"enable,omitempty"`
-	// DataDir 是资料目录（相对项目根），默认 `.link`。
+	// DataDir 是资料目录（相对项目根），默认 `.project/link`（W6）。
+	// 旧布局 `.project`（根）与 `.link` 只读兼容。
 	DataDir string `json:"dataDir"`
 	// ModuleRoots 是模组根（相对项目根）。空 = 自动探测。
 	ModuleRoots []string `json:"moduleRoots"`
@@ -230,7 +231,7 @@ type LinkSettings struct {
 	GlobalModules []string `json:"globalModules"`
 	// 注意：这里**没有**采集（sync）配置。
 	// 生成 .project/ 资料是 tiptop 的职责，bdl-lsp 只读它。
-	// 见 docs/PLAN-SEPARATION.md。
+	// 见 docs/FEATURES.md（§0 职责与边界）。
 }
 
 // LinkEnabled 报告链接资料功能是否启用（默认启用）。
@@ -241,10 +242,10 @@ func (s Settings) LinkEnabled() bool {
 	return *s.Link.Enable
 }
 
-// LinkDataDir 返回资料目录（默认 `.link`）。
+// LinkDataDir 返回资料目录（默认 `.project/link`）。
 func (s Settings) LinkDataDir() string {
 	if s.Link.DataDir == "" {
-		return ".project"
+		return ".project/link"
 	}
 	return s.Link.DataDir
 }

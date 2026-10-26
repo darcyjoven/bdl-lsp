@@ -1,198 +1,338 @@
-# 插件功能清单（基线）
+# 功能清单（bdl-lsp）
 
-> 版本：v0.3（同步 P1–P8 完成状态；补忽略列表/部署当前文件）  
-> 日期：2026-10-22  
-> 用途：作为功能验收基线；后续按本文件逐项确认“已做/未做/不做”。  
-> 来源标记：**🧑 用户提供** = 用户原始需求明确要求；**🔀 用户方向 + 协助细化** = 用户提出方向，由规划补充为可执行功能；**🤖 协助规划** = 依据语言与编辑器常规能力补充。
+> 面向开发者，详细到每个功能，可快速浏览 / 当验收表用；本文件是 bdl-lsp 的**唯一功能文档**，
+> 等价于全量总清单 `vscode-bdl/docs/FEATURES.md` 的 **bdl-lsp 部分**。
 >
-> **归属注记（2026-10-23 补）**：链接资料的采集/导入与部署自 `bdl-lsp 0.3.2`
-> 起移到 tiptop。下表 #39 / #39b / #39c / #47 / #48 / #54 里的命令现由 tiptop 提供
-> （`tiptop link import|status|sync`、`tiptop deploy`）；#39c 的 `bdl.link.sync.*`
-> 设置项已随分离**删除**。bdl-lsp 侧仍负责**读取**
-> `<项目>/.link/` 资料并给出索引、可见性、`link-data-*` 诊断与链接资料视图。
+> | 项目 | 值 |
+> |---|---|
+> | 版本 | `bdl-lsp v0.3.13`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
+> | 生成日期 | 2026-10-24 |
+> | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
+> | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
+> | 权威细节 | 诊断码见 [`DIAGNOSTICS.md`](DIAGNOSTICS.md)（`make diagnostics-write` 生成，构建输入） |
+
+> **维护规则**：待办（`vscode-bdl/docs/TODO.md`）完成后，把新功能补进本文对应条目；
+> 用户可见的新功能还要同步更新 `vscode-bdl/README.md`（唯一用户引导）与对应组件的功能文档。
+
+
+## 0. 职责与边界
+
+| 做 | 不做 |
+|---|---|
+| 解析、诊断、跳转、补全、格式化；字段 / 表单 / GLOBALS 校验；跨文件函数可见性 | 不采集资料（`link`/`schema` 采集在 tiptop）、不部署（`deploy` 在 tiptop） |
+
+- 交付物：`bdl-lsp` 二进制（stdio LSP + `check` CLI）。
+- 与 tiptop **只通过文件系统交互**：只读 `<项目>/.project/{link/,schema/}`（旧布局 `.project` 根 / `.link/` 只读兼容，W6）。
+- 配置入口：编辑器 LSP `settings`（VSC 侧 47 键）与项目级 `<项目>/.bdl-lsp/config.json`。
 
 ---
 
-## 1. 用户明确要求的功能
+## 1. 语言与解析
 
-| # | 功能 | 来源 | 优先级 | 状态 |
-|---|---|---|---|---|
-| 1 | 语法高亮（`.4gl` / `.global` / `.per`） | 🧑 用户提供 | v1 | ✅ VSCode TextMate + Zed query |
-| 2 | 函数、变量跳转 | 🧑 用户提供 | v1 | ✅ 单文件内；GLOBALS 跨文件见 #12 |
-| 3 | 4GL 格式化（关键字大小写 + 缩进）；`.per` **不**格式化 | 🧑 用户提供 | v1 | ✅ P4 完成 |
-| 4 | 4GL 中校验字段是否存在 | 🧑 用户提供 | v1（显式字段）；record `.*` 最后 | ✅ P3b 已完成（语料 2.8% 可疑率、e2e 18/18） |
-| 5 | 4GL 与 `.per` 文件的联动功能 | 🧑 用户提供 | v1 | ✅ P3b：.per 变更刷新 4gl 诊断、relatedInformation 跳转 |
-| 6 | Go 实现的 LSP 服务 | 🧑 用户提供 | v1 | ✅ |
-| 7 | VSCode 插件 | 🧑 用户提供 | v1 | ✅（v0.1.1 VSIX，e2e 33/33） |
-| 8 | Zed 插件 | 🧑 用户提供 | P2 | ✅（`4gl-full` v0.1.1，47 项 query 校验） |
-| 9 | 基于 `tree-sitter-bdl` / `tree-sitter-per` | 🧑 用户提供 | v1 | ✅ |
-| 10 | 三个仓库的 Git 管理 | 🧑 用户提供 | 已完成 | ✅ |
-| 11 | 文档/脚本/中间产物集中 `bdl-lsp` | 🧑 用户提供 | 已完成 | ✅ |
-| 12 | GLOBALS 模组全局变量：跳转到 global 文件、来源标注、两类警告（可关闭） | 🧑 用户提供 | P3a | ✅ 已完成（语料 8403 处引用验证、e2e 16/16） |
-
-### 1.1 记录（record）`.*` 校验的说明
-
-用户确认：**record 的 `.*`（如 `INPUT BY NAME rec.*`、`DISPLAY BY NAME rec.*`）校验需要，但放在最后做。**
-
-| 子项 | 内容 | 排期 |
+| # | 功能 | 说明 / 入口 |
 |---|---|---|
-| 4.1 | 显式字段校验：`AFTER FIELD`、`BEFORE FIELD`、`NEXT FIELD`、`INFIELD()`、`CONSTRUCT ... ON`、`DISPLAY ... TO` | v1（P3） |
-| 4.2 | 跨文件：表单路径解析、`.per` item 集合、`SCREEN RECORD` | v1（P3） |
-| 4.3 | record `BY NAME` 成员校验 | ✅ P6 完成（默认 off，误报率 0.1%） |
+| A1 | 双语言支持 | `.4gl` / `.global` → language id `bdl`；`.per` → `per` |
+| A2 | tree-sitter 解析 | `tree-sitter-bdl` / `tree-sitter-per` grammar；Go cgo；go-tree-sitter v0.25.0（grammar ABI 15） |
+| A3 | 文档同步（真增量） | `didOpen` / `didChange` / `didClose`；`TextDocumentSyncKindIncremental` |
+| A4 | UTF-16 ↔ 字节位置换算 | `internal/textpos` |
+| A5 | 语法错误诊断 | `ERROR` → `syntax-error`；`MISSING` → `missing-<kind>`（兜底 `missing-node`） |
+| A6 | 解析资源上限 | `bdl.limits.maxFileBytes` / `maxFileLines` / `maxIssues` / `parseTimeoutMs`；超限 → `file-too-large` / `parse-timeout` |
+| A7 | 强制解析当前文件（W1） | 自定义请求 `bdl/forceParse`（编辑器标题栏按钮，上下文 `bdl.parseSkipped`）；登记后立即回执，**后台不限时**解析（`Timeout 0`，不再受 `limits.parseTimeoutMs` 限制）；成功发诊断 + `bdl/parseDone` 回执（含耗时/字节数/版本），客户端据此刷新大纲 |
+| A8 | 解析检查 CLI | `bdl-lsp check [--json] [--max-issues N] [-q] <文件...>` |
+| A9 | Genero 版本基线 | `bdl.generoVersion`（默认 `2.50`）；5.0 暂不排期 |
 
 ---
 
-### 1.2 GLOBALS 模组全局变量的说明
+## 2. 编辑体验（LSP 服务端能力）
 
-用户确认（2026-10-20 原话）：
-
-> global 语法会引入一些比全局变量还高一层的模组全局变量，所有引入相同
-> global 文件的都可以使用这些变量。如果是 global 变量，当前 4gl 没有标记
-> 其来源，也没有实现跳转到 global 文件，如果 global 文件没有找到，要警告，
-> 且变量来源没有找到的也要警告，变量来源找不到警告做成配置项目，允许关闭。
-
-拆解为 5 个功能点：
-
-| # | 功能点 | 类别 |
+| # | 功能 | 说明 / 入口 |
 |---|---|---|
-| F1 | GLOBALS 引入的变量跳转到定义（`.global` 文件内） | 导航 |
-| F2 | 悬停标注变量来源（哪个 global 文件） | 信息展示 |
-| F3 | `GLOBALS "路径"` 目标文件找不到 → 警告 | 诊断 |
-| F4 | 变量来源查不到 → 警告 | 诊断 |
-| F5 | F4 警告可配置关闭 | 配置 |
+| B1 | 悬停（hover） | 变量来源、定义位置、函数信息；`LIKE t.col` 追加字段资料；悬停表名给表摘要 |
+| B2 | 跳转定义（definition） | 当前文件、GLOBALS、链接资料内文件 |
+| B3 | 查找引用（references） | 工作区可解析引用 |
+| B4 | 文档符号（大纲 / 面包屑） | `documentSymbol`，`internal/server/symbols.go`；MAIN 程序块的 `detail` 为 `MAIN`——VSCode 客户端据此判定「链接」按钮可用性（W5） |
+| B5 | 工作区符号 | `workspace/symbol`；后台全工作区索引 + 持久化快照，覆盖未打开文件 |
+| B6 | 补全 | 关键字、变量、函数、表单字段、表名、列；`.` 触发记录成员/表单字段；`Ctrl+Space` 手动触发 |
+| B7 | 重命名 | `prepare` + `rename`；**只改当前文件**、大小写不敏感、不动字符串 |
+| B8 | 快速修复（Code Action） | 仅 `quickfix`：字段名写错时的改名建议 |
+| B9 | 语义高亮 | `semanticTokens/full`；只发用户自定义符号（关键字/字符串交给 TextMate）；函数 `declaration`、常量 `readonly`、GLOBALS 块 `static` |
+| B10 | 格式化 | `.4gl` / `.global`；`bdl.format.keywords`（unchanged/upper/lower）+ `indentStyle` + `indentSize`；安全守卫：有 `ERROR` 不格式化、幂等；**`.per` 一律不格式化** |
+| B11 | 游标 / PREPARE 符号 | `PREPARE` / `DECLARE CURSOR` 声明；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；接入大纲/补全/语义高亮 |
 
 ---
 
-## 2. 用户给方向、由规划细化的功能
+## 3. 符号与作用域
 
-| # | 功能 | 用户方向 | 细化内容 | 排期 |
-|---|---|---|---|---|
-| 12 | 部署服务器 + 上传编译 | 🧑 “部署服务器后上传编译” | `ssh + rsync` 主 / `scp` 回退；远程 `fglform`/`fglcomp`；输出解析为诊断；dry-run | P5 |
-| 13 | 无感使用体验 | 🧑 “参考主流方式，最好是无感的” | 本地路径自动解析；目标版本校验；缓存与回退（自动下载因发布未排期而暂缓） | P1 基础 / 发布后增强 |
-| 14 | 与轻量插件共存 | 🧑 “现有 bdl-plugin 是轻量级插件，本插件是全功能的” | Zed 扩展 id 定为 `4gl-full`，与 `bdl` 并存 | P2 |
-| 15 | Genero 版本范围 | 🧑 “目标版本 2.50–5.0，目前 tree-sitter bdl 版本是 2.5” | v1 以 2.50 为基线；`bdl.generoVersion` 配置；**5.0 暂不排期** | v1 / 暂缓 |
-
----
-
-## 3. 规划补充的功能
-
-### 3.1 v1 核心（P1–P5）
-
-| # | 功能 | 价值 | 排期 |
-|---|---|---|---|
-| 16 | 语法错误诊断（ERROR/MISSING） | 打开即报解析问题 | P1 |
-| 17 | 文档符号（outline） | 大纲导航 | P1 |
-| 18 | 工作区符号 | 跨文件快速跳转 | P1 |
-| 19 | 引用查找（references） | 看谁引用了该符号 | P1 |
-| 20 | 悬停（hover） | 签名、类型、定义位置 | P1 |
-| 21 | `.per` 内部一致性校验 | 重复 item、布局 tag 未定义、SCREEN RECORD 引用不存在 | P3 |
-| 22 | 格式化安全守卫 | 有 ERROR 不格式化、幂等、语义保持 | P4 |
-| 23 | 部署 dry-run | 先看清单再上传 | P5 |
-| 24 | 编译诊断映射 | 远程路径 → 本地文件行 | P5 |
-| 25 | 索引缓存与性能门槛 | 15k 文件 < 60s；打开 < 300ms | P1 |
-
-### 3.2 后续增强（P6 / 按需）
-
-| # | 功能 | 说明 |
+| # | 功能 | 说明 / 入口 |
 |---|---|---|
-| 26 | 补全 | 关键字、函数、变量、表单字段、`ON ACTION` 动作名 |
-| 27 | 重命名 | 跨文件、大小写不敏感、含 `.per` 字段 |
-| 28 | Code Action / Quick Fix | 字段不存在时提示、忽略诊断、跳转 `.per` |
-| 29 | 语义高亮（semantic tokens） | VSCode + Zed |
-| 30 | 调用层级（call hierarchy） | 函数调用关系 |
-| 31 | 数据库字段资料 | 校验 `table.column` 是否存在（来源见 38f，P2-1 起是 `.project/.schema`） |
-| 32 | `.per` 结构可视化 | `SCREEN RECORD` 结构、item 列表 |
-| 33 | 范围格式化 / SQL 片段格式化 | 只格式化选中部分 |
-| 34 | 部署增强 | 多目标、回滚、编译产物归档 |
-
-### 3.3 P7（2026-10-21 立项，待执行）
-
-> 完整设计：本表 + [PENDING](PENDING.md) §E/F。
-
-| # | 功能 | 说明 | 阶段 |
-|---|---|---|---|
-| 35 | Zed 大纲层级修复 | **容器/叶子模型**：容器（函数/报表/MAIN/菜单）`@item` 绑整块 → 内部变量归属函数可折叠；叶子（DEFINE/TYPE/常量）`@item` 绑名字 → 同语句多变量平级 | P7-A / P7-B-3 |
-| 36 | Windows GLOBALS 路径识别 | `internal/fileuri` 全量 URI 解码（`%3A`/`%23`/UNC）+ `workspaceFolders` 回退 | P7-A |
-| 37 | 诊断级别统一可配置 | `bdl.diagnostics.<code>` 集中注册表（当时 13 个码，现 **14** 个）；默认 warning；拼错记 warn；旧专用键已删除 | P7-B（✅ 0.1.2） |
-| 38 | 内置符号表 | `internal/builtin`：97 条内置变量/函数/类/常量（`data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；补全与悬停接入 | P7-C-1（✅ 0.1.3，0.1.4 补 `SCR_LINE`） |
-| 39 | 程序链接资料索引 | `tiptop link import/status`（tiptop；bdl-lsp 只读取资料）；导入/状态/可见性/`link-data-*` 诊断 | P7-D（✅ 0.1.4） |
-| 38c | 语法缺口审计（P7-C-2） | `make grammar-audit`：全语料解析，按"最内层 ERROR 上下文"聚合排序，输出缺口清单 + JSON（改 grammar 前后逐文件 diff）；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件的基线（出现新文件即失败）。实测 18/15108 = 0.12% | P7-C-2（✅ 0.1.8） |
-| 38f | **数据库字段资料（P2-1）** | 来源改为 **Oracle 导出 CSV** → `.project/.schema/{tables.json, tables/<表>.json}`（`tiptop schema import`；实测 2648 表 / 58096 列 / 2.4 s）。读侧 `internal/schema` 只读总索引、表文件**展开才加载**并缓存；旧"扫各模组 `sch/*.sch`"与 `schema.paths` 已下线 | P6 → **P2-1（✅ 0.3.12）** |
-| 38g | 字段资料的悬停扩展（P2-1） | `DEFINE x LIKE t.col` → 追加 `t.col · 类型(长度) · 中文说明`；`RECORD LIKE t.*` → 列出该表字段（超 20 行折叠，实测 `ima_file` 317 列）；直接悬停表名 → 表摘要 | P2-1（✅ 0.3.12） |
-| 38h | 字段资料视图与请求（P2-1） | 自定义请求 `bdl/schemaTables`（服务端正则过滤 + `total/matched/returned`）与 `bdl/schemaColumns`（展开才取）；VSCode 独立视图「数据库字段」、正则查询框、右键同步单表/复制 `LIKE t.col`/打开表文件 | P2-1（✅ 0.6.0） |
-| 38e | 工作区符号索引（P6） | 后台索引全工作区（7756 文件 24.7 s，增量 22 ms）并持久化快照；`workspace/symbol` / 跳转 / 引用覆盖未打开文件。可达模组（本模组 + sub/lib/qry）+ 唯一命中两条保守规则 | P6（✅ 0.2.0） |
-| 38d | 诊断码表防漂移（P7-B 收尾） | `make diagnostics-check` 校验注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSCode `package.json`（存在性、type=object、级别枚举）；文档由 `make diagnostics-write` 生成，并入 `make lint` | P7-B（✅ 0.1.9） |
-| 39d | 链接资料视图（P7-E） | 自定义请求 `bdl/linkTree` / `bdl/linkReferences`；VSCode 独立 TreeView「链接资料」（程序 → 链内文件三级，点击跳转）+ 反查引用程序（默认不查、分页 50）；实测最大链组装 3.4 ms | P7-E（✅ 0.1.7） |
-| 39b | 采集通道（P7-D-3） | `tiptop link sync -source golang|command|file`：纯 Go 直连 Oracle（`go-ora`，无需客户端）/ 命令 stdout / 已导出的 CSV。密码只从环境变量或 `.link/secrets.json`(0600) 取 | P7-D-3（✅ 0.1.6） |
-| 39c | 后台自动同步（**已彻底移除**） | 原 `bdl.link.sync.*`（默认**全关**，`onStart`/`interval` 定时）：自 0.3.2 移出扩展，`linksync` 里残留的 `Scheduler` 死代码也于 0.3.11 删除；同步**只由命令触发** | P7-D-3（✅ 0.1.6 → ❌ 0.3.2 / 0.3.11 移除） |
-| 39a | 外部函数过滤 | 被 ≥3 文件或 ≥5 次调用、全语料无定义的名字 → 视为存在并记进 `links.meta.json`；候选 >2000 个则**不启用** | P7-D-2（✅ 0.1.5） |
-| 40 | 链接资料 UI | VSCode 自定义 TreeView（三级 + 跨文件跳转）；Zed 降级为可见不可跳 | P7-E |
-| 41 | 游标 / prepare statement | `PREPARE`/`DECLARE CURSOR` 声明符号；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；大纲/补全/语义高亮同步接入 | P7-B-5（✅ 2026-10-21） |
-| 42 | 诊断降噪 | 变量使用 query 补 4 类跳过（表达式函数名 / `WHENEVER` 目标 / 表单字段含点号）；`.per` 布局单元格多 tag 与 SCREEN RECORD 字段名修正；全量诊断 33.4 万 → 28.9 万 | P7-B-4/6（✅ 0.1.2） |
-| 43 | 诊断度量工具 | `cmd/diag-audit` + `make diag-audit`：逐码计数、高频标识符、噪声最高文件（降噪基线，可 CI 化） | P7-B（✅ 0.1.2） |
-| 44 | `function-not-found` | 函数调用点找不到定义。P7-C（内置侧）+ P7-D（链接侧）+ P7-D-2（外部函数过滤）全部落地后全量语料只剩 0.09 条/文件，**0.1.5 起默认 warning**；没有链接资料时不产生任何诊断 | P7-B → P7-D-2（✅ 0.1.5，默认开） |
-| 45 | 内置符号可配置/可更新 | 三层：内置 JSON（改数据不改代码）· 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现、2s 节流热更新）· `bdl.builtins.enable/paths/disable` | P7-C-1（✅ 0.1.3） |
-| 46 | 内置符号缺口审计 | `cmd/builtin-audit` + `make builtin-audit` / `make builtin-check`：按频次+文件数列出"不在表里"的名字，带内置/用户粗判；`-check` 进 `make lint` | P7-C-1（✅ 0.1.3） |
-| 47 | 程序链接资料导入 | `tiptop link import -csv <导出.csv>`：CSV（UTF-8 BOM、`gal04='Y'` 过滤、组内去重）→ `<root>/.link/links.jsonl` + `links.meta.json`，原子写入；判定 MAIN 用语法树 + 文本兜底（兼容 `{ MAIN }` 写法） | P7-D（✅ 0.1.4） |
-| 48 | 链接资料状态 | `tiptop link status`：链/orphan/ambiguous/文件数、生成时间与天数、缺失文件数、模组根、全局模组。（**不再**有过期告警，P1-6） | P7-D（✅ 0.1.4） |
-| 49 | 函数跨文件可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则，含它们自己）。**只放大函数，变量可见性不变（R2）** | P7-D（✅ 0.1.4） |
-| 50 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成才判定；资料缺失/链里有磁盘上不存在的文件/索引未就绪 → **一律不报**（宁可漏报不可误报） | P7-D（✅ 0.1.4） |
-| 51 | 链接资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）· `link-data-legacy-dir`（还在旧 `.link/` → hint 提示迁移）；都落在资料文件上，不污染源码。（原 `link-data-stale` 已于 0.3.11 删除） | P7-D（✅ 0.1.4 → P1-6 调整） |
-| 52 | 链接配置 | `bdl.link.enable/dataDir/moduleRoots/globalModules`（**去掉 maxAgeDays**，P1-6）；资料目录与内置表一样按 mtime 热重载（2s 节流），导入后无需重启编辑器 | P7-D（✅ 0.1.4 → P1-6 调整） |
-| 53 | **忽略列表** | `bdl.ignore.files/fields/forms`（glob，支持 `**`）：文件命中 → 不发布任何诊断且排除出工作区索引；字段命中 → 只屏蔽 `field-not-in-form`；表单命中 → 屏蔽该表单的字段类诊断。配置热更新立即生效；忽略不关闭解析/悬停/导航 | P8（✅ 0.2.2） |
-| 54 | **部署当前文件** | VSCode `bdl.deployCurrentFile`：先保存脏文档，只把当前 `.4gl/.global/.per` 交给 `tiptop deploy`；Zed 用 task `$ZED_FILE`（Zed 侧暂停，模板见 zed-extension 文档）。dry-run / 编译诊断行为与整包部署一致 | P8 复核（✅ 0.2.2） |
-| 55 | **GLOBALS 索引按文档隔离** | 符号查找、变量来源检查、函数可见性只看**当前文档**引入的 `.global`；文档关闭/删除导入行时清掉缓存；同一 `.global` 引入两次按定义位置去重。修掉"同时打开多个文档时来源重复、变量来源诊断随开着哪些文件而变" | P3a 收尾（✅ 0.3.1） |
+| C1 | 按函数隔离作用域 | 变量跟踪以函数为界（整文件线性跟踪会跨函数泄漏出大量误报） |
+| C2 | GLOBALS 模组全局变量 | 跨文件跳转到 `.global` 定义、悬停标注来源；`globals-file-not-found`、`variable-source-unresolved` 两类警告（可关） |
+| C3 | GLOBALS 按文档隔离 | 符号查找/来源检查/函数可见性只看**当前文档**引入的 `.global`；文档关闭或删导入行即清缓存 |
+| C4 | GLOBALS 解析根 | `bdl.globals.searchPaths`（相对工作区根） |
+| C5 | 内置符号表 | 97 条内置变量/函数/类/常量（`builtin/data/builtins.json`，`go:embed`）；豁免 `variable-source-unresolved` 与 `function-not-found`；接入补全与悬停 |
+| C6 | 内置符号三层配置 | ① 内置 JSON ② 项目覆盖 `<root>/.bdl-lsp/builtins.json`（自动发现，2s 节流热更新）③ `bdl.builtins.enable/paths/disable` |
 
 ---
 
-## 4. 明确不做
+## 4. 诊断与校验
+
+### 4.1 诊断码（14 个静态码 + 动态 `missing-<kind>`）
+
+| 诊断码 | 默认级别 | 触发条件 |
+|---|---|---|
+| `syntax-error` | warning | grammar `ERROR` 节点 |
+| `missing-node` | warning | grammar `MISSING` 节点整簇兜底（缺 `END IF`、逗号等） |
+| `file-too-large` | warning | 超过 `bdl.limits.maxFileBytes` / `maxFileLines` |
+| `parse-timeout` | warning | 超过 `bdl.limits.parseTimeoutMs`（提示文案给出的就是该键；强制解析后不限时） |
+| `globals-file-not-found` | warning | `GLOBALS "路径"` 目标文件找不到 |
+| `variable-source-unresolved` | warning | 变量使用处查不到任何定义（局部/模块级/GLOBALS 均无） |
+| `field-not-in-form` | warning | `INPUT … FROM`、`AFTER FIELD` 等引用字段不在对应 `.per` |
+| `form-duplicate-item` | warning | `.per` `ATTRIBUTES` 重复定义同名 item |
+| `form-layout-tag-undefined` | warning | `.per` `LAYOUT` 引用未定义 tag |
+| `form-screen-record-undefined` | warning | `.per` `SCREEN RECORD` 引用未定义 item/字段 |
+| `record-member-unknown` | **off** | `BY NAME rec.member` 成员不在 `RECORD` 声明里；`RECORD LIKE t.*` 用字段资料展开 |
+| `function-not-found` | warning | 调用函数在当前模块及可用模组找不到定义（**需链接资料**） |
+| `link-data-invalid` | warning | 链接资料 JSONL 解析失败 / schema 版本过高 |
+| `link-data-legacy-dir` | hint | 资料仍在旧目录 `.link/`；`bdl.migrateLinkDir` 可一键迁移 |
+
+> `missing-<kind>` 是动态码：`bdl.diagnostics.missing-<kind>` 精确命中单个类型，`missing-node` 兜底。
+
+### 4.2 诊断控制与质量
+
+| # | 功能 | 说明 / 入口 |
+|---|---|---|
+| D1 | 级别唯一入口 | `bdl.diagnostics.<code>`：`off`/`error`/`warning`/`information`/`hint`；未列出用默认值；旧专用键已删除 |
+| D2 | 忽略列表 | `bdl.ignore.files`（屏蔽该文件所有诊断并排除出索引）、`bdl.ignore.fields`（只屏蔽 `field-not-in-form`）、`bdl.ignore.forms`；glob 支持 `**`，配置热更新 |
+| D3 | 诊断降噪 | 作用域按函数隔离；变量 query 跳过表达式函数名 / `WHENEVER` 目标 / 含点号表单字段；`.per` 布局单元格多 tag 与 `SCREEN RECORD` 字段名修正 |
+| D4 | 诊断关联信息 | `field-not-in-form` 带 `relatedInformation` 跳转 `.per` 对应位置 |
+| D5 | 诊断码表防漂移 | `make diagnostics-check` 校验注册表 ↔ `docs/DIAGNOSTICS.md` ↔ VSC `package.json`；`make diagnostics-write` 生成文档；并入 `make lint` |
+| D6 | 诊断度量 | `cmd/diag-audit` + `make diag-audit`：逐码计数、高频标识符、噪声最高文件 |
+| D7 | 外部函数过滤（配合 tiptop） | 被 ≥3 文件或 ≥5 次调用且全语料无定义的名字视为存在，记入 `links.meta.json`；候选 >2000 个则不启用 |
+
+---
+
+## 5. 跨文件资料：链接资料（读取侧）
+
+> 采集与写侧在 tiptop（`tiptop link import|sync|status`）；bdl-lsp 只读。
+
+| # | 功能 | 说明 / 入口 |
+|---|---|---|
+| F10 | 资料读取与热重载 | 只读 `.project/link/`（`bdl.link.dataDir`；旧布局回退，W6），按 mtime 热重载（2s 节流），导入后无需重启编辑器 |
+| F11 | 旧目录兼容与迁移 | 仍读旧 `.link/` 并发 `link-data-legacy-dir`（hint）；命令 `bdl.migrateLinkDir` 可一键迁移（客户端提供入口） |
+| F12 | 跨文件函数可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则）；**只放大函数，变量可见性不变** |
+| F13 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成；资料缺失/链内文件不在磁盘/索引未就绪 → 一律不报（宁漏勿误） |
+| F14 | 资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）；诊断落在资料文件上，不污染源码 |
+| F15 | 链接资料数据服务 | 自定义请求 `bdl/linkTree`、`bdl/linkReferences`（反查默认不查、分页 50） |
+| F16 | 链接资料配置 | `bdl.link.enable` / `dataDir` / `moduleRoots` / `globalModules` |
+| F17 | 外部函数过滤 | 见 D7；结果写入 `links.meta.json`，读取时据此豁免 |
+| F18 | 性能 | 最大链组装 3.4 ms；工作区索引 7756 文件 24.7 s、增量 22 ms |
+
+产物格式（只读）：
+
+```text
+<项目根>/.project/link/
+├── links.jsonl      # 每行一条链：程序 → 链内文件/函数
+└── links.meta.json  # 生成时间、partial 记录、外部函数表
+```
+
+---
+
+## 6. 数据库字段资料（读取侧）
+
+> 采集与写侧在 tiptop（`tiptop schema import|sync|status`）；产物 `<项目>/.project/schema/`。
+
+| # | 功能 | 说明 / 入口 |
+|---|---|---|
+| G9 | 表文件按需加载 | 只读总索引；某表文件展开时才加载并缓存（几千张表也不卡） |
+| G10 | 字段悬停扩展 | `DEFINE x LIKE t.col` → 追加 `t.col · 类型(长度) · 中文说明`；`RECORD LIKE t.*` → 列出该表字段（超 20 行折叠）；悬停表名 → 表摘要 |
+| G11 | 记录成员校验 | `record-member-unknown`（默认 off）；`RECORD LIKE t.*` 用字段资料展开成员 |
+| G12 | 列补全 | `r.` 补全带每列类型与中文说明 |
+| G13 | 字段资料数据服务 | 自定义请求 `bdl/schemaTables`（正则过滤 + `total/matched/returned`）、`bdl/schemaColumns`（展开才取） |
+| G14 | 字段资料配置 | `bdl.schema.enable` / `bdl.schema.dataDir`（默认 `.project/schema`）；旧「扫各模组 `sch/*.sch`」与 `bdl.schema.paths` 已下线 |
+
+产物格式（只读）：
+
+```text
+<项目根>/.project/schema/
+├── tables.json             # 索引：importedAt / source / rowsTotal / 每表列数与文件名
+└── tables/<大写表名>.json   # 列清单：name/desc/type/length/charLength/precision/scale/nullable/default
+```
+
+---
+
+## 7. 部署（已移到 tiptop）
+
+自 `bdl-lsp 0.3.2` 起，**部署、链接资料采集、字段资料采集都不在 bdl-lsp 内**，由
+[tiptop](https://github.com/darcyjoven/tiptop) 提供（`tiptop deploy` / `link` / `schema`）。
+bdl-lsp 侧只保留读取与校验相关能力。
+
+---
+
+## 8. 编辑器集成（客户端在 vscode-bdl / zed-bdl）
+
+LSP 服务端能力由编辑器客户端消费：
+
+- VSCode：`vscode-bdl`（30 条命令、2 个 TreeView、47 项设置、进度通知）；本文件只描述服务端协议。
+- Zed：`zed-bdl` 的 `4gl-full` v0.1.1（暂停），TreeView 降级、语义高亮不可用。
+- 自定义请求/通知：`bdl/forceParse`、`bdl/linkTree`、`bdl/linkReferences`、`bdl/schemaTables`、`bdl/schemaColumns`、`bdl/migrateLinkDir`。
+
+---
+
+## 9. CLI 参考
+
+| 子命令 | 说明 |
+|---|---|
+| `bdl-lsp serve [--log-level <级别>]` | 以 stdio 启动语言服务（编辑器调用；`--stdio` 兼容） |
+| `bdl-lsp check [--json] [--max-issues N] [-q] [--version] <文件...>` | 批量解析检查；`--json` 结构化输出，`-q` 只列有问题的文件 |
+| `bdl-lsp version` | 打印版本 |
+
+---
+
+## 10. 配置（bdl-lsp 读取的键）
+
+| 组 | 键 | 默认 |
+|---|---|---|
+| 基础 | `bdl.server.path` / `bdl.tools.path` / `bdl.server.logLevel` / `bdl.trace.server` | 空 / 空 / `info` / `off` |
+| 基础 | `bdl.generoVersion` | `2.50` |
+| 基础 | `bdl.diagnostics` | `{}`（逐码调级，唯一入口） |
+| 基础 | `bdl.format.keywords` / `indentStyle` / `indentSize` | `unchanged` / `auto` / `0` |
+| 基础 | `bdl.index.enable` | `true` |
+| 基础 | `bdl.globals.searchPaths` / `bdl.perRoots` | `[]` / `[]` |
+| 基础 | `bdl.builtins.enable` / `paths` / `disable` | `true` / `[]` / `[]` |
+| 基础 | `bdl.ignore.files` / `fields` / `forms` | `[]` / `[]` / `[]` |
+| 基础 | `bdl.limits.maxFileBytes` / `maxFileLines` / `maxIssues` / `parseTimeoutMs` | `2097152` / `20000` / `200` / `2000` |
+| 链接资料 | `bdl.link.enable` / `dataDir` / `moduleRoots` / `globalModules` | `false` / `.project/link` / `[]` / `["sub","lib","qry"]` |
+| 数据库字段 | `bdl.schema.enable` / `dataDir` | `false` / `.project/schema` |
+
+> `bdl.prod.*`（Oracle 连接与部署服务器）与 `bdl.deploy.*` 属于 tiptop/插件侧，bdl-lsp 不读。
+
+项目级配置 `<项目>/.bdl-lsp/config.json`（可提交）：
+
+```jsonc
+{
+  "generoVersion": "2.50",
+  "diagnostics": { "record-member-unknown": "warning" },
+  "globals": { "searchPaths": ["tiptop/config", "topcust/config"] },
+  "perRoots": ["tiptop/aap/per"],
+  "schema": { "enable": true, "dataDir": ".project/schema" },
+  "link":   { "enable": true, "dataDir": ".project/link", "moduleRoots": [], "globalModules": ["sub","lib","qry"] },
+  "ignore": { "files": ["**/backup/**", "**/tmp/**"] }
+}
+```
+
+另外 `<项目>/.bdl-lsp/builtins.json` 用于覆盖内置符号表。
+
+---
+
+## 11. 开发者工具与质量门
+
+| # | 工具 | 说明 |
+|---|---|---|
+| L1 | `make build` / `test` / `test-race` / `vet` / `fmt` / `lint` | 构建与基础检查；`lint` = vet + `keywords-check` + `builtin-check` + `diagnostics-check` |
+| L2 | `make check` / `corpus` / `regress` | 样例冒烟；全语料解析；全量回归（真实语料 7070 个，通过 7068，99.97%） |
+| L3 | `make bench` + `scripts/lsp-bench.py` | LSP 延迟基准（`didOpen` 133 ms、`didChange` 往返 6.0 ms） |
+| L4 | `make builtin-audit` / `builtin-check` | `cmd/builtin-audit`：按频次+文件数列出不在内置表里的名字并粗判归属；`-check` 进 lint |
+| L5 | `make diag-audit` | `cmd/diag-audit`：逐码计数、高频标识符、噪声最高文件 |
+| L6 | `make grammar-audit` | `cmd/grammar-audit`：按「最内层 ERROR 上下文」聚合排序；`TestCorpusGrammarBaseline` 冻结 18 个已知坏文件基线（18/15108 = 0.12%） |
+| L7 | `make diagnostics-check` / `diagnostics-write` | 诊断码注册表 ↔ 文档 ↔ VSC manifest 三方一致性 |
+| L8 | `cmd/field-audit` / `fmt-audit` / `record-audit` | 字段校验、格式化、record 成员的语料评估 |
+| L9 | `make grammars` / `grammars-check` / `keywords` / `keywords-check` / `manifest-check` | 生成/校验 TextMate 语法与关键字表、VSC 清单校验 |
+| L10 | `make e2e-vscode` / `zed-check` / `zed-check-windows` | 无头 VSCode 端到端；Zed 查询校验 |
+| L11 | `scripts/` | `install-toolchain.sh`（幂等）、`dev-env.sh`、`env-check.sh`、`corpus-smoke.sh`、`corpus-regress.sh`、`repro-index-crash.py`、`generate-keywords.mjs`、`generate-tm-grammars.mjs`、`verify-tm-grammars.mjs`、`verify-vscode-manifest.mjs` |
+
+---
+
+## 12. 编辑器支持矩阵
+
+| 能力 | VSCode | Zed（`4gl-full` v0.1.1，暂停） |
+|---|---|---|
+| 语法高亮 / LSP 基础 | ✅ | ✅ |
+| 链接/数据库字段 TreeView、反查、部署命令 | ✅ | ➖（可见不可跳 / 用 task） |
+| 语义高亮 | ✅ | ➖ |
+| 真机验证 | Linux 通过，Windows/macOS 待验 | 缺真机 |
+
+---
+
+## 13. 明确不做
 
 | # | 不做 | 原因 |
 |---|---|---|
-| N1 | Genero 编译器/运行时/数据库访问 | 超出 LSP 范围 |
+| N1 | Genero 编译器 / 运行时 / 数据库访问 | 超出 LSP 范围（部署归 tiptop） |
 | N2 | 100% 语义正确 | 无法静态确定时明确降级，宁可不报 |
 | N3 | 完整 IDE（调试器、GUI 设计器） | 不做 |
-| N4 | 替代 `fglform` / `fglcomp` | LSP 是编辑期辅助，编译是最终验证 |
+| N4 | 替代 `fglform` / `fglcomp` | 编辑期辅助，编译才是最终验证 |
 | N5 | 移动端 / Web IDE | v1 不支持 |
-| N6 | 纯 Go SFTP | 已选 rsync/scp |
-| N7 | Genero 5.0 语法支持 | **暂不排期** |
-| N8 | GitHub Release / 自动下载 / 市场与注册表发布 | **暂不排期** |
-| N9 | 把内置函数/变量写进 grammar | 会破坏高亮/重命名/补全语义：内置名变关键字后，用户自定义同名符号被冒充（P7-C 结论） |
-| N10 | 用 `documentSymbol` 做跨文件跳转 | LSP 该结构没有 URI/target 字段；跨文件需扁平 `SymbolInformation`，与层级不共存（P7-E 结论） |
-| N11 | 让 GLOBALS 变量跨链接可见 | 用户明确要求：链接只放大函数可见性，不放大变量可见性（P7-D 规则 R2） |
+| N6 | 纯 Go SFTP | 已选 rsync/scp（tiptop 侧） |
+| N7 | Genero 5.0 语法 | 暂不排期 |
+| N8 | GitHub Release / 自动下载 / 市场与注册表发布 | 暂不排期 |
+| N9 | 把内置函数/变量写进 grammar | 内置名变关键字会冒充用户自定义同名符号 |
+| N10 | 用 `documentSymbol` 做跨文件跳转 | 该结构无 URI/target 字段；跨文件需扁平 `SymbolInformation` |
+| N11 | GLOBALS 变量跨链接可见 | 链接只放大函数可见性，不放大变量可见性 |
+| N12 | 跨文件重命名 / 类型与赋值兼容性检查 | 有意不做（变量只查「有没有来源」） |
+| N13 | 链接资料过期告警 | 设计如此（`maxAgeDays` 已删除） |
 
 ---
 
-## 5. 按阶段汇总
+## 14. 相关文档
 
-| 阶段 | 功能编号 | 状态 |
+| 文档 | 内容 |
+|---|---|
+| [`DIAGNOSTICS.md`](DIAGNOSTICS.md) | 诊断码与默认级别（`make diagnostics-write` 生成，构建输入，不算独立功能文档） |
+| [`../README.md`](../README.md) | 仓库入口：构建、工具链、快速开始 |
+| [vscode-bdl/docs/FEATURES.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md) | 三个组件按类型整合的完整功能文档 |
+| [vscode-bdl/README.md](https://github.com/darcyjoven/vscode-bdl/blob/main/README.md) | 唯一用户引导 |
+| [vscode-bdl/docs/TODO.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/TODO.md) | 待办清单 |
+| [vscode-bdl/docs/OPEN-ITEMS.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/OPEN-ITEMS.md) | 待确认记录 |
+| [tiptop/docs/FEATURES.md](https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md) | tiptop 单组件功能清单 |
+
+---
+
+## 附录 A：需求来源与验收口径
+
+> 从旧版功能基线（`FEATURES.md` v0.3，2026-10-22）保留的可追溯信息；功能本体见上文各节。
+
+### A.1 需求来源
+
+| # | 功能 | 来源 | 状态 |
+|---|---|---|---|
+| 1 | 语法高亮（`.4gl` / `.global` / `.per`） | 用户提出 | ✅ VSCode TextMate + Zed query |
+| 2 | 函数、变量跳转 | 用户提出 | ✅ 单文件内 + GLOBALS 跨文件（C2） |
+| 3 | 4GL 格式化（关键字大小写 + 缩进），`.per` 不格式化 | 用户提出 | ✅ B10 |
+| 4 | 4GL 中校验字段是否存在 | 用户提出 | ✅ `field-not-in-form`；record `.*` 最后做 |
+| 5 | 4GL 与 `.per` 联动（.per 变更刷新诊断、relatedInformation 跳转） | 用户提出 | ✅ D4 / G 节 |
+| 6 | Go 实现的 LSP 服务 | 用户提出 | ✅ |
+| 7 | VSCode 插件 | 用户提出 | ✅ vscode-bdl |
+| 8 | Zed 插件 | 用户提出 | ✅ `4gl-full` v0.1.1（暂停） |
+| 9 | 基于 `tree-sitter-bdl` / `tree-sitter-per` | 用户提出 | ✅ A2 |
+| 10 | 仓库 Git 管理 | 用户提出 | ✅ |
+| 11 | 文档/脚本/中间产物集中 bdl-lsp | 用户提出 | ✅ |
+| 12 | GLOBALS 模组全局变量：跳转 + 来源标注 + 两类可关警告 | 用户提出 | ✅ C2 |
+| 13 | 部署服务器 + 上传编译 | 用户给方向 | ✅ 现由 tiptop 提供 |
+| 14 | 无感使用体验 | 用户给方向 | ◐ 本地路径/缓存已做；自动下载随发布暂缓 |
+| 15 | 与轻量插件共存 | 用户给方向 | ✅ Zed id `4gl-full` |
+| 16 | Genero 版本范围 2.50–5.0 | 用户给方向 | ✅ 以 2.50 为基线；5.0 暂不排期（见 OPEN-ITEMS） |
+
+### A.2 记录（record）`.*` 校验的分期
+
+| 子项 | 内容 | 状态 |
 |---|---|---|
-| 已完成 | 10, 11 | ✅ |
-| P1 | 1(基础), 2, 6, 7, 9, 16, 17, 18, 19, 20, 25 | ✅ 完成 |
-| P2 | 8, 14 | ✅ 完成 |
-| P3 | 4.1, 4.2, 5, 21 | ✅ P3a/P3b 完成（2026-10-20） |
-| P4 | 3, 22 | ✅ 完成（2026-10-21） |
-| P5 | 12, 23, 24 | ✅ CLI + VSCode 完成（2026-10-21） |
-| P6 | 4.3, 26–34 | ✅ 补全/重命名/CodeAction/语义高亮/record 成员 全部完成（2026-10-21） |
-| P7 | 35–40 | ✅ 全部完成（2026-10-21） |
-| **P8** | **53, 54** | ✅ 收尾完成（2026-10-22）：忽略列表、部署当前文件复核、TESTING/编辑器差异文档、grammar tag、go-tree-sitter v0.25 |
-| 暂不排期 | 15(5.0), N7, N8 | — |
+| 4.1 | 显式字段校验：`AFTER FIELD`、`BEFORE FIELD`、`NEXT FIELD`、`INFIELD()`、`CONSTRUCT ... ON`、`DISPLAY ... TO` | ✅ |
+| 4.2 | 跨文件：表单路径解析、`.per` item 集合、`SCREEN RECORD` | ✅ |
+| 4.3 | record `BY NAME` 成员校验 | ✅ 默认 off（`record-member-unknown`） |
 
----
-
-## 6. 验收口径（按功能）
+### A.3 验收口径
 
 | 功能 | 验收方式 |
 |---|---|
 | 高亮 | 打开样例文件，关键字/字符串/注释/数字着色 |
 | 跳转 | 函数/变量/字段可跳转；成功率 > 90% |
-| 格式化 | 幂等；格式化后无新增 ERROR；`.per` 一律不格式化 |
+| 格式化 | 幂等；格式化后无新增 `ERROR`；`.per` 一律不格式化 |
 | 字段校验 | 默认 `warning`；表单唯一解析才报；标注集误报 < 5% |
 | record `.*` | 单独开关（默认关闭）；标注集误报 < 10% 才默认开启 |
-| LSP | initialize/文档同步/诊断/符号/跳转全部可用 |
+| LSP | initialize / 文档同步 / 诊断 / 符号 / 跳转全部可用 |
 | VSCode | VSIX 本地安装；高亮 + 跳转 + 诊断 |
 | Zed | dev extension 加载；高亮 + LSP 跳转 |
-| 部署 | dry-run + 真实上传 + 编译诊断映射 |
-| 内置符号（P7-C） | 语料 `cmd/builtin-audit` 后"未知未分类"< 20 条；`STATUS`/`SQLCA`/`ARG_VAL` 不再误报 |
-| 链接资料（P7-D） | 真实 GAL_FILE 全量导入后，跨文件函数可见；**R2 反例测试**：链接的子文件间变量仍不可见 |
-| 诊断级别（P7-B） | 每个诊断码可配 warn/error/info/hint/off；拼错有告警；`make diag-audit` 给出逐码基线 |
+| 部署 | dry-run + 真实上传 + 编译诊断映射（tiptop） |
+| 内置符号 | 语料 `make builtin-audit` 后「未知未分类」< 20 条；`STATUS`/`SQLCA`/`ARG_VAL` 不再误报 |
+| 链接资料 | 真实 GAL_FILE 全量导入后跨文件函数可见；R2 反例：链接的子文件间变量仍不可见 |
+| 诊断级别 | 每码可配 warn/error/info/hint/off；拼错有告警；`make diag-audit` 给出逐码基线 |

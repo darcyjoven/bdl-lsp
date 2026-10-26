@@ -702,3 +702,42 @@ func TestScanCorpusFacts(t *testing.T) {
 		t.Errorf("末次进度 = %v，期望 [2 2]", seen[len(seen)-1])
 	}
 }
+
+// TestResolveDataDir 钉住 W6 的目录选择规则：
+// 新布局优先 → 旧布局回退 → 都不存在时新布局；显式配置优先（不回退）。
+func TestResolveDataDir(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string) {
+		t.Helper()
+		dir := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, LinksFileName), []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := ResolveDataDir(root, ""); got != DefaultDataDir {
+		t.Fatalf("没有任何资料时应返回默认新目录，实际 %q", got)
+	}
+
+	write(".link")
+	if got := ResolveDataDir(root, ""); got != ".link" {
+		t.Fatalf("只有 .link 时应回退 .link，实际 %q", got)
+	}
+
+	write(".project")
+	if got := ResolveDataDir(root, ""); got != ".project" {
+		t.Fatalf("只有 .project 根时应回退 .project，实际 %q", got)
+	}
+
+	write(".project/link")
+	if got := ResolveDataDir(root, ""); got != DefaultDataDir {
+		t.Fatalf("新布局存在时应优先新目录，实际 %q", got)
+	}
+
+	if got := ResolveDataDir(root, "custom/dir"); got != "custom/dir" {
+		t.Fatalf("显式配置应原样返回（不回退），实际 %q", got)
+	}
+}

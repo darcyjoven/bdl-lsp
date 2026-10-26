@@ -28,7 +28,7 @@ func (s *Server) schemaLoadErr() string {
 
 // loadSchemaIndex 在 initialize 期间读取项目里的字段资料（P2-1）。
 //
-// 资料格式见 internal/schema：`.project/.schema/tables.json` + 每表一个文件。
+// 资料格式见 internal/schema：`.project/schema/tables.json` + 每表一个文件。
 // 只读总索引（几十 KB），表文件在悬停/展开时才惰性读——所以这里很快。
 //
 // 三种结局都要能工作：关闭 → 不加载；没有资料 → 静默（新项目常态，
@@ -45,7 +45,8 @@ func (s *Server) loadSchemaIndex() {
 	if s.rootPath == "" {
 		return
 	}
-	dir := settings.SchemaDataDir()
+	// W6：新布局 `.project/schema/` 优先，回退历史 `.project/.schema/`。
+	dir := schema.ResolveDataDir(s.rootPath, settings.SchemaDataDir())
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(s.rootPath, dir)
 	}

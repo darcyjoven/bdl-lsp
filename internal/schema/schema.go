@@ -1,7 +1,7 @@
 // Package schema 读取数据库"字段资料"（PLUGIN-PLAN P2-1）。
 //
 // 资料由 tiptop 生产（`tiptop schema import`，来源是 Oracle 导出 CSV），
-// 落在项目里的 `.project/.schema/`：
+// 落在项目里的 `.project/schema/`（旧 `.project/.schema/` 只读兼容）：
 //
 //	tables.json           总索引：表 → {name, desc, columns, file}
 //	tables/<TABLE>.json   一张表的列（展开/悬停时才读）
@@ -27,13 +27,48 @@ import (
 )
 
 // ErrNoData 表示数据目录里没有字段资料（还没导入过）。
-var ErrNoData = errors.New("没有字段资料（.project/.schema/tables.json 不存在）")
+var ErrNoData = errors.New("没有字段资料（.project/schema/tables.json 不存在；旧目录 .project/.schema 也认）")
 
 // FileName 是总索引文件名。
 const FileName = "tables.json"
 
 // SubDir 是每表文件所在的子目录名。
 const SubDir = "tables"
+
+// DefaultDirName 是默认字段资料目录（相对项目根）：`.project/schema`。
+//
+// W6（Windows 实机反馈）：与链接资料一起目录化——`.project` 根只留
+// `secrets.json`，字段资料在 `.project/schema/`（注意没有点号）。
+const DefaultDirName = ".project/schema"
+
+// LegacyDirNames 是历史字段资料目录（**只读兼容**，按“新→旧”排列）。
+var LegacyDirNames = []string{".project/.schema"}
+
+// HasData 报告目录下是否存在总索引 tables.json。
+func HasData(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, FileName))
+	return err == nil
+}
+
+// ResolveDataDir 选择实际使用的字段资料目录。
+//
+// 规则与 link.ResolveDataDir 一致：显式配置优先；否则新目录 → 历史目录；
+// 都不存在时返回默认新目录（供首次导入写盘）。
+func ResolveDataDir(root, configured string) string {
+	if configured != "" && configured != DefaultDirName {
+		return configured
+	}
+	for _, d := range append([]string{DefaultDirName}, LegacyDirNames...) {
+		dir := d
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(root, d)
+		}
+		if HasData(dir) {
+			return d
+		}
+	}
+	return DefaultDirName
+}
 
 // SchemaVersion 是资料格式版本（与 tiptop 的写入端一致）。
 const SchemaVersion = 1

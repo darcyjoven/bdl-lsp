@@ -4,7 +4,7 @@ name: build
 #
 # 两个 grammar 自 v1.0.0/v1.0.1 起是**带 tag 的普通 Go 模块**，由 go.mod 固定，
 # 不再需要检出兄弟目录（旧的 replace 布局已去掉）。改 grammar 后的回归
-# 需要本地/另仓运行，见 docs/TESTING.md §3.3。
+# 需要本地/另仓运行，见 docs/FEATURES.md §11 开发者工具与质量门。
 
 on:
   push:

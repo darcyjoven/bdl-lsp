@@ -50,22 +50,53 @@ const (
 	LinksFileName = "links.jsonl"
 	// MetaFileName 是元数据文件名。
 	MetaFileName = "links.meta.json"
-	// DefaultDataDir 是默认资料目录（相对项目根）。
+	// DefaultDataDir 是默认资料目录（相对项目根）：`.project/link/`。
 	//
-	// 2026-10-23（PLUGIN-PLAN P1-2）：`.link` → `.project`——项目级资料
-	// （链接资料、CSV、secrets、部署配置，以及将来的 schema）统一放一个目录，
-	// 不再散落。旧目录 `.link/` 仍会被读取（见 server/links.go 的兼容回退），
-	// 但**只写新目录**。
-	//
-	// 用 `.link` 而不是 `.bdl-lsp/link`：点开头是隐藏目录，名字短对
-	// Windows 路径长度友好；且它与 `.bdl-lsp`（编辑器配置）语义不同——
-	// 这份数据是从外部系统同步来的，通常不提交进仓库。
-	DefaultDataDir = ".project"
+	// W6（Windows 实机反馈，2026-10-24）：项目资料统一目录化管理——
+	// `.project` 根只留 `secrets.json`，链接资料在 `.project/link/`，
+	// 字段资料在 `.project/schema/`，部署配置在 `.project/deploy/`。
+	// 历史布局（`.project/links.jsonl`、`.link/links.jsonl`）仍会被读取，
+	// 由编辑器侧一键迁移（见 ResolveDataDir 与 server/links.go）。
+	DefaultDataDir = ".project/link"
 
-	// LegacyDataDir 是迁移前的资料目录（P1-2 之前）。bdl-lsp **只读不写**：
-	// 读到旧目录时发一条 link-data-legacy-dir 提示，由编辑器侧一键迁移。
+	// LegacyDataDir 是最老的资料目录名（P1-2 之前），保留给需要单一旧目录名的调用方。
 	LegacyDataDir = ".link"
 )
+
+// LegacyDataDirs 是历史资料目录（**只读兼容**，按“新→旧”排列）：
+//   - `.project`：P1-2 之后、W6 之前的布局（links.jsonl 直接放 .project 根）
+//   - `.link`：P1-2 之前的布局
+var LegacyDataDirs = []string{".project", ".link"}
+
+// HasData 报告目录下是否存在 links.jsonl。
+func HasData(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, LinksFileName))
+	return err == nil
+}
+
+// ResolveDataDir 选择实际使用的链接资料目录。
+//
+//   - configured 非空且不等于默认值：完全尊重用户配置（不做回退，避免
+//     "我明明配了却没生效"）；
+//   - 否则按“新目录 → 历史目录”返回第一个含 links.jsonl 的目录；
+//   - 都不存在时返回默认新目录（供首次导入写盘）。
+//
+// root 是项目根；返回相对项目根的目录名或原样的绝对路径。
+func ResolveDataDir(root, configured string) string {
+	if configured != "" && configured != DefaultDataDir {
+		return configured
+	}
+	for _, d := range append([]string{DefaultDataDir}, LegacyDataDirs...) {
+		dir := d
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(root, d)
+		}
+		if HasData(dir) {
+			return d
+		}
+	}
+	return DefaultDataDir
+}
 
 // FileRef 是链路里的一个文件：`[模组, 程序代码]`。
 //

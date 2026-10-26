@@ -193,3 +193,33 @@ func TestTableColumnAndHas(t *testing.T) {
 		t.Error("nil 表的 Column 应返回 false")
 	}
 }
+
+// TestResolveDataDir 钉住 W6 的字段资料目录选择规则。
+func TestResolveDataDir(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel string) {
+		t.Helper()
+		dir := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, FileName), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := ResolveDataDir(root, ""); got != DefaultDirName {
+		t.Fatalf("没有任何资料时应返回默认新目录，实际 %q", got)
+	}
+	write(".project/.schema")
+	if got := ResolveDataDir(root, ""); got != ".project/.schema" {
+		t.Fatalf("只有旧布局时应回退 .project/.schema，实际 %q", got)
+	}
+	write(".project/schema")
+	if got := ResolveDataDir(root, ""); got != DefaultDirName {
+		t.Fatalf("新布局存在时应优先新目录，实际 %q", got)
+	}
+	if got := ResolveDataDir(root, "custom"); got != "custom" {
+		t.Fatalf("显式配置应原样返回，实际 %q", got)
+	}
+}

@@ -28,9 +28,10 @@ var errConnNotReady = errors.New("LSP 连接尚未建立")
 func (s *Server) reparse(ctx context.Context, doc *document.Document, oldTree *ts.Tree) {
 	text, _, version := doc.Snapshot()
 	settings := s.settings()
+	forced := s.forceParseURI(doc.URI)
 
 	// 用户点过"强制解析"的文件不再受上限约束（有效期到关闭为止）。
-	if !s.forceParseURI(doc.URI) {
+	if !forced {
 		if reason := tooLargeReason(text, settings.Limits); reason != "" {
 			s.logger.Debug("跳过语法诊断", "uri", doc.URI, "reason", reason)
 			s.publishNotice(ctx, doc.URI, version, diag.CodeFileTooLarge, reason)
@@ -39,18 +40,20 @@ func (s *Server) reparse(ctx context.Context, doc *document.Document, oldTree *t
 	}
 
 	opts := parser.ParseOptions{
-		Timeout: time.Duration(settings.Limits.ParseTimeoutMS) * time.Millisecond,
+		Timeout: s.forceParseTimeout(doc.URI, settings.Limits.ParseTimeoutMS),
 	}
+	started := time.Now()
 	tree, err := s.pool.ParseWith(ctx, doc.Lang, text, oldTree, opts)
+	s.reportParse(ctx, doc, len(text), time.Since(started), err)
 	if err != nil {
 		// doc 仍持有 oldTree，保留它供下次复用，不要在此关闭（否则双重释放）。
 		if errors.Is(err, parser.ErrTimeout) && ctx.Err() == nil {
 			s.logger.Warn("解析超时，保留上次诊断", "uri", doc.URI, "timeout", opts.Timeout)
 			// 必须让用户看见"这个文件本轮没被解析"：否则表现为"功能时有时无"。
 			// 提示里给出两条出路：提高上限，或对当前文件执行「强制解析」。
-			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `basic.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
-			if s.forceParseURI(doc.URI) {
-				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `basic.limits.parseTimeoutMs`", opts.Timeout)
+			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `bdl.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
+			if forced {
+				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `bdl.limits.parseTimeoutMs`", opts.Timeout)
 			}
 			s.publishNotice(ctx, doc.URI, version, diag.CodeParseTimeout, msg)
 			return
@@ -126,18 +129,22 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 		}
 	}
 
+	forced := s.forceParseURI(doc.URI)
 	opts := parser.ParseOptions{
-		Timeout: time.Duration(settings.Limits.ParseTimeoutMS) * time.Millisecond,
+		Timeout: s.forceParseTimeout(doc.URI, settings.Limits.ParseTimeoutMS),
 	}
+	started := time.Now()
 	tree, err := s.pool.ParseWith(ctx, doc.Lang, text, oldTree, opts)
+	elapsed := time.Since(started)
+	s.reportParse(ctx, doc, len(text), elapsed, err)
 	if err != nil {
 		if errors.Is(err, parser.ErrTimeout) && ctx.Err() == nil {
 			s.logger.Warn("解析超时，保留上次诊断", "uri", doc.URI, "timeout", opts.Timeout)
 			// 必须让用户看见"这个文件本轮没被解析"：否则表现为"功能时有时无"。
 			// 提示里给出两条出路：提高上限，或对当前文件执行「强制解析」。
-			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `basic.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
-			if s.forceParseURI(doc.URI) {
-				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `basic.limits.parseTimeoutMs`", opts.Timeout)
+			msg := fmt.Sprintf("解析超时（超过 %s），本轮已跳过诊断；可提高 `bdl.limits.parseTimeoutMs`，或对本文件执行「强制解析当前文件」", opts.Timeout)
+			if forced {
+				msg = fmt.Sprintf("强制解析仍然超时（超过 %s）：本文件太大或语法过于复杂，建议提高 `bdl.limits.parseTimeoutMs`", opts.Timeout)
 			}
 			s.publishNotice(ctx, doc.URI, version, diag.CodeParseTimeout, msg)
 			return
@@ -176,6 +183,10 @@ func (s *Server) reparseFull(ctx context.Context, doc *document.Document) {
 		gDiags = append(gDiags, s.unresolvedSourceChecks(doc, gfi, nil)...)
 	}
 	s.publish(ctx, doc.URI, version, issues, gDiags)
+
+	// W1：回执必须在 SetTree + publish **之后**发——
+	// 编辑器收到 bdl/parseDone 就会刷新大纲，此时树必须已经就绪。
+	s.reportForceParseDone(ctx, doc, len(text), elapsed)
 }
 
 // formSideNames 返回这些表单里"表单侧的名字"（见 form.Resolver.FormSideNames）。
@@ -205,6 +216,50 @@ func tooLargeReason(text []byte, limits config.Limits) string {
 		}
 	}
 	return ""
+}
+
+// forceParseTimeout 返回本次解析的超时上限。
+//
+// W1（Windows 实机反馈）：用户点过"强制解析"的文件**不限时**（Timeout 0，
+// 见 parser.ParseWith 的说明）。否则大文件仍会在 parseTimeoutMs 处放弃，
+// 拿不到语法树，表现为"点了强制解析，大纲还是空的"。
+func (s *Server) forceParseTimeout(uri string, ms int) time.Duration {
+	if s.forceParseURI(uri) {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// reportParse 记录一次解析的规模与耗时。
+//
+// W1.5：大文件"是慢、还是被上限跳过"必须能从日志/编辑器一眼区分，
+// 所以强制解析无论成败都记一条 Info 日志（普通解析只记 Debug）。
+func (s *Server) reportParse(ctx context.Context, doc *document.Document, size int, elapsed time.Duration, err error) {
+	if !s.forceParseURI(doc.URI) {
+		s.logger.Debug("解析完成", "uri", doc.URI, "bytes", size, "ms", elapsed.Milliseconds())
+		return
+	}
+	s.logger.Info("强制解析完成", "uri", doc.URI, "bytes", size, "ms", elapsed.Milliseconds(), "ok", err == nil)
+}
+
+// reportForceParseDone 在强制解析"已发布诊断"后回执 `bdl/parseDone`。
+//
+// 调用点固定在 reparseFull 末尾（SetTree + publish 之后），保证编辑器收到
+// 回执再刷新大纲时，服务端已经有树。非强制解析、或请求已取消时不发。
+func (s *Server) reportForceParseDone(ctx context.Context, doc *document.Document, size int, elapsed time.Duration) {
+	if !s.forceParseURI(doc.URI) || ctx.Err() != nil {
+		return
+	}
+	p := parseDoneParams{
+		URI:     doc.URI,
+		MS:      elapsed.Milliseconds(),
+		Bytes:   size,
+		Version: doc.Version,
+		OK:      true,
+	}
+	if e := s.notify(ctx, MethodParseDone, p); e != nil {
+		s.logger.Warn("发送解析回执失败", "uri", doc.URI, "error", e)
+	}
 }
 
 // publish 把 parser.Issue 转换为 LSP 诊断并发送。

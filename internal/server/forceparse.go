@@ -20,11 +20,37 @@ import (
 // MethodForceParse 是编辑器侧发来的自定义请求（params: {"uri": "..."}）。
 const MethodForceParse = "bdl/forceParse"
 
+// MethodParseDone 是"强制解析完成"的服务端通知。
+//
+// W1（Windows 实机反馈）：强制解析改成后台执行后，请求会在解析开始前返回；
+// 编辑器靠这个回执知道"解析完了、可以刷新大纲了"，并用它显示实测耗时。
+const MethodParseDone = "bdl/parseDone"
+
+// parseDoneParams 是 bdl/parseDone 的参数。
+type parseDoneParams struct {
+	URI     string `json:"uri"`
+	MS      int64  `json:"ms"`
+	Bytes   int    `json:"bytes"`
+	Version int32  `json:"version"`
+	OK      bool   `json:"ok"`
+	Error   string `json:"error,omitempty"`
+}
+
 type forceParseParams struct {
 	URI string `json:"uri"`
 }
 
-// handleForceParse 把该 URI 记入"强制解析"集合并立即重解析一次。
+// handleForceParse 把该 URI 记入"强制解析"集合，并在**后台**重解析。
+//
+// W1（Windows 实机反馈）：以前是同步重解析，且仍受 `limits.parseTimeoutMs`
+// 限制——大文件点了"强制解析"照样超时、拿不到语法树，表现为"大纲还是空的"。
+// 现在：
+//   - 登记后立刻回执（不占住 jsonrpc 请求线程）；
+//   - 后台解析对该文件用 `Timeout: 0`（不限时，见 reparse/reparseFull）；
+//   - 完成后发诊断 + `bdl/parseDone`（编辑器据此刷新大纲并提示耗时）。
+//
+// 锁纪律：调用点在 handle 内、已持 parseMu，所以真正的解析必须丢到
+// requestForceReparse（等锁），否则会自己锁死自己（同 requestRediagnose）。
 func (s *Server) handleForceParse(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
 	var params forceParseParams
 	if err := json.Unmarshal(req.Params(), &params); err != nil {
@@ -38,10 +64,41 @@ func (s *Server) handleForceParse(ctx context.Context, reply jsonrpc2.Replier, r
 		return reply(ctx, nil, fmt.Errorf("%s: 文件未打开：%s", MethodForceParse, params.URI))
 	}
 	s.setForceParse(params.URI, true)
-	s.logger.Info("强制解析当前文件", "uri", params.URI)
-	// 调用点在 handle 内，parseMu 已持有；重解析后该文件不再受上限约束。
-	s.reparseFull(ctx, doc)
+	s.logger.Info("强制解析当前文件（后台，不限时）", "uri", params.URI)
+	s.requestForceReparse(params.URI)
 	return reply(ctx, nil, nil)
+}
+
+// requestForceReparse 在后台对某个已打开文件做一次不限时重解析。
+//
+// 与 requestRediagnose 相同的理由：从不阻塞调用方，等 parseMu 后再动文档树。
+// 区别：只重算这一个文件（不 rediagnoseAll），并在退出/关闭后放弃。
+func (s *Server) requestForceReparse(uri string) {
+	s.mu.Lock()
+	shutdown := s.shutdown
+	s.mu.Unlock()
+	if shutdown {
+		return
+	}
+	go func() {
+		select {
+		case <-s.exited:
+			return
+		default:
+		}
+		s.parseMu.Lock()
+		defer s.parseMu.Unlock()
+		select {
+		case <-s.exited:
+			return
+		default:
+		}
+		doc := s.docs.Get(uri)
+		if doc == nil {
+			return // 等待期间文件被关闭
+		}
+		s.reparseFull(context.Background(), doc)
+	}()
 }
 
 // forceParseURI 报告该文件是否被用户要求"强制解析"。

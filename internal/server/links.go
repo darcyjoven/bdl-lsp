@@ -66,30 +66,26 @@ func (s *Server) newLinkResolver() {
 		return
 	}
 
-	dataDir := settings.LinkDataDir()
-	configured := dataDir
+	// W6：解析实际资料目录——新布局 `.project/link/` 优先，回退历史布局
+	// （`.project/` 根、`.link/`）。用户显式配置了非默认目录时完全尊重配置。
+	configured := settings.LinkDataDir()
+	dataDir := link.ResolveDataDir(s.rootPath, configured)
 	if !filepath.IsAbs(dataDir) {
 		dataDir = filepath.Join(s.rootPath, dataDir)
 	}
 	s.links.dataDir = dataDir
 	s.links.legacyDir = ""
-
-	idx, err := link.Load(dataDir)
-
-	// 兼容旧布局（P1-2）：配置还是默认值、新目录没有资料、而 `.link/` 有 →
-	// 读旧目录（**不写**），并记下来发一条迁移提示。
-	// 用户显式把 dataDir 指到别处时不做这个回退，避免"我明明配了却没生效"。
-	if err == link.ErrNoData && configured == link.DefaultDataDir {
-		legacy := filepath.Join(s.rootPath, link.LegacyDataDir)
-		if _, statErr := os.Stat(filepath.Join(legacy, link.LinksFileName)); statErr == nil {
-			if legacyIdx, legacyErr := link.Load(legacy); legacyErr == nil {
-				idx, err = legacyIdx, nil
-				s.links.dataDir = legacy
-				s.links.legacyDir = legacy
-				s.logger.Info("链接资料仍在旧目录，建议迁移", "dir", legacy)
-			}
+	// 资料仍在历史布局时记下来，稍后发一条 link-data-legacy-dir 提示，
+	// 由编辑器侧一键迁移（用户显式配置时不判断，避免"配了还提示"）。
+	if configured == "" || configured == link.DefaultDataDir {
+		want := filepath.Join(s.rootPath, link.DefaultDataDir)
+		if filepath.Clean(dataDir) != filepath.Clean(want) {
+			s.links.legacyDir = dataDir
+			s.logger.Info("链接资料仍在旧目录布局，建议迁移", "dir", dataDir)
 		}
 	}
+
+	idx, err := link.Load(dataDir)
 	if err != nil {
 		s.links.resolver = nil
 		s.links.loaded = false
@@ -283,7 +279,7 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 		return
 	}
 
-	// 0) 旧目录：资料能用，但位置该搬家了（`.link/` → `.project/`）。
+	// 0) 旧目录布局：资料能用，但位置该搬家了（`.project` 根 / `.link/` → `.project/link/`）。
 	// 报在**旧目录**的 links.jsonl 上，用户一点就知道该搬哪个目录。
 	if legacyDir != "" {
 		if sev, enabled := diag.SeverityFor(diag.CodeLinkDataLegacyDir, settings); enabled {
@@ -292,8 +288,9 @@ func (s *Server) publishLinkStatus(ctx context.Context) {
 				Range:    protocol.Range{},
 				Severity: sev,
 				Source:   "bdl-lsp",
-				Message: "链接资料仍在旧目录 `.link/`；执行命令「Genero BDL: 迁移链接资料目录」" +
-					"可以搬到 `.project/`（迁移前会先确认，搬完自动重启语言服务器）",
+				Message: "项目资料还在旧目录布局；执行命令「Genero BDL: 迁移项目资料目录」" +
+					"可以把链接资料搬到 `.project/link/`、字段资料搬到 `.project/schema/`" +
+					"（迁移前会先确认，搬完自动重启语言服务器）",
 				Code: string(diag.CodeLinkDataLegacyDir),
 			}})
 		}

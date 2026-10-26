@@ -9,7 +9,7 @@
 // 链接资料的生成与部署**不在本程序内**：它们属于具体系统的项目管理工具
 // （如 tiptop 的 `tiptop link import` / `tiptop deploy`）。bdl-lsp 只读取
 // `<项目>/.project/` 下的资料（旧 `.link/` 仍兼容读取），通过文件系统与那些工具对接。
-// 见 docs/PLAN-SEPARATION.md。
+// 见 docs/FEATURES.md（§0 职责与边界）。
 package main
 
 import (

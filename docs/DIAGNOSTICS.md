@@ -30,7 +30,7 @@
 | `link-data-legacy-dir` | `hint` | 链接资料仍在旧目录 `.link/`；`bdl.migrateLinkDir` 可一键迁移到 `.project/`（迁移前会先确认） |
 | `missing-node` | `warning` | grammar 的 MISSING 节点整簇兜底码（缺少 END IF、缺少逗号等） |
 | `parse-timeout` | `warning` | 解析超时（`bdl.limits.parseTimeoutMs`），本轮已跳过诊断；可提高上限或对当前文件执行「强制解析」 |
-| `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用字段资料（`.project/.schema`）展开（默认关） |
+| `record-member-unknown` | `off` | `BY NAME rec.member` 的成员不在 RECORD 声明里；`RECORD LIKE t.*` 用字段资料（`.project/schema`）展开（默认关） |
 | `syntax-error` | `warning` | grammar 的 ERROR 节点（无法解析的片段） |
 | `variable-source-unresolved` | `warning` | 变量使用处查不到任何定义（局部 / 模块级 / GLOBALS 引入均无） |
 

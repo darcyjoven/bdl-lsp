@@ -19,7 +19,7 @@ import (
 //  4. 缺失文件（链接里有、磁盘上没有）→ 零诊断；
 //  5. 没有链接资料 → function-not-found 整项不启用。
 
-// linkFixture 建一个最小项目树：tiptop/{apm,lib,sub}/4gl + .project/links.jsonl。
+// linkFixture 建一个最小项目树：tiptop/{apm,lib,sub}/4gl + .project/link/links.jsonl（W6 新布局）。
 type linkFixture struct {
 	root string
 	dirs map[string]string // "apm" -> <root>/tiptop/apm/4gl
@@ -54,10 +54,10 @@ func (f *linkFixture) uri(module, code string) string {
 	return testURI(f.dirs[module], code+".4gl")
 }
 
-// writeLinks 写 .project/links.jsonl（每行一条链）。
+// writeLinks 写 .project/link/links.jsonl（每行一条链；W6 新布局）。
 func (f *linkFixture) writeLinks(t *testing.T, lines ...string) {
 	t.Helper()
-	dir := filepath.Join(f.root, ".project")
+	dir := filepath.Join(f.root, ".project", "link")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +351,7 @@ func TestLinkAmbiguousIndexesAllMains(t *testing.T) {
 func TestLinkInvalidDataReportsDiagnostic(t *testing.T) {
 	f := newLinkFixture(t)
 	f.write(t, "apm", "probe", "MAIN\n    DISPLAY 1\nEND MAIN\n")
-	dir := filepath.Join(f.root, ".project")
+	dir := filepath.Join(f.root, ".project", "link")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -379,7 +379,7 @@ func TestLinkVeryOldDataIsSilent(t *testing.T) {
 	f.writeLinks(t,
 		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"]]}`,
 	)
-	dir := filepath.Join(f.root, ".project")
+	dir := filepath.Join(f.root, ".project", "link")
 	meta := `{"schema":1,"generatedAt":"2020-01-01T00:00:00+08:00","rowsTotal":1,"rowsY":1,"chains":1}`
 	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
 		t.Fatal(err)
@@ -415,6 +415,49 @@ func TestLinkVeryOldDataIsSilent(t *testing.T) {
 	}
 }
 
+// TestLinkLegacyLayoutFallsBackAndHints 钉住 W6 的兼容语义：
+//
+// 资料还在旧布局（`.project` 根或 `.link/`）时**仍能读取**（function-not-found
+// 等能力可用），但要在旧目录的 links.jsonl 上发一条 link-data-legacy-dir 提示，
+// 由编辑器侧一键迁移到 `.project/link/`。
+func TestLinkLegacyLayoutFallsBackAndHints(t *testing.T) {
+	for _, legacy := range []string{".project", ".link"} {
+		t.Run(legacy, func(t *testing.T) {
+			f := newLinkFixture(t)
+			f.write(t, "apm", "entry", "MAIN\n    DISPLAY 1\nEND MAIN\n")
+
+			// 手工写到旧布局（不走默认写新布局的 writeLinks）。
+			dir := filepath.Join(f.root, legacy)
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			line := `{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"]]}`
+			if err := os.WriteFile(filepath.Join(dir, "links.jsonl"), []byte(line+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) +
+				`","rowsTotal":1,"rowsY":1,"chains":1}`
+			if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			h := f.initialize(t)
+			h.sendDidOpen(f.uri("apm", "entry"), "bdl", readFileString(t, f.dirs["apm"], "entry"), 1)
+
+			diags := h.collectDiagnostics(testURI(dir, "links.jsonl"), 3*time.Second)
+			found := false
+			for _, c := range codes(diags) {
+				if c == "link-data-legacy-dir" {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("旧布局 %s 应发 link-data-legacy-dir，实际：%v", legacy, codes(diags))
+			}
+		})
+	}
+}
+
 // readFileString 读 fixture 里的文件内容。
 func readFileString(t *testing.T, dir, code string) string {
 	t.Helper()
@@ -433,7 +476,7 @@ func TestLinkExternalFunctionsAreSuppressed(t *testing.T) {
 	f.write(t, "apm", "entry", "MAIN\n  CALL cl_err3(\"x\")\n  CALL cl_typo()\nEND MAIN\n")
 	f.writeLinks(t, `{"schema":1,"program":"entry","module":"apm","main":"entry",`+
 		`"files":[["apm","entry"]]}`)
-	dir := filepath.Join(f.root, ".project")
+	dir := filepath.Join(f.root, ".project", "link")
 	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
 		`"chains":1,"rowsTotal":1,"rowsY":1,` +
 		`"externals":[{"name":"cl_err3","files":186,"calls":3200}],` +
@@ -473,7 +516,7 @@ func TestLinkTreeRequest(t *testing.T) {
 		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"],["APM","sub1"]]}`,
 		`{"schema":1,"program":"entry2","module":"APM","main":"entry2","files":[["APM","entry"],["APM","sub1"]]}`,
 	)
-	dir := filepath.Join(f.root, ".project")
+	dir := filepath.Join(f.root, ".project", "link")
 	meta := `{"schema":1,"generatedAt":"` + time.Now().Format(time.RFC3339) + `","source":"file",` +
 		`"chains":2,"rowsTotal":2,"rowsY":2}`
 	if err := os.WriteFile(filepath.Join(dir, "links.meta.json"), []byte(meta), 0o600); err != nil {
