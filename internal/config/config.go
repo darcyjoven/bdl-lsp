@@ -151,13 +151,11 @@ func (s Settings) BuiltinsEnabled() bool {
 // 解析的是工作区里的 `.sch` 文件（`<模组根>/<模组>/sch/*.sch`），
 // 不连数据库、不读生产库信息。
 type SchemaSettings struct {
-	// Enable 关闭后不读字段资料（`LIKE t.*` 的记录退回"不校验"、悬停不追加说明）。
-	//
-	// §0d：插件改用 `mode` 三态（off/file/db）后，`enable` 只作为旧配置兼容；
-	// 两者都存在时 **Mode 优先**（见 SchemaEnabled）。
+	// Enable 是布尔入口：关闭后不读字段资料（`LIKE t.*` 的记录退回"不校验"、
+	// 悬停不追加说明）。直接配置 LSP 的客户端（如 Zed）用这个键。
 	Enable *bool `json:"enable,omitempty"`
-	// Mode 是字段资料模式：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
-	// 空 = 未设置，回退到 Enable。
+	// Mode 是三态入口：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
+	// VSCode 插件用这个键；非空时优先于 Enable（见 SchemaEnabled）。
 	Mode string `json:"mode,omitempty"`
 	// DataDir 是字段资料目录（相对工作区根），默认 `.project/schema`（W6）。
 	// 旧布局 `.project/.schema` 只读兼容。资料由 tiptop 生产（`tiptop schema import`）。
@@ -233,13 +231,11 @@ type IgnoreSettings struct {
 //  2. sub/lib/qry 对所有程序可见，含它们自己（扁平规则，无矩阵）；
 //  3. 链接里有、磁盘上没有的文件完全忽略，不报诊断。
 type LinkSettings struct {
-	// Enable 关闭后不做任何链接相关诊断（默认启用）。
-	//
-	// §0d：插件改用 `mode` 三态（off/file/db）后，`enable` 只作为旧配置兼容；
-	// 两者都存在时 **Mode 优先**（见 LinkEnabled）。
+	// Enable 是布尔入口：关闭后不做任何链接相关诊断（默认启用）。
+	// 直接配置 LSP 的客户端（如 Zed）用这个键。
 	Enable *bool `json:"enable,omitempty"`
-	// Mode 是链接资料模式：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
-	// 空 = 未设置，回退到 Enable。
+	// Mode 是三态入口：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
+	// VSCode 插件用这个键；非空时优先于 Enable（见 LinkEnabled）。
 	Mode string `json:"mode,omitempty"`
 	// DataDir 是资料目录（相对项目根），默认 `.project/link`（W6）。
 	// 旧布局 `.project`（根）与 `.link` 只读兼容。
