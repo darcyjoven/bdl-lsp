@@ -14,6 +14,9 @@
 > [tiptop](https://github.com/darcyjoven/tiptop) 负责，bdl-lsp **只读** `<项目>/.project/{link/,schema/}`（旧布局 `.project` 根 / `.link/` / `.project/.schema/` 只读兼容）。
 > 编辑器客户端在 [vscode-bdl](https://github.com/darcyjoven/vscode-bdl)（VSCode）与 zed-bdl（Zed，暂停）。
 >
+> 客户端设置契约：`link.mode` / `schema.mode`（`off|file|db` 三态，VSCode 插件用）；
+> 直接配置本 LSP 的客户端（如 Zed）也可用布尔 `link.enable` / `schema.enable`——`mode` 非空时优先。
+>
 > 当前状态：功能已全部完成（`bdl-lsp 0.3.13` / `tiptop 0.1.8` / `vscode-bdl 0.6.2`），剩余发布闭环。
 
 ## 文档
@@ -27,6 +30,7 @@
 | [vscode-bdl/docs/FEATURES.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md) | 三组件整合功能文档 |
 | [vscode-bdl/docs/TODO.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/TODO.md) | 待办清单（含 Windows 实机验收） |
 | [vscode-bdl/docs/OPEN-ITEMS.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/OPEN-ITEMS.md) | 待确认记录 |
+| [vscode-bdl/docs/COMMANDS.md](https://github.com/darcyjoven/vscode-bdl/blob/main/docs/COMMANDS.md) | 插件操作清单（命令/按钮/后台任务） |
 | [tiptop/docs/FEATURES.md](https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md) | tiptop 功能文档 |
 
 ## 仓库组成
