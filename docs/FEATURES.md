@@ -22,7 +22,7 @@
 | 解析、诊断、跳转、补全、格式化；字段 / 表单 / GLOBALS 校验；跨文件函数可见性 | 不采集资料（`link`/`schema` 采集在 tiptop）、不部署（`deploy` 在 tiptop） |
 
 - 交付物：`bdl-lsp` 二进制（stdio LSP + `check` CLI）。
-- 与 tiptop **只通过文件系统交互**：只读 `<项目>/.project/{link/,schema/}`（旧布局 `.project` 根 / `.link/` 只读兼容，W6）。
+- 与 tiptop **只通过文件系统交互**：只读 `<项目>/.project/{link/,schema/}`（旧布局 `.project` 根 / `.link/` 只读兼容）。
 - 配置入口：编辑器 LSP `settings`（VSC 侧 47 键）与项目级 `<项目>/.bdl-lsp/config.json`。
 
 ---
@@ -37,7 +37,7 @@
 | A4 | UTF-16 ↔ 字节位置换算 | `internal/textpos` |
 | A5 | 语法错误诊断 | `ERROR` → `syntax-error`；`MISSING` → `missing-<kind>`（兜底 `missing-node`） |
 | A6 | 解析资源上限 | `bdl.limits.maxFileBytes` / `maxFileLines` / `maxIssues` / `parseTimeoutMs`；超限 → `file-too-large` / `parse-timeout` |
-| A7 | 强制解析当前文件（W1） | 自定义请求 `bdl/forceParse`（编辑器标题栏按钮，上下文 `bdl.parseSkipped`）；登记后立即回执，**后台不限时**解析（`Timeout 0`，不再受 `limits.parseTimeoutMs` 限制）；成功发诊断 + `bdl/parseDone` 回执（含耗时/字节数/版本），客户端据此刷新大纲 |
+| A7 | 强制解析当前文件 | 自定义请求 `bdl/forceParse`（编辑器标题栏按钮，上下文 `bdl.parseSkipped`）；登记后立即回执，**后台不限时**解析（`Timeout 0`，不再受 `limits.parseTimeoutMs` 限制）；成功发诊断 + `bdl/parseDone` 回执（含耗时/字节数/版本），客户端据此刷新大纲 |
 | A8 | 解析检查 CLI | `bdl-lsp check [--json] [--max-issues N] [-q] <文件...>` |
 | A9 | Genero 版本基线 | `bdl.generoVersion`（默认 `2.50`）；5.0 暂不排期 |
 
@@ -50,7 +50,7 @@
 | B1 | 悬停（hover） | 变量来源、定义位置、函数信息；`LIKE t.col` 追加字段资料；悬停表名给表摘要 |
 | B2 | 跳转定义（definition） | 当前文件、GLOBALS、链接资料内文件 |
 | B3 | 查找引用（references） | 工作区可解析引用 |
-| B4 | 文档符号（大纲 / 面包屑） | `documentSymbol`，`internal/server/symbols.go`；MAIN 程序块的 `detail` 为 `MAIN`——VSCode 客户端据此判定「链接」按钮可用性（W5） |
+| B4 | 文档符号（大纲 / 面包屑） | `documentSymbol`，`internal/server/symbols.go`；MAIN 程序块的 `detail` 为 `MAIN`——VSCode 客户端据此判定「链接」按钮可用性 |
 | B5 | 工作区符号 | `workspace/symbol`；后台全工作区索引 + 持久化快照，覆盖未打开文件 |
 | B6 | 补全 | 关键字、变量、函数、表单字段、表名、列；`.` 触发记录成员/表单字段；`Ctrl+Space` 手动触发 |
 | B7 | 重命名 | `prepare` + `rename`；**只改当前文件**、大小写不敏感、不动字符串 |
@@ -117,7 +117,7 @@
 
 | # | 功能 | 说明 / 入口 |
 |---|---|---|
-| F10 | 资料读取与热重载 | 只读 `.project/link/`（`bdl.link.dataDir`；旧布局回退，W6），按 mtime 热重载（2s 节流），导入后无需重启编辑器 |
+| F10 | 资料读取与热重载 | 只读 `.project/link/`（`bdl.link.dataDir`；旧布局回退），按 mtime 热重载（2s 节流），导入后无需重启编辑器 |
 | F11 | 旧目录兼容与迁移 | 仍读旧 `.link/` 并发 `link-data-legacy-dir`（hint）；命令 `bdl.migrateLinkDir` 可一键迁移（客户端提供入口） |
 | F12 | 跨文件函数可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则）；**只放大函数，变量可见性不变** |
 | F13 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成；资料缺失/链内文件不在磁盘/索引未就绪 → 一律不报（宁漏勿误） |
