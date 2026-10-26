@@ -152,7 +152,13 @@ func (s Settings) BuiltinsEnabled() bool {
 // 不连数据库、不读生产库信息。
 type SchemaSettings struct {
 	// Enable 关闭后不读字段资料（`LIKE t.*` 的记录退回"不校验"、悬停不追加说明）。
+	//
+	// §0d：插件改用 `mode` 三态（off/file/db）后，`enable` 只作为旧配置兼容；
+	// 两者都存在时 **Mode 优先**（见 SchemaEnabled）。
 	Enable *bool `json:"enable,omitempty"`
+	// Mode 是字段资料模式：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
+	// 空 = 未设置，回退到 Enable。
+	Mode string `json:"mode,omitempty"`
 	// DataDir 是字段资料目录（相对工作区根），默认 `.project/schema`（W6）。
 	// 旧布局 `.project/.schema` 只读兼容。资料由 tiptop 生产（`tiptop schema import`）。
 	DataDir string `json:"dataDir,omitempty"`
@@ -168,6 +174,13 @@ func (s Settings) SchemaDataDir() string {
 
 // SchemaEnabled 报告字段资料是否启用（客户端没下发时的兜底是启用）。
 func (s Settings) SchemaEnabled() bool {
+	// §0d：mode 三态优先（插件用 mode 下发；off 才关闭）。
+	switch strings.ToLower(strings.TrimSpace(s.Schema.Mode)) {
+	case "off":
+		return false
+	case "file", "db":
+		return true
+	}
 	if s.Schema.Enable == nil {
 		return true
 	}
@@ -221,7 +234,13 @@ type IgnoreSettings struct {
 //  3. 链接里有、磁盘上没有的文件完全忽略，不报诊断。
 type LinkSettings struct {
 	// Enable 关闭后不做任何链接相关诊断（默认启用）。
+	//
+	// §0d：插件改用 `mode` 三态（off/file/db）后，`enable` 只作为旧配置兼容；
+	// 两者都存在时 **Mode 优先**（见 LinkEnabled）。
 	Enable *bool `json:"enable,omitempty"`
+	// Mode 是链接资料模式：off（不启用）/ file（只用 CSV 导入）/ db（可连库）。
+	// 空 = 未设置，回退到 Enable。
+	Mode string `json:"mode,omitempty"`
 	// DataDir 是资料目录（相对项目根），默认 `.project/link`（W6）。
 	// 旧布局 `.project`（根）与 `.link` 只读兼容。
 	DataDir string `json:"dataDir"`
@@ -236,6 +255,13 @@ type LinkSettings struct {
 
 // LinkEnabled 报告链接资料功能是否启用（默认启用）。
 func (s Settings) LinkEnabled() bool {
+	// §0d：mode 三态优先（插件用 mode 下发；off 才关闭）。
+	switch strings.ToLower(strings.TrimSpace(s.Link.Mode)) {
+	case "off":
+		return false
+	case "file", "db":
+		return true
+	}
 	if s.Link.Enable == nil {
 		return true
 	}
@@ -412,12 +438,19 @@ func (m *Manager) merge(s *Settings) {
 		v := *s.Schema.Enable
 		m.cur.Schema.Enable = &v
 	}
+	// §0d：mode 三态（off/file/db）。用"非空覆盖"——off 也是有效值，必须能下发。
+	if v := strings.TrimSpace(s.Schema.Mode); v != "" {
+		m.cur.Schema.Mode = v
+	}
 	if v := strings.TrimSpace(s.Schema.DataDir); v != "" {
 		m.cur.Schema.DataDir = v
 	}
 	if s.Link.Enable != nil {
 		v := *s.Link.Enable
 		m.cur.Link.Enable = &v
+	}
+	if v := strings.TrimSpace(s.Link.Mode); v != "" {
+		m.cur.Link.Mode = v
 	}
 	if s.Link.DataDir != "" {
 		m.cur.Link.DataDir = s.Link.DataDir
