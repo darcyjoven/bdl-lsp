@@ -362,7 +362,7 @@ function buildBDL() {
   const grammar = {
     $schema:
       "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-    name: "Genero BDL",
+    name: "4gl",
     scopeName: "source.4gl",
     fileTypes: ["4gl", "global"],
     patterns: [
@@ -559,7 +559,7 @@ function buildPER() {
   const grammar = {
     $schema:
       "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-    name: "Genero Form",
+    name: "4gl Form",
     scopeName: "source.per",
     fileTypes: ["per"],
     patterns: [
