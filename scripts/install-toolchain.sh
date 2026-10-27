@@ -59,7 +59,7 @@ if [ -x "$TOOLCHAIN/wasi-sdk/bin/clang" ]; then
   log "wasi-sdk 已存在：$("$TOOLCHAIN/wasi-sdk/bin/clang" --version | head -1)"
 else
   if [ "$CHECK_ONLY" = "1" ]; then log "缺少 wasi-sdk"; else
-    log "安装 $WASI_NAME（x86_64-linux）"
+    log "安装 ${WASI_NAME}（x86_64-linux）"
     curl -fL --retry 2 -o "$TOOLCHAIN/wasi-sdk.tar.gz" \
       "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/${WASI_NAME}-x86_64-linux.tar.gz" \
       >>"$LOGS/wasi-download.log" 2>&1
@@ -74,7 +74,7 @@ if [ -x "$BIN/gh" ]; then
   log "gh 已存在：$("$BIN/gh" --version | head -1)"
 else
   if [ "$CHECK_ONLY" = "1" ]; then log "缺少 gh"; else
-    log "安装 gh $GH_VERSION（可选）"
+    log "安装 gh ${GH_VERSION}（可选）"
     curl -fL --retry 2 -o "$TOOLCHAIN/gh.tar.gz" \
       "https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_amd64.tar.gz" \
       >>"$LOGS/gh-download.log" 2>&1

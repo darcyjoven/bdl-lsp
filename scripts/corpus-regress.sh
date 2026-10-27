@@ -31,7 +31,7 @@ CSV="$LOGDIR/corpus-regress-$STAMP.csv"
 mkdir -p "$LOGDIR"
 
 if [ ! -x "$BIN" ]; then
-  echo "缺少 $BIN，请先 make build" >&2
+  echo "缺少 ${BIN}，请先 make build" >&2
   exit 2
 fi
 if [ ! -d "$CORPUS" ]; then

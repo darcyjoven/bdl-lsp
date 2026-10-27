@@ -11,6 +11,7 @@
 | `env-check.sh` | Linux/macOS | 检查工具链（见仓库 [README](../README.md) 构建一节），缺失项退出码 1 |
 | `env-check.ps1` | Windows | 同上 |
 | `install-toolchain.sh` | Linux（无 root） | 安装 Rust/wasm target/wasi-sdk/gh/VSCode 到 `artifacts/toolchain/`；`--check` 只检查 |
+| `check-sh-utf8-vars.mjs` | 任意（Node） | 检查 shell 脚本里「变量紧跟非 ASCII 字节」（`$VAR（` 要写 `${VAR}（`）；可传多个目录，默认扫本仓库 |
 
 ## 规划中
 
@@ -57,3 +58,8 @@ powershell -ExecutionPolicy Bypass -File scripts\env-check.ps1
 - 发布（GitHub Release / 市场 / 注册表）**暂不排期**；`release.sh` 等脚本在排期后再加。
 - Windows 优先保证 `scp` 路径；`rsync` 作为可选增强，不阻塞 v1。
 - 无桌面 Linux 的 VSCode e2e 用 `--ozone-platform=headless`；Xvfb 需 root 安装。
+- 变量紧跟非 ASCII 字节时必须写 `${VAR}`（如 `"连接 ${TARGET}（远端只读）"`）：bash 用 libc 的
+  `isalnum()`（随 locale 的 ctype 表变）找变量名结尾，macOS 上 `$TARGET（` 的 `EF` 会被吞进变量名 →
+  `set -u` 报 `unbound variable`（不带 `-u` 则静默丢字符）。用 `node scripts/check-sh-utf8-vars.mjs .` 检查。
+- 只在 Linux/WSL 跑不写 `mapfile`/`readarray`（bash 4.0+）；要支持 macOS 自带 bash 3.2 时用
+  `while IFS= read -r x; do arr+=("$x"); done < <(...)`，空数组在 `set -u` 下展开写 `${arr[@]+"${arr[@]}"}`。

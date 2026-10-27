@@ -68,6 +68,12 @@ jobs:
         working-directory: bdl-lsp
         run: make check
 
+      # shell 脚本里变量紧跟中文标点必须写 ${VAR}：macOS 的 ctype 会让 bash 把
+      # 后面 UTF-8 字符的首字节吞进变量名（set -u → unbound variable）。
+      - name: 校验 shell 脚本（变量紧跟非 ASCII）
+        working-directory: bdl-lsp
+        run: node scripts/check-sh-utf8-vars.mjs .
+
       # 注意：TextMate 语法校验（make grammars-check）不在本仓库 CI 里做。
       # 它需要 vscode-extension/ 与两个 grammar 目录同时存在，
       # 属于 vscode-bdl 仓库的职责，见那边的 workflow。

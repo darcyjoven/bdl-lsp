@@ -37,7 +37,7 @@ echo
 echo "-- Go / CGO"
 if has go; then
   cgo="$(go env CGO_ENABLED 2>/dev/null || true)"
-  if [ "$cgo" = "1" ]; then ok "CGO_ENABLED=1"; else bad "CGO_ENABLED=$cgo（需要 1）"; fi
+  if [ "$cgo" = "1" ]; then ok "CGO_ENABLED=1"; else bad "CGO_ENABLED=${cgo}（需要 1）"; fi
   printf '  GOMODCACHE=%s\n' "$(go env GOMODCACHE 2>/dev/null || true)"
 fi
 
