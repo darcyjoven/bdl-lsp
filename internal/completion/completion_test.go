@@ -121,6 +121,36 @@ func TestProvideKeywordCaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestProvideKeywordLowercase 守住"format.keywords=lower 时补全也给小写"。
+//
+// 否则用户补全出 DISPLAY，格式化又把它改成 display，来回打脸。
+func TestProvideKeywordLowercase(t *testing.T) {
+	res := Provide(Context{Lang: "bdl", Line: "dis", Word: "dis"}, nil, nil, nil,
+		Options{Keywords: true, KeywordCase: "lower"})
+	if !has(res.Items, "display") {
+		t.Errorf("应给出小写 display，实际 %v", labels(res.Items))
+	}
+	for _, it := range res.Items {
+		if it.Kind != KindKeyword {
+			continue
+		}
+		if it.Label != strings.ToLower(it.Label) {
+			t.Errorf("关键字应全小写，实际 %q", it.Label)
+		}
+	}
+}
+
+// TestProvideKeywordUpperUnchanged：只有 lower 才改写，upper/unchanged 保持清单原样。
+func TestProvideKeywordUpperUnchanged(t *testing.T) {
+	for _, kc := range []string{"", "unchanged", "upper"} {
+		res := Provide(Context{Lang: "bdl", Line: "dis", Word: "dis"}, nil, nil, nil,
+			Options{Keywords: true, KeywordCase: kc})
+		if !has(res.Items, "DISPLAY") {
+			t.Errorf("KeywordCase=%q 时应保持大写 DISPLAY，实际 %v", kc, labels(res.Items))
+		}
+	}
+}
+
 func TestProvidePERKeywords(t *testing.T) {
 	res := Provide(Context{Lang: "per", Line: "LAY", Word: "LAY"}, nil, nil, nil,
 		Options{Keywords: true})

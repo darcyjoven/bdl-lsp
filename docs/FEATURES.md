@@ -56,7 +56,7 @@
 | B7 | 重命名 | `prepare` + `rename`；**只改当前文件**、大小写不敏感、不动字符串 |
 | B8 | 快速修复（Code Action） | 仅 `quickfix`：字段名写错时的改名建议 |
 | B9 | 语义高亮 | `semanticTokens/full`；只发用户自定义符号（关键字/字符串交给 TextMate）；函数 `declaration`、常量 `readonly`、GLOBALS 块 `static` |
-| B10 | 格式化 | `.4gl` / `.global`；`bdl.format.keywords`（unchanged/upper/lower）+ `indentStyle` + `indentSize`；安全守卫：有 `ERROR` 不格式化、幂等；**`.per` 一律不格式化** |
+| B10 | 格式化 | `.4gl` / `.global`；`bdl.format.keywords`（unchanged/upper/lower，`lower` 同时作用于关键字补全）+ `indentStyle` + `indentSize`；安全守卫：有 `ERROR` 不格式化、幂等；**`.per` 一律不格式化** |
 | B11 | 游标 / PREPARE 符号 | `PREPARE` / `DECLARE CURSOR` 声明；`EXECUTE`/`FETCH`/`OPEN`/`CLOSE`/`FOREACH` 悬停与跳转；接入大纲/补全/语义高亮 |
 
 ---
@@ -195,7 +195,7 @@ LSP 服务端能力由编辑器客户端消费：
 | 基础 | `bdl.server.path` / `bdl.tools.path` / `bdl.server.logLevel` / `bdl.trace.server` | 空 / 空 / `info` / `off` |
 | 基础 | `bdl.generoVersion` | `2.50` |
 | 基础 | `bdl.diagnostics` | `{}`（逐码调级，唯一入口） |
-| 基础 | `bdl.format.keywords` / `indentStyle` / `indentSize` | `unchanged` / `auto` / `0` |
+| 基础 | `bdl.format.keywords` / `indentStyle` / `indentSize` | `unchanged` / `auto` / `0`（`keywords=lower` 也让补全关键字小写） |
 | 基础 | `bdl.index.enable` | `true` |
 | 基础 | `bdl.globals.searchPaths` / `bdl.perRoots` | `[]` / `[]` |
 | 基础 | `bdl.builtins.enable` / `paths` / `disable` | `true` / `[]` / `[]` |

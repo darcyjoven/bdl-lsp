@@ -98,6 +98,11 @@ type Options struct {
 	MaxItems int
 	// Keywords 关闭时不给关键字候选。
 	Keywords bool
+	// KeywordCase 是关键字候选的大小写：unchanged（默认）/ upper / lower。
+	//
+	// 与 `format.keywords` 共用同一个设置值：格式化按小写输出时，补全也给
+	// 小写，避免"补全插入大写、一格式化又变小写"的反复。
+	KeywordCase string
 	// Fields 关闭时不给表单字段候选。
 	Fields bool
 	// Builtins 是内置符号候选（P7-C；可为空）。
@@ -254,9 +259,10 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 			kws = PERKeywords
 		}
 		for _, kw := range kws {
+			label := keywordLabel(kw, opts.KeywordCase)
 			add(Item{
-				Label: kw, Kind: KindKeyword, Detail: "关键字",
-				SortText: "8" + kw,
+				Label: label, Kind: KindKeyword, Detail: "关键字",
+				SortText: "8" + label,
 			})
 		}
 	}
@@ -266,6 +272,17 @@ func Provide(ctx Context, file *index.FileIndex, symbols []*index.Symbol,
 	// 继续输入重新请求，避免一次返回 400 项。
 	incomplete := prefix == ""
 	return Result{Items: truncate(items, max), IsIncomplete: incomplete}
+}
+
+// keywordLabel 按 `format.keywords` 决定关键字候选的大小写。
+//
+// 关键字清单（keywords_gen.go）统一是大写。只有设成 lower 才改写：
+// unchanged / upper 保持清单原样，补全的字形不受影响。
+func keywordLabel(kw, keywordCase string) string {
+	if keywordCase == "lower" {
+		return strings.ToLower(kw)
+	}
+	return kw
 }
 
 // kindForBuiltin 把内置符号种类映射到补全图标。

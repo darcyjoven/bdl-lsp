@@ -87,8 +87,10 @@ func (s *Server) handleCompletion(ctx context.Context, reply jsonrpc2.Replier, r
 
 	res := completion.Provide(cctx, fi, symbols, fields, completion.Options{
 		Keywords: true,
-		Fields:   true,
-		Builtins: s.builtinCandidates(cctx.Word),
+		// 与格式化共用同一个设置：设成 lower 时补全的小写字形与格式化结果一致。
+		KeywordCase: s.settings().Format.Keywords,
+		Fields:      true,
+		Builtins:    s.builtinCandidates(cctx.Word),
 	})
 
 	items := make([]protocol.CompletionItem, 0, len(res.Items))
