@@ -1,6 +1,7 @@
 name: build
 
-# 只做构建与测试，**不发布 Release**（用户明确暂不排期）。
+# 日常 CI：只做构建与测试，**不发布 Release**。
+# tag 发布（四平台二进制 → GitHub Release）见 release.yml。
 #
 # 两个 grammar 自 v1.0.0/v1.0.1 起是**带 tag 的普通 Go 模块**，由 go.mod 固定，
 # 不再需要检出兄弟目录（旧的 replace 布局已去掉）。改 grammar 后的回归

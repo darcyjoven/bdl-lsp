@@ -5,7 +5,7 @@
 >
 > | 项目 | 值 |
 > |---|---|
-> | 版本 | `bdl-lsp v0.3.13`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
+> | 版本 | `bdl-lsp v0.3.14`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
 > | 生成日期 | 2026-10-24 |
 > | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
 > | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
@@ -239,6 +239,7 @@ LSP 服务端能力由编辑器客户端消费：
 | L9 | `make grammars` / `grammars-check` / `keywords` / `keywords-check` / `manifest-check` | 生成/校验 TextMate 语法与关键字表、VSC 清单校验 |
 | L10 | `make e2e-vscode` / `zed-check` / `zed-check-windows` | 无头 VSCode 端到端；Zed 查询校验 |
 | L11 | `scripts/` | `install-toolchain.sh`（幂等）、`dev-env.sh`、`env-check.sh`、`corpus-smoke.sh`、`corpus-regress.sh`、`repro-index-crash.py`、`generate-keywords.mjs`、`generate-tm-grammars.mjs`、`verify-tm-grammars.mjs`、`verify-vscode-manifest.mjs` |
+| L12 | `.github/workflows/release.yml` | tag `v*` → 四个平台二进制（linux/darwin-amd64/darwin-arm64/windows）+ `SHA256SUMS` 发到 Release；各平台原生构建，Windows 静态链接 MinGW 运行库 |
 
 ---
 

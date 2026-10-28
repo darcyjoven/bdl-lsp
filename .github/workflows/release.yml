@@ -1,0 +1,226 @@
+name: release
+
+# 打 tag（v*）后自动构建四个二进制并挂到 GitHub Release：
+#
+#   bdl-lsp-linux-amd64.tar.gz
+#   bdl-lsp-darwin-amd64.tar.gz     （Intel）
+#   bdl-lsp-darwin-arm64.tar.gz     （Apple Silicon）
+#   bdl-lsp-windows-amd64.zip
+#
+# 为什么不用交叉编译：
+#   tree-sitter 是 C 代码，构建走 CGO。交叉编译要求目标平台的 C 工具链，
+#   Linux 上的 gcc 产不出 PE / Mach-O，所以每个目标都在**原生 runner** 上构建。
+#
+# 版本号：取 tag 去掉前缀 v，通过 -ldflags "-X main.version=..." 注入，
+#   与 main.go 里的默认值无关（默认值只服务本地开发构建）。
+#
+# 与 build.yml 的分工：build.yml 管日常 CI（只构建/测试，不发布）；
+#   本文件只在 tag 推送时运行，负责产物与 Release。
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  GO_VERSION: "1.24"
+
+permissions:
+  contents: read
+
+jobs:
+  # ------------------------------------------------------------- 四平台构建
+  build:
+    name: ${{ matrix.os }}/${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux 用 22.04（glibc 2.35）而不是 24.04（2.39），
+          # 让产物在更老的发行版上也能跑。
+          - os: linux
+            arch: amd64
+            runner: ubuntu-22.04
+          # macos-13 已于 2025-12 退役；macos-15-intel 是 GitHub 最后一个
+          # x86_64 镜像（官方承诺支持到 2027-08）。
+          - os: darwin
+            arch: amd64
+            runner: macos-15-intel
+          - os: darwin
+            arch: arm64
+            runner: macos-15
+          # 与 build.yml 保持同一镜像与 MinGW 安装方式。
+          - os: windows
+            arch: amd64
+            runner: windows-2025
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: 计算版本
+        id: ver
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      # Windows 的 CGO 需要 MinGW，且必须屏蔽全局 go env（原因见 build.yml
+      # 的 Windows 一节：别的 SDK 可能把 CC 改写成 clang 并加 --target）。
+      - name: 安装 MinGW-w64（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install mingw --no-progress -y
+          $mingw = 'C:\ProgramData\chocolatey\lib\mingw\tools\install\mingw64\bin'
+          if (-not (Test-Path $mingw)) {
+            $gccPath = (Get-Command gcc -ErrorAction SilentlyContinue).Source
+            if (-not $gccPath) { throw '找不到 gcc' }
+            $mingw = Split-Path -Parent $gccPath
+          }
+          $mingw | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "MinGW: $mingw"
+
+      # -extldflags=-static 让 mingw 把 libwinpthread / libgcc 静态链进来，
+      # 否则用户机器上没有 MinGW 时会报 0xc0000135（缺 DLL）且无法启动。
+      # 系统 DLL（KERNEL32 等）仍是动态的，这是正常现象。
+      - name: 构建（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          $env:GOENV       = 'off'
+          $env:GOPROXY     = 'https://proxy.golang.org,direct'
+          $env:CGO_ENABLED = '1'
+          $env:GOOS        = 'windows'
+          $env:GOARCH      = '${{ matrix.arch }}'
+          $env:CC          = 'gcc'
+          $env:CXX         = 'g++'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          go build -trimpath -ldflags "-X main.version=$env:VERSION -extldflags=-static" -o dist\bdl-lsp.exe .
+          if ($LASTEXITCODE -ne 0) { throw 'go build 失败' }
+
+      - name: 构建（Unix）
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eux
+          export CGO_ENABLED=1
+          export GOOS='${{ matrix.os }}'
+          export GOARCH='${{ matrix.arch }}'
+          mkdir -p dist
+          go build -trimpath -ldflags "-X main.version=$VERSION" -o dist/bdl-lsp .
+          file dist/bdl-lsp
+
+      # 发布前的自检：版本号是否正确注入、CGO 运行时能否加载、产物架构是否对。
+      - name: 自检（Unix）
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -eux
+          out=$(./dist/bdl-lsp version)
+          echo "$out"
+          [ "$out" = "bdl-lsp $VERSION" ]
+          ./dist/bdl-lsp check testdata/sample.4gl testdata/sample.per
+
+      - name: 自检（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          $out = & .\dist\bdl-lsp.exe version
+          Write-Host "version -> $out"
+          if ($LASTEXITCODE -ne 0) { throw 'version 子命令失败' }
+          if ($out -ne "bdl-lsp $env:VERSION") { throw "版本号未注入：$out" }
+
+          # 不能有 MinGW 运行库依赖，否则用户机器上启动即 0xc0000135
+          if (-not (Get-Command objdump -ErrorAction SilentlyContinue)) { throw '找不到 objdump' }
+          $deps = & objdump -p .\dist\bdl-lsp.exe
+          if ($LASTEXITCODE -ne 0) { throw 'objdump 执行失败' }
+          if ($deps -match 'libwinpthread|libgcc|libstdc') {
+            Write-Host $deps
+            throw '产物仍依赖 MinGW 运行库（-extldflags=-static 未生效）'
+          }
+
+          # 剥掉 PATH 里的 MinGW 再跑一次，确保不是靠 runner 环境才起得来
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & .\dist\bdl-lsp.exe check testdata\sample.4gl testdata\sample.per
+          if ($LASTEXITCODE -ne 0) { throw 'check 子命令失败' }
+
+      - name: 打包（Unix）
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eux
+          name="bdl-lsp-${{ matrix.os }}-${{ matrix.arch }}"
+          mkdir -p staging
+          cp dist/bdl-lsp staging/
+          cp LICENSE staging/
+          tar -czf "dist/${name}.tar.gz" -C staging bdl-lsp LICENSE
+          tar -tzf "dist/${name}.tar.gz"
+
+      - name: 打包（Windows）
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist\bdl-lsp.exe, LICENSE `
+            -DestinationPath dist\bdl-lsp-windows-amd64.zip -Force
+          Get-ChildItem dist
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdl-lsp-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------ 发布 Release
+  release:
+    name: 发布 Release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: 下载全部产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 生成校验和
+        working-directory: dist
+        run: |
+          set -eux
+          ls -l
+          sha256sum *.tar.gz *.zip > SHA256SUMS
+          cat SHA256SUMS
+
+      # prerelease 判定：tag 里带 '-'（如 v0.3.14-rc1）即预发布
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/SHA256SUMS

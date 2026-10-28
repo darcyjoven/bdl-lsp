@@ -17,7 +17,7 @@
 > 客户端设置契约：`link.mode` / `schema.mode`（`off|file|db` 三态，VSCode 插件用）；
 > 直接配置本 LSP 的客户端（如 Zed）也可用布尔 `link.enable` / `schema.enable`——`mode` 非空时优先。
 >
-> 当前状态：功能已全部完成（`bdl-lsp 0.3.13` / `tiptop 0.1.8` / `vscode-bdl 0.6.2`），剩余发布闭环。
+> 当前状态：功能已全部完成（`bdl-lsp 0.3.14` / `tiptop 0.1.8` / `vscode-bdl 0.6.2`），发布流水线已就绪（tag `v*` 自动出四平台二进制）。
 
 ## 文档
 
@@ -70,3 +70,23 @@ make regress                   # 全量语料回归（约 2.5 分钟）
 
 - v1 验证平台 Linux + Windows；Windows 用 `scripts/*.ps1`。
 - 语言服务与 CLI 的完整能力见 [docs/FEATURES.md](docs/FEATURES.md)。
+
+## 预编译二进制（Release）
+
+推送形如 `v0.3.14` 的 tag 后，`.github/workflows/release.yml` 会在各平台原生 runner 上
+构建（CGO / tree-sitter 不做交叉编译），把四个二进制挂到 Release：
+
+| 平台 | 文件 |
+|---|---|
+| Linux x86_64 | `bdl-lsp-linux-amd64.tar.gz` |
+| macOS Intel | `bdl-lsp-darwin-amd64.tar.gz` |
+| macOS Apple Silicon | `bdl-lsp-darwin-arm64.tar.gz` |
+| Windows x86_64 | `bdl-lsp-windows-amd64.zip` |
+
+- 版本号取 tag 去掉 `v`，用 `-ldflags -X main.version=` 注入（`bdl-lsp version` 可验证）。
+- 固定链接（无需查 tag，`latest` 指向最新非预发布）：
+  `https://github.com/darcyjoven/bdl-lsp/releases/latest/download/bdl-lsp-linux-amd64.tar.gz`
+- 同页 `SHA256SUMS` 可用于校验；tag 带 `-`（如 `v0.4.0-rc1`）会标为预发布。
+- Windows 产物已静态链接 MinGW 运行库，解压即用。
+- macOS 产物未签名/公证，首次运行如被 Gatekeeper 拦截，可执行
+  `xattr -d com.apple.quarantine bdl-lsp`。
