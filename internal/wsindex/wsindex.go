@@ -498,6 +498,38 @@ func (ix *Index) CallsOf(name string) []Call {
 	return out
 }
 
+// CallsOfMany 一次返回多个函数名的调用点，避免逐个调用 CallsOf 反复全表扫描。
+//
+// 为什么需要：Code Lens 要给一个文件里的**所有**被调用函数各算一次调用数，
+// 逐个 CallsOf 就是 O(函数数 × 索引总调用数) —— 7000+ 文件的语料下
+// 单次 codeLens 请求会变成秒级。改成一次遍历建表，复杂度回到 O(索引总量)。
+//
+// 返回的 map 里只含**确实有调用点**的名字（没有的就不出现，调用方省得判空）。
+func (ix *Index) CallsOfMany(names []string) map[string][]Call {
+	out := map[string][]Call{}
+	if ix == nil || len(names) == 0 {
+		return out
+	}
+	want := make(map[string]string, len(names)) // 小写名 → 原名
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		want[strings.ToLower(n)] = n
+	}
+	for i := range ix.Files {
+		for j := range ix.Files[i].Calls {
+			c := &ix.Files[i].Calls[j]
+			orig, ok := want[c.Lower]
+			if !ok {
+				continue
+			}
+			out[orig] = append(out[orig], *c)
+		}
+	}
+	return out
+}
+
 // FileCount 返回索引里的文件数。
 func (ix *Index) FileCount() int {
 	if ix == nil {

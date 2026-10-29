@@ -42,6 +42,12 @@ const (
 	CommandSchemaColumns = "bdl.schemaColumns"
 	// CommandForceParse 强制解析当前文件（等价 bdl/forceParse）。arguments: [uri]
 	CommandForceParse = "bdl.forceParse"
+	// CommandShowInfo 弹一条只读提示（Code Lens 的"汇总行"用）。arguments: [文本]
+	//
+	// 为什么需要它：Zed 的 Code Lens **只显示 `command.title`**；没有 command 的
+	// lens 要么不显示、要么回落到假的「0 references」。所以"汇总信息"这类
+	// 纯说明性的一行，必须挂一个 command —— 点了弹提示，用户就知道还有多少。
+	CommandShowInfo = "bdl.showInfo"
 	// 注：CommandOpenLink 定义在 codelens.go（它是链接资料 Code Lens 的目标命令）。
 )
 
@@ -56,6 +62,7 @@ func executeCommandIDs() []string {
 		CommandSchemaColumns,
 		CommandForceParse,
 		CommandOpenLink,
+		CommandShowInfo,
 	}
 }
 
@@ -180,6 +187,22 @@ func (s *Server) handleExecuteCommand(ctx context.Context, reply jsonrpc2.Replie
 		s.logger.Info("强制解析当前文件（executeCommand，后台，不限时）", "uri", uriStr)
 		// 与自定义请求同一个入口：后台重解析，完成后发诊断 + bdl/parseDone。
 		s.requestForceReparse(uriStr)
+		return reply(ctx, nil, nil)
+
+	case CommandShowInfo:
+		text, err := commandStringArg(params.Command, params.Arguments, 0, "text")
+		if err != nil {
+			return reply(ctx, nil, err)
+		}
+		// 用 window/showMessage 弹提示：Zed 支持这个通知
+		// （crates/project/src/lsp_store.rs 注册了 on_notification::<ShowMessage>），
+		// VSCode 也支持，两端都看得到。
+		if err := s.notify(ctx, protocol.MethodWindowShowMessage, protocol.ShowMessageParams{
+			Type:    protocol.MessageTypeInfo,
+			Message: text,
+		}); err != nil {
+			return reply(ctx, nil, fmt.Errorf("%s: 发送提示失败：%w", CommandShowInfo, err))
+		}
 		return reply(ctx, nil, nil)
 
 	default:

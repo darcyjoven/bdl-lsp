@@ -7,24 +7,40 @@ package server
 // 数据来自 `link.Resolver.Tree()`（纯内存查询，不碰语法树、不发诊断）——与
 // VSCode 侧 TreeView 用的是同一份数据，所以两端行为一致，不会各说各话。
 //
-// 上限：`link.lensMax`（默认 10）。超出时只显示前 N 条 + 一条**纯文本**汇总
-// （不挂 command：点了不会有反应，但能告诉用户"还有多少"）。
+// 上限：`link.lensMax`（默认 10）。超出时只显示前 N 条 + 一条**汇总**（带 command，
+// 点了会弹提示说明"还有多少"，见 `CommandShowInfo`）。
 //
-// 点击行为**待实机确认**（PLAN Z-P2-1）：Zed 是否把 lens 的 command 转成
-// `workspace/executeCommand`、以及是否支持服务端反向的 `window/showDocument`。
-// 所以 `bdl.openLink` 的实现是"请客户端打开该文件"，用户也可以从
-// `lsp command selector` 手动触发（兜底），不会因为点击不生效就完全没法用。
+// ★ Zed 的两条硬事实（查 zed-industries/zed main 分支源码证实，2026-10-29）：
+//
+//  1. **没有 command 的 lens 在 Zed 里不会显示自己的标题**。Zed 只从
+//     `lens.command.title` 取文本；没有 command 时它先渲染占位，等
+//     `codeLens/resolve` 回来补标题；服务端不支持 resolve（`resolveProvider`
+//     为 false/absent）时就永远占位，最后回落到一个**假的**「0 references」
+//     文本（crates/editor/src/code_lens.rs 的 `EMPTY_LENS_FALLBACK_TITLE`）。
+//     → 所以"纯文本 lens"在 Zed 里是个陷阱：要么显示成假的「0 references」，
+//     要么什么都不显示。**汇总信息必须带 command**。
+//  2. **点击走 `workspace/executeCommand`**，且命令必须在
+//     `executeCommandProvider.commands` 里声明过，否则被静默跳过
+//     （crates/project/src/lsp_store.rs 的 `apply_code_action`）。
+//     → 汇总用的命令也要加进 `executeCommandIDs()`。
+//
+// 反向请求 `window/showDocument`：Zed **支持**
+// （crates/project/src/lsp_store.rs 注册了 `on_request::<lsp::request::ShowDocument>`），
+// 所以 `bdl.openLink` 的"请客户端打开该文件"是有出路的。
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/darcyjoven/bdl-lsp/index"
 	"github.com/darcyjoven/bdl-lsp/internal/fileuri"
+	"github.com/darcyjoven/bdl-lsp/internal/globals"
 	"github.com/darcyjoven/bdl-lsp/internal/textpos"
+	"github.com/darcyjoven/bdl-lsp/internal/wsindex"
 	"github.com/darcyjoven/bdl-lsp/link"
 	"go.lsp.dev/jsonrpc2"
 	"go.lsp.dev/protocol"
@@ -55,10 +71,6 @@ func (s *Server) handleCodeLens(
 	}
 	uriStr := string(params.TextDocument.URI)
 
-	settings := s.settings()
-	if !settings.LinkEnabled() {
-		return reply(ctx, []protocol.CodeLens{}, nil)
-	}
 	doc := s.docs.Get(uriStr)
 	if doc == nil {
 		return reply(ctx, []protocol.CodeLens{}, nil)
@@ -67,13 +79,26 @@ func (s *Server) handleCodeLens(
 	if fi == nil || idx == nil {
 		return reply(ctx, []protocol.CodeLens{}, nil)
 	}
-	mainRange, ok := mainRangeOf(fi, idx)
-	if !ok {
-		return reply(ctx, []protocol.CodeLens{}, nil)
+
+	settings := s.settings()
+	lenses := make([]protocol.CodeLens, 0, 8)
+
+	// ① 链接资料：MAIN 头上每个链内子文件一条（需要链接功能开启 + 资料命中）。
+	if settings.LinkEnabled() {
+		if mainRange, ok := mainRangeOf(fi, idx); ok {
+			tree := s.linkTreeFor(uriStr)
+			lenses = append(lenses, buildLinkLenses(mainRange, tree, settings.LinkLensMax(), uriStr)...)
+		}
 	}
 
-	tree := s.linkTreeFor(uriStr)
-	return reply(ctx, buildLinkLenses(mainRange, tree, settings.LinkLensMax(), uriStr), nil)
+	// ② 函数级反查：函数定义那行标「被 N 处调用」（依赖工作区索引，与链接资料无关）。
+	//    口径与「查找引用」一致：只算可达模组（本模组 + 全局模组）。
+	curPath := globals.PathOfURI(uriStr)
+	lenses = append(lenses, buildCallerLenses(
+		fi, idx, s.workspaceIndex(), s.reachableModules(moduleOfPath(curPath)),
+	)...)
+
+	return reply(ctx, lenses, nil)
 }
 
 // mainRangeOf 找出 MAIN 程序块在文档里的行区间（只取声明那一行）。
@@ -82,24 +107,147 @@ func mainRangeOf(fi *index.FileIndex, idx *textpos.Index) (protocol.Range, bool)
 		if sym == nil || sym.Kind != index.KindMain {
 			continue
 		}
-		start, end := clampRange(sym.DeclStart, sym.DeclEnd, idx.Size())
-		rng := byteRange(idx, start, end)
-		if rng.Start.Line != rng.End.Line {
-			// LSP 建议 lens 的 range 落在单行内；跨行时收成起始行那一行。
-			rng.End = protocol.Position{Line: rng.Start.Line, Character: rng.Start.Character + 1}
-		} else if rng.End.Character == rng.Start.Character {
-			rng.End.Character++
-		}
-		return rng, true
+		return declLineRange(sym, idx), true
 	}
 	return protocol.Range{}, false
 }
 
+// declLineRange 把一个符号的声明区间收成**单行**范围（LSP 建议 lens 只跨一行）。
+func declLineRange(sym *index.Symbol, idx *textpos.Index) protocol.Range {
+	start, end := clampRange(sym.DeclStart, sym.DeclEnd, idx.Size())
+	rng := byteRange(idx, start, end)
+	if rng.Start.Line != rng.End.Line {
+		rng.End = protocol.Position{Line: rng.Start.Line, Character: rng.Start.Character + 1}
+	} else if rng.End.Character == rng.Start.Character {
+		rng.End.Character++
+	}
+	return rng
+}
+
+// callerLensLimit 是一个文件里最多显示多少条「被 N 处调用」lens（超出给一条汇总）。
+//
+// 4GL 一个文件里被调用的函数可能有几十个，全挂上会把编辑器刷满；
+// 汇总结尾会提示用「查找引用」看全部。
+const callerLensLimit = 10
+
+// buildCallerLenses 给"确实被调用过"的顶层函数各挂一条计数 lens。
+//
+// 这是 VSCode 侧 TreeView「反查引用程序」在 Zed 上的**函数级降级形态**：
+// Zed 没有侧边栏树、也没有 QuickPick 列表，所以只把**调用处数量**标在函数定义那行，
+// 点它打开第一处调用；要看全部调用点用 Zed 原生的「查找引用」
+// （`editor: find all references`，走我们的 `referencesProvider`）。
+//
+// 数据来自工作区索引（`wsindex.Index.CallsOfMany`）；索引还没建好就返回空（宁可不显示）。
+//
+// 口径与「查找引用」一致（`wsReferences`）：只算**能跨文件看到**的调用点
+// —— 本模组 + 全局模组（sub/lib/qry）。否则别的模组里的同名调用也会被算进来，
+// 数字虚高（同一个函数名在不同模组重复很常见）。reachable 由调用方算出。
+func buildCallerLenses(
+	fi *index.FileIndex,
+	idx *textpos.Index,
+	ix *wsindex.Index,
+	reachable map[string]bool,
+) []protocol.CodeLens {
+	if fi == nil || idx == nil || ix == nil {
+		return []protocol.CodeLens{}
+	}
+
+	// 先收集本文件里"是函数"的顶层符号（只有函数能被跨文件调用）。
+	names := make([]string, 0, len(fi.TopLevel))
+	syms := make(map[string]*index.Symbol, len(fi.TopLevel))
+	for _, sym := range fi.TopLevel {
+		if sym == nil || sym.Kind != index.KindFunction || sym.Name == "" {
+			continue
+		}
+		names = append(names, sym.Name)
+		syms[strings.ToLower(sym.Name)] = sym
+	}
+	if len(names) == 0 {
+		return []protocol.CodeLens{}
+	}
+
+	// 一次遍历索引拿到全部调用点（避免逐个函数全表扫描：7000+ 文件时
+	// 逐个 CallsOf 会让单次 codeLens 请求变成秒级）。
+	all := ix.CallsOfMany(names)
+
+	lenses := make([]protocol.CodeLens, 0, 4)
+	shown := 0
+	skipped := 0
+	var skippedRange protocol.Range
+	for _, name := range names {
+		sym := syms[strings.ToLower(name)]
+		calls := all[name]
+		if len(calls) == 0 {
+			continue
+		}
+		// 过滤不可达模组（与 wsReferences 同一把尺子）。reachable 为 nil = 不过滤。
+		visible := make([]wsindex.Call, 0, len(calls))
+		for _, c := range calls {
+			if reachable == nil || reachable[moduleOfPath(c.File)] {
+				visible = append(visible, c)
+			}
+		}
+		if len(visible) == 0 {
+			continue
+		}
+		// 稳定排序：先文件后行，避免"点开首处"每次都不一样。
+		sort.Slice(visible, func(i, j int) bool {
+			if visible[i].File != visible[j].File {
+				return visible[i].File < visible[j].File
+			}
+			return visible[i].Line < visible[j].Line
+		})
+		rng := declLineRange(sym, idx)
+		if shown >= callerLensLimit {
+			skipped++
+			skippedRange = rng
+			continue
+		}
+		first := visible[0]
+		lenses = append(lenses, protocol.CodeLens{
+			Range: rng,
+			Command: &protocol.Command{
+				Title: fmt.Sprintf("🔗 %s 被 %d 处调用（点开首处 %s:%d）",
+					sym.Name, len(visible), shortPath(first.File), first.Line+1),
+				Command:   CommandOpenLink,
+				Arguments: []interface{}{fileuri.FromPath(first.File)},
+			},
+		})
+		shown++
+	}
+	if skipped > 0 {
+		// 汇总行**必须带 command**（Zed 只显示 command.title；没有 command 的
+		// lens 会变成假的「0 references」）。点了弹提示说明还剩多少。
+		lenses = append(lenses, protocol.CodeLens{
+			Range: skippedRange,
+			Command: &protocol.Command{
+				Title:     fmt.Sprintf("…另有 %d 个被调用的函数（点此查看提示）", skipped),
+				Command:   CommandShowInfo,
+				Arguments: []interface{}{fmt.Sprintf("本文件还有 %d 个被调用的函数没显示（上限 %d）。要看全部，请用编辑器的「查找引用」。", skipped, callerLensLimit)},
+			},
+		})
+	}
+	return lenses
+}
+
+// shortPath 把绝对路径截成"末两段"，让 lens 标题保持短（Windows 反斜杠也处理）。
+func shortPath(p string) string {
+	normalized := strings.ReplaceAll(p, "\\", "/")
+	parts := strings.Split(normalized, "/")
+	if len(parts) > 2 {
+		parts = parts[len(parts)-2:]
+	}
+	return strings.Join(parts, "/")
+}
+
 // buildLinkLenses 生成挂在 MAIN 头上的 lens（纯函数，便于单测）。
 //
-//   - 链内每个**子文件**一条，标题 `模组/代码`；文件不在磁盘上时给纯文本（无 command）；
+//   - 链内每个**子文件**一条，标题 `模组/代码`；文件不在磁盘上时给 `bdl.showInfo`（只提示，不跳转）；
 //   - 不给当前文件自己挂（MAIN 头上列自己没意义）；
-//   - 超过 max 条时只显示前 max 条，再补一条纯文本汇总。
+//   - 超过 max 条时只显示前 max 条，再补一条汇总（带 `bdl.showInfo`）。
+//
+// ★ 每条 lens 都**必须带 command**：Zed 只显示 `command.title`，没有 command
+// 的 lens 会被渲染成假的「0 references」（详见文件头注释）。
 func buildLinkLenses(
 	mainRange protocol.Range,
 	tree *link.LinkTree,
@@ -115,7 +263,7 @@ func buildLinkLenses(
 
 	type target struct {
 		title string
-		uri   string // 空 = 文件不在磁盘上（纯文本 lens）
+		uri   string // 空 = 文件不在磁盘上（只提示，不跳转）
 	}
 	targets := make([]target, 0, len(tree.Files))
 	for _, f := range tree.Files {
@@ -148,11 +296,27 @@ func buildLinkLenses(
 				Command:   CommandOpenLink,
 				Arguments: []interface{}{tgt.uri},
 			}
+		} else {
+			// 文件不在磁盘上：不能跳转，但仍要显示自己的标题（Zed 只显示
+			// command.title，没有 command 的 lens 会变成假的「0 references」）。
+			lens.Command = &protocol.Command{
+				Title:     tgt.title,
+				Command:   CommandShowInfo,
+				Arguments: []interface{}{fmt.Sprintf("%s：链接资料里有这个文件，但磁盘上找不到（通常是语料快照缺的模组）。", tgt.title)},
+			}
 		}
 		lenses = append(lenses, lens)
 	}
 	if len(targets) > max {
-		lenses = append(lenses, protocol.CodeLens{Range: mainRange})
+		// 汇总行同样必须带 command（否则 Zed 显示成假的「0 references」）。
+		lenses = append(lenses, protocol.CodeLens{
+			Range: mainRange,
+			Command: &protocol.Command{
+				Title:     fmt.Sprintf("…另有 %d 个链内文件（上限 %d）", len(targets)-max, max),
+				Command:   CommandShowInfo,
+				Arguments: []interface{}{fmt.Sprintf("这条链接链还有 %d 个文件没显示（上限 %d，可在 link.lensMax 调整）。", len(targets)-max, max)},
+			},
+		})
 	}
 	return lenses
 }

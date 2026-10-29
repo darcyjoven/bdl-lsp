@@ -249,3 +249,41 @@ func TestModuleOf(t *testing.T) {
 		}
 	}
 }
+
+func TestCallsOfMany(t *testing.T) {
+	ix := &Index{Files: []File{
+		{Path: "/w/a.4gl", Calls: []Call{
+			{Name: "alpha", Lower: "alpha", File: "/w/a.4gl", Line: 1},
+			{Name: "Beta", Lower: "beta", File: "/w/a.4gl", Line: 5},
+		}},
+		{Path: "/w/b.4gl", Calls: []Call{
+			{Name: "alpha", Lower: "alpha", File: "/w/b.4gl", Line: 2},
+			{Name: "gamma", Lower: "gamma", File: "/w/b.4gl", Line: 9},
+		}},
+	}}
+
+	got := ix.CallsOfMany([]string{"alpha", "beta", "missing"})
+	if len(got["alpha"]) != 2 {
+		t.Errorf("alpha 调用点 = %d，期望 2：%+v", len(got["alpha"]), got["alpha"])
+	}
+	// 大小写不敏感（Genero 的规矩）
+	if len(got["beta"]) != 1 {
+		t.Errorf("beta 调用点 = %d，期望 1：%+v", len(got["beta"]), got["beta"])
+	}
+	// 没有调用点的名字不该出现在结果里
+	if _, ok := got["missing"]; ok {
+		t.Errorf("没有调用点的名字不该出现：%+v", got["missing"])
+	}
+	// gamma 没被问，不该出现
+	if _, ok := got["gamma"]; ok {
+		t.Errorf("没被问的名字不该出现")
+	}
+
+	// nil 索引 / 空名单不能 panic
+	if got := (*Index)(nil).CallsOfMany([]string{"x"}); len(got) != 0 {
+		t.Errorf("nil 索引应返回空：%+v", got)
+	}
+	if got := ix.CallsOfMany(nil); len(got) != 0 {
+		t.Errorf("空名单应返回空：%+v", got)
+	}
+}
