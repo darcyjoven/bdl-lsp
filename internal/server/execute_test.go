@@ -42,6 +42,17 @@ func TestInitializeAdvertisesExecuteCommands(t *testing.T) {
 			t.Errorf("initialize 未声明 executeCommandProvider 命令 %q（result=%v）", want, result["capabilities"])
 		}
 	}
+
+	// Zed 侧的两个硬前提（PLAN Z-P3-6 / Z-P3-3）：capability 不声明，客户端就不会发请求。
+	// workspaceSymbolProvider 尤其隐蔽：服务端一直在处理 workspace/symbol，
+	// 但 Zed 对 None 直接 skip（crates/project/src/lsp_store.rs:9438-9447）。
+	caps, _ := result["capabilities"].(map[string]any)
+	if v, ok := caps["workspaceSymbolProvider"]; !ok || v == nil {
+		t.Errorf("initialize 未声明 workspaceSymbolProvider（Zed 会跳过 workspace/symbol）：%v", caps)
+	}
+	if _, ok := caps["codeLensProvider"]; !ok {
+		t.Errorf("initialize 未声明 codeLensProvider：%v", caps)
+	}
 }
 
 // TestExecuteCommandLinkTree 用与 bdl/linkTree 相同的数据验证 executeCommand 转发。

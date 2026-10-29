@@ -17,7 +17,7 @@
 > 客户端设置契约：`link.mode` / `schema.mode`（`off|file|db` 三态，VSCode 插件用）；
 > 直接配置本 LSP 的客户端（如 Zed）也可用布尔 `link.enable` / `schema.enable`——`mode` 非空时优先。
 >
-> 当前状态：功能已全部完成（`bdl-lsp 0.3.14` / `tiptop 0.1.8` / `vscode-bdl 0.6.2`），发布流水线已就绪（tag `v*` 自动出四平台二进制）。
+> 当前状态：功能已全部完成（`bdl-lsp 0.3.15` / `tiptop 0.1.10` / `vscode-bdl 0.9.2`），发布流水线已就绪（tag `v*` 自动出四平台二进制）。
 
 ## 文档
 

@@ -401,6 +401,12 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 				// `.` 之后给记录成员/表单字段；手工触发（Ctrl+Space）也支持。
 				TriggerCharacters: []string{"."},
 			},
+			// 工作区符号（P6）：服务端**一直**在处理 workspace/symbol，
+			// 但以前没声明这个 capability —— Zed 的源码对 None 直接 continue
+			// （crates/project/src/lsp_store.rs:9438-9447），于是「项目符号」
+			// 完全搜不到 4GL 函数。声明后 VSCode/Zed 都会发请求（PLAN Z-P3-6）。
+			WorkspaceSymbolProvider: true,
+
 			// 链接资料 Code Lens（PLAN Z-P3-3）：挂在 MAIN 头上，链内子文件各一条。
 			// Zed 没有树视图 API，这就是链接资料的"就地可点"形态；VSCode 侧
 			// 仍有 TreeView，两者用同一份内存数据。

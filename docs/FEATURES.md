@@ -5,7 +5,7 @@
 >
 > | 项目 | 值 |
 > |---|---|
-> | 版本 | `bdl-lsp v0.3.14`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
+> | 版本 | `bdl-lsp v0.3.15`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
 > | 生成日期 | 2026-10-24 |
 > | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
 > | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
@@ -177,6 +177,7 @@ LSP 服务端能力由编辑器客户端消费：
 - VSCode：`vscode-bdl`（30 条命令、2 个 TreeView、47 项设置、进度通知）；本文件只描述服务端协议。
 - Zed：`zed-bdl` 的 `4gl-full` **0.2.0**（追平中；配置经 `initializationOptions` 下发、语义高亮规则文件、9 条只读 slash command、`.zed` 工程生成脚本、自动下载）；TreeView 用 **Code Lens** 替代（服务端已实现，点击行为待 Zed 实机确认）。
 - 自定义请求/通知：`bdl/forceParse`、`bdl/linkTree`、`bdl/linkReferences`、`bdl/schemaTables`、`bdl/schemaColumns`、`bdl/parseDone`（服务端→客户端通知）。
+- **能力声明**（客户端按它决定发不发请求，缺了就是静默失效）：`workspaceSymbolProvider: true`（P6 的工作区符号一直在实现，但 2026-10-29 之前没声明 —— Zed 源码对 `None` 直接跳过该 server，导致「项目符号」搜不到 4GL 函数）、`codeLensProvider`（链接资料 Code Lens）、`executeCommandProvider` 见下。
 - **标准命令通道** `workspace/executeCommand`（PLAN Z-P3-2）：`initialize` 声明 `executeCommandProvider`，命令为 `bdl.linkTree` / `bdl.linkReferences` / `bdl.schemaTables` / `bdl.schemaColumns` / `bdl.forceParse` / `bdl.openLink`（Code Lens 点击用），参数是位置数组（`[uri]` / `[query]` / `[query, limit]` / `[table]`），**返回结构与对应自定义请求完全一致**。Zed 扩展 API 发不了自定义请求，只能走这条；VSCode 侧继续用自定义请求，不受影响。
 
 ---
