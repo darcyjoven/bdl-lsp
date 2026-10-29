@@ -250,6 +250,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleCodeAction(ctx, reply, req)
 	case protocol.MethodSemanticTokensFull:
 		return s.handleSemanticTokensFull(ctx, reply, req)
+	case protocol.MethodWorkspaceExecuteCommand:
+		return s.handleExecuteCommand(ctx, reply, req)
 	case MethodLinkTree:
 		return s.handleLinkTree(ctx, reply, req)
 	case MethodLinkReferences:
@@ -396,6 +398,12 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 			CompletionProvider: &protocol.CompletionOptions{
 				// `.` 之后给记录成员/表单字段；手工触发（Ctrl+Space）也支持。
 				TriggerCharacters: []string{"."},
+			},
+
+			// PLAN Z-P3-2：Zed 扩展发不了自定义请求，只能走标准命令通道。
+			// VSCode 侧继续用 bdl/linkTree 等自定义请求，两条路径共用底层实现。
+			ExecuteCommandProvider: &protocol.ExecuteCommandOptions{
+				Commands: executeCommandIDs(),
 			},
 		},
 		ServerInfo: &protocol.ServerInfo{

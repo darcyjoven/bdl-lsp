@@ -173,8 +173,9 @@ bdl-lsp 侧只保留读取与校验相关能力。
 LSP 服务端能力由编辑器客户端消费：
 
 - VSCode：`vscode-bdl`（30 条命令、2 个 TreeView、47 项设置、进度通知）；本文件只描述服务端协议。
-- Zed：`zed-bdl` 的 `4gl-full` v0.1.1（暂停），TreeView 降级、语义高亮不可用。
-- 自定义请求/通知：`bdl/forceParse`、`bdl/linkTree`、`bdl/linkReferences`、`bdl/schemaTables`、`bdl/schemaColumns`、`bdl/migrateLinkDir`。
+- Zed：`zed-bdl` 的 `4gl-full` **0.2.0**（追平中；P0/P1 已落地：配置经 `initializationOptions` 下发、语义高亮规则文件、8 条只读 slash command、`.zed` 工程生成脚本）；TreeView 用 **Code Lens** 降级（PLAN Z-P3-3，待实机验证点击行为）。
+- 自定义请求/通知：`bdl/forceParse`、`bdl/linkTree`、`bdl/linkReferences`、`bdl/schemaTables`、`bdl/schemaColumns`、`bdl/parseDone`（服务端→客户端通知）。
+- **标准命令通道** `workspace/executeCommand`（PLAN Z-P3-2）：`initialize` 声明 `executeCommandProvider`，命令为 `bdl.linkTree` / `bdl.linkReferences` / `bdl.schemaTables` / `bdl.schemaColumns` / `bdl.forceParse`，参数是位置数组（`[uri]` / `[query]` / `[query, limit]` / `[table]`），**返回结构与对应自定义请求完全一致**。Zed 扩展 API 发不了自定义请求，只能走这条；VSCode 侧继续用自定义请求，不受影响。
 
 ---
 
