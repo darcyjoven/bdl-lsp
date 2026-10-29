@@ -250,6 +250,8 @@ func (s *Server) handle(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc
 		return s.handleCodeAction(ctx, reply, req)
 	case protocol.MethodSemanticTokensFull:
 		return s.handleSemanticTokensFull(ctx, reply, req)
+	case protocol.MethodTextDocumentCodeLens:
+		return s.handleCodeLens(ctx, reply, req)
 	case protocol.MethodWorkspaceExecuteCommand:
 		return s.handleExecuteCommand(ctx, reply, req)
 	case MethodLinkTree:
@@ -399,6 +401,10 @@ func (s *Server) handleInitialize(ctx context.Context, reply jsonrpc2.Replier, r
 				// `.` 之后给记录成员/表单字段；手工触发（Ctrl+Space）也支持。
 				TriggerCharacters: []string{"."},
 			},
+			// 链接资料 Code Lens（PLAN Z-P3-3）：挂在 MAIN 头上，链内子文件各一条。
+			// Zed 没有树视图 API，这就是链接资料的"就地可点"形态；VSCode 侧
+			// 仍有 TreeView，两者用同一份内存数据。
+			CodeLensProvider: &protocol.CodeLensOptions{},
 
 			// PLAN Z-P3-2：Zed 扩展发不了自定义请求，只能走标准命令通道。
 			// VSCode 侧继续用 bdl/linkTree 等自定义请求，两条路径共用底层实现。

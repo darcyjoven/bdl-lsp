@@ -17,6 +17,7 @@ package server
 //       bdl.schemaTables        [query] 或 [query, limit]
 //       bdl.schemaColumns       [table]
 //       bdl.forceParse          [uri]
+//       bdl.openLink            [目标文件 uri]（由 Code Lens 触发）
 //
 // 返回结构与对应自定义请求完全一致，客户端可以复用同一套解析代码。
 
@@ -41,6 +42,7 @@ const (
 	CommandSchemaColumns = "bdl.schemaColumns"
 	// CommandForceParse 强制解析当前文件（等价 bdl/forceParse）。arguments: [uri]
 	CommandForceParse = "bdl.forceParse"
+	// 注：CommandOpenLink 定义在 codelens.go（它是链接资料 Code Lens 的目标命令）。
 )
 
 // executeCommandIDs 返回 initialize 时声明给客户端的命令清单。
@@ -53,6 +55,7 @@ func executeCommandIDs() []string {
 		CommandSchemaTables,
 		CommandSchemaColumns,
 		CommandForceParse,
+		CommandOpenLink,
 	}
 }
 
@@ -156,6 +159,13 @@ func (s *Server) handleExecuteCommand(ctx context.Context, reply jsonrpc2.Replie
 		res.Desc = tb.Desc
 		res.Columns = tb.Columns
 		return reply(ctx, res, nil)
+
+	case CommandOpenLink:
+		uriStr, err := commandStringArg(params.Command, params.Arguments, 0, "uri")
+		if err != nil {
+			return reply(ctx, nil, err)
+		}
+		return s.openLink(ctx, reply, uriStr)
 
 	case CommandForceParse:
 		uriStr, err := commandStringArg(params.Command, params.Arguments, 0, "uri")

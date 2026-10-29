@@ -244,9 +244,21 @@ type LinkSettings struct {
 	ModuleRoots []string `json:"moduleRoots"`
 	// GlobalModules 是对所有程序可见的模组，默认 ["sub","lib","qry"]。
 	GlobalModules []string `json:"globalModules"`
+	// LensMax 是链接资料 Code Lens（PLAN Z-P3-3）的条数上限，默认 10。
+	// Zed 没有树视图，链接关系就靠"MAIN 头上每个子文件一条 lens"来表达，
+	// 上限控制行数；超出时只显示前 N 条 + 一条汇总（纯文本，不可点）。
+	LensMax int `json:"lensMax"`
 	// 注意：这里**没有**采集（sync）配置。
 	// 生成 .project/ 资料是 tiptop 的职责，bdl-lsp 只读它。
 	// 见 docs/FEATURES.md（§0 职责与边界）。
+}
+
+// LinkLensMax 返回 Code Lens 的条数上限（默认 10；非正数视为默认）。
+func (s Settings) LinkLensMax() int {
+	if s.Link.LensMax > 0 {
+		return s.Link.LensMax
+	}
+	return 10
 }
 
 // LinkEnabled 报告链接资料功能是否启用（默认启用）。
@@ -456,6 +468,9 @@ func (m *Manager) merge(s *Settings) {
 	}
 	if s.Link.GlobalModules != nil {
 		m.cur.Link.GlobalModules = s.Link.GlobalModules
+	}
+	if s.Link.LensMax > 0 {
+		m.cur.Link.LensMax = s.Link.LensMax
 	}
 	if s.Builtins.Enable != nil {
 		v := *s.Builtins.Enable

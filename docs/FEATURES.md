@@ -37,6 +37,7 @@
 | A4 | UTF-16 ↔ 字节位置换算 | `internal/textpos` |
 | A5 | 语法错误诊断 | `ERROR` → `syntax-error`；`MISSING` → `missing-<kind>`（兜底 `missing-node`） |
 | A6 | 解析资源上限 | `bdl.limits.maxFileBytes` / `maxFileLines` / `maxIssues` / `parseTimeoutMs`；超限 → `file-too-large` / `parse-timeout` |
+| A7b | 链接资料 Code Lens | `textDocument/codeLens`（挂在 MAIN 行；数据来自链接资料内存树；上限 `bdl.link.lensMax`）；点击命令 `bdl.openLink` → 反向 `window/showDocument` |
 | A7 | 强制解析当前文件 | 自定义请求 `bdl/forceParse`（编辑器标题栏按钮，上下文 `bdl.parseSkipped`）；登记后立即回执，**后台不限时**解析（`Timeout 0`，不再受 `limits.parseTimeoutMs` 限制）；成功发诊断 + `bdl/parseDone` 回执（含耗时/字节数/版本），客户端据此刷新大纲 |
 | A8 | 解析检查 CLI | `bdl-lsp check [--json] [--max-issues N] [-q] <文件...>` |
 | A9 | Genero 版本基线 | `bdl.generoVersion`（默认 `2.50`）；5.0 暂不排期 |
@@ -123,7 +124,8 @@
 | F13 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成；资料缺失/链内文件不在磁盘/索引未就绪 → 一律不报（宁漏勿误） |
 | F14 | 资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）；诊断落在资料文件上，不污染源码 |
 | F15 | 链接资料数据服务 | 自定义请求 `bdl/linkTree`、`bdl/linkReferences`（反查默认不查、分页 50） |
-| F16 | 链接资料配置 | `bdl.link.enable` / `dataDir` / `moduleRoots` / `globalModules` |
+| F15a | **链接资料 Code Lens**（PLAN Z-P3-3） | `textDocument/codeLens`：把链内**子文件各一条** lens 挂在 **MAIN 程序块**那一行（标题 `模组/代码`，命令 `bdl.openLink` → 服务端反向请求 `window/showDocument` 打开目标文件）；文件不在磁盘时给纯文本 lens（无命令）；不给当前文件自己挂；上限 `bdl.link.lensMax`（默认 10，超出显示前 N 条 + 一条纯文本汇总）。Zed 没有树视图 API，这是链接资料的"就地可点"形态；VSCode 侧仍以 TreeView 为主，Code Lens 作为补充视图共用同一份内存数据 |
+| F16 | 链接资料配置 | `bdl.link.enable` / `dataDir` / `moduleRoots` / `globalModules` / `lensMax`（Code Lens 上限，默认 10） |
 | F17 | 外部函数过滤 | 见 D7；结果写入 `links.meta.json`，读取时据此豁免 |
 | F18 | 性能 | 最大链组装 3.4 ms；工作区索引 7756 文件 24.7 s、增量 22 ms |
 
@@ -173,9 +175,9 @@ bdl-lsp 侧只保留读取与校验相关能力。
 LSP 服务端能力由编辑器客户端消费：
 
 - VSCode：`vscode-bdl`（30 条命令、2 个 TreeView、47 项设置、进度通知）；本文件只描述服务端协议。
-- Zed：`zed-bdl` 的 `4gl-full` **0.2.0**（追平中；P0/P1 已落地：配置经 `initializationOptions` 下发、语义高亮规则文件、8 条只读 slash command、`.zed` 工程生成脚本）；TreeView 用 **Code Lens** 降级（PLAN Z-P3-3，待实机验证点击行为）。
+- Zed：`zed-bdl` 的 `4gl-full` **0.2.0**（追平中；配置经 `initializationOptions` 下发、语义高亮规则文件、9 条只读 slash command、`.zed` 工程生成脚本、自动下载）；TreeView 用 **Code Lens** 替代（服务端已实现，点击行为待 Zed 实机确认）。
 - 自定义请求/通知：`bdl/forceParse`、`bdl/linkTree`、`bdl/linkReferences`、`bdl/schemaTables`、`bdl/schemaColumns`、`bdl/parseDone`（服务端→客户端通知）。
-- **标准命令通道** `workspace/executeCommand`（PLAN Z-P3-2）：`initialize` 声明 `executeCommandProvider`，命令为 `bdl.linkTree` / `bdl.linkReferences` / `bdl.schemaTables` / `bdl.schemaColumns` / `bdl.forceParse`，参数是位置数组（`[uri]` / `[query]` / `[query, limit]` / `[table]`），**返回结构与对应自定义请求完全一致**。Zed 扩展 API 发不了自定义请求，只能走这条；VSCode 侧继续用自定义请求，不受影响。
+- **标准命令通道** `workspace/executeCommand`（PLAN Z-P3-2）：`initialize` 声明 `executeCommandProvider`，命令为 `bdl.linkTree` / `bdl.linkReferences` / `bdl.schemaTables` / `bdl.schemaColumns` / `bdl.forceParse` / `bdl.openLink`（Code Lens 点击用），参数是位置数组（`[uri]` / `[query]` / `[query, limit]` / `[table]`），**返回结构与对应自定义请求完全一致**。Zed 扩展 API 发不了自定义请求，只能走这条；VSCode 侧继续用自定义请求，不受影响。
 
 ---
 
