@@ -22,8 +22,9 @@ type LinkTree struct {
 	Ambiguous bool `json:"ambiguous,omitempty"`
 	// Files 是链里的文件，**按 (模组, 代码) 排序**，路径已解析。
 	Files []TreeFile `json:"files,omitempty"`
-	// Modules 是"全局可见模组"（sub/lib/qry）下的文件：模块名 → 文件。
-	// 这些模组对每个程序都可见，逐个铺进 Files 会重复几千行，所以单列。
+	// Modules 是"全局链接程序"（GAL01=lib/sub/qry）清单里的文件：模块名 → 文件。
+	// 这些文件对每个程序都可见，逐个铺进 Files 会重复几千行，所以单列。
+	// 注意来源是**链接资料**，不是这几个物理目录的扫描结果。
 	Modules map[string][]TreeFile `json:"modules,omitempty"`
 	// Refs 是"反查"结果：把当前文件链接进去的程序（最多 MaxRefs 个）。
 	Refs []string `json:"refs,omitempty"`
@@ -101,9 +102,9 @@ func (r *Resolver) Tree(module, code string) *LinkTree {
 		})
 	}
 
-	// 全局模组：每个程序都可见，单列出来（插件侧懒加载）。
-	// 三份清单会被每个文件的每次刷新复用，所以缓存在 resolver 上——
-	// lib 一个模组就 983 个文件，每次重建纯属浪费。
+	// 全局链接程序：每个程序都可见，单列出来（插件侧懒加载）。
+	// 清单由资料决定，一次建好复用（lib 一条程序就可能上千个文件，
+	// 每次重建纯属浪费）。
 	if len(r.global) > 0 {
 		t.Modules = r.globalModuleFiles()
 	}
@@ -128,36 +129,15 @@ func (r *Resolver) Tree(module, code string) *LinkTree {
 	return t
 }
 
-// globalModuleFiles 返回全局模组的文件清单（惰性构建、缓存）。
+// globalModuleFiles 返回全局链接程序清单里的文件（惰性构建、缓存）。
 //
-// 缓存生命周期跟着 resolver：资料重载会重建 resolver，模组文件增删
-// 由下一次重载带走。这与"看链接资料"的语义一致——它本来就不是实时的。
+// 来源是链接资料（GAL01 = lib/sub/qry 的链），不是这几个物理目录的扫描结果：
+// 目录只用来解析路径，资料里没列出的文件不算全局可见。缓存生命周期跟着
+// resolver：资料重载会重建 resolver，清单变化由下一次重载带走。
 func (r *Resolver) globalModuleFiles() map[string][]TreeFile {
-	r.modOnce.Do(func() {
-		out := map[string][]TreeFile{}
-		if r.layout == nil {
-			r.modFiles = out
-			return
-		}
-		for _, mod := range r.global {
-			files := r.layout.ModuleFiles(mod)
-			if len(files) == 0 {
-				continue
-			}
-			list := make([]TreeFile, 0, len(files))
-			for _, f := range files {
-				_, code, ok := r.layout.FileID(f)
-				if !ok || code == "" {
-					continue
-				}
-				list = append(list, TreeFile{Module: strings.ToUpper(mod), Code: code, Path: f})
-			}
-			sort.SliceStable(list, func(i, j int) bool {
-				return strings.ToLower(list[i].Code) < strings.ToLower(list[j].Code)
-			})
-			out[strings.ToUpper(mod)] = list
-		}
-		r.modFiles = out
-	})
-	return r.modFiles
+	gs := r.globalSetData()
+	if gs == nil {
+		return nil
+	}
+	return gs.files
 }

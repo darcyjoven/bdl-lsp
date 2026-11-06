@@ -5,7 +5,7 @@
 >
 > | 项目 | 值 |
 > |---|---|
-> | 版本 | `bdl-lsp v0.3.16`（配套 `tiptop v0.1.8` / `vscode-bdl v0.6.2`） |
+> | 版本 | `bdl-lsp v0.3.17`（配套 `tiptop v0.1.8` / `vscode-bdl v0.9.4`） |
 > | 生成日期 | 2026-10-24 |
 > | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
 > | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
@@ -120,7 +120,7 @@
 |---|---|---|
 | F10 | 资料读取与热重载 | 只读 `.project/link/`（`bdl.link.dataDir`；旧布局回退），按 mtime 热重载（2s 节流），导入后无需重启编辑器 |
 | F11 | 旧目录兼容与迁移 | 仍读旧 `.link/` 并发 `link-data-legacy-dir`（hint）；命令 `bdl.migrateLinkDir` 可一键迁移（客户端提供入口） |
-| F12 | 跨文件函数可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ 全局模组（`sub`/`lib`/`qry` 扁平规则）；**只放大函数，变量可见性不变** |
+| F12 | 跨文件函数可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ **全局链接程序清单**（资料里 GAL01=`lib`/`sub`/`qry` 三条无 MAIN 链接程序的 Files；不是这三个目录下的文件扫描结果）；扁平规则，**只放大函数，变量可见性不变** |
 | F13 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成；资料缺失/链内文件不在磁盘/索引未就绪 → 一律不报（宁漏勿误） |
 | F14 | 资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）；诊断落在资料文件上，不污染源码 |
 | F15 | 链接资料数据服务 | 自定义请求 `bdl/linkTree`、`bdl/linkReferences`（反查默认不查、分页 50） |

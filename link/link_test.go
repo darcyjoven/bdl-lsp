@@ -400,6 +400,71 @@ func TestResolverVisibility(t *testing.T) {
 	}
 }
 
+// TestGlobalFilesComeFromLinkData 锁定语义：全局可见 = 链接资料里
+// GAL01=lib 的清单，不是 lib 物理目录下的文件清单。
+func TestGlobalFilesComeFromLinkData(t *testing.T) {
+	root := t.TempDir()
+	mk := func(mod string) string {
+		d := filepath.Join(root, "tiptop", mod, "4gl")
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	lib, clib := mk("lib"), mk("clib")
+	for _, c := range []string{"in_list", "not_listed"} {
+		if err := os.WriteFile(filepath.Join(lib, c+".4gl"), []byte("x\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(clib, "custom.4gl"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	chains := []*Chain{
+		// lib 链接程序：没有 MAIN，清单里跨两个物理模组，还有一条磁盘缺失。
+		{Schema: SchemaVersion, Program: "lib", Module: "LIB",
+			Files: []FileRef{{"LIB", "in_list"}, {"CLIB", "custom"}, {"LIB", "gone"}}},
+		{Schema: SchemaVersion, Program: "entry", Module: "APM", Main: "entry",
+			Files: []FileRef{{"APM", "entry"}}},
+	}
+	r := NewResolver(build(chains, &Meta{}), NewLayout(root, nil), []string{"lib"}, fakeParse)
+
+	got := r.GlobalFiles()
+	want := []string{filepath.Join(clib, "custom.4gl"), filepath.Join(lib, "in_list.4gl")}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("GlobalFiles = %v，期望 %v（只认资料清单，且要解析到 clib）", got, want)
+	}
+	if n := r.GlobalMissing(); n != 1 {
+		t.Errorf("GlobalMissing = %d，期望 1（清单里的 gone 磁盘上没有）", n)
+	}
+	if p := r.GlobalPrograms(); len(p) != 1 || p[0] != "lib" {
+		t.Errorf("GlobalPrograms = %v，期望 [lib]", p)
+	}
+
+	// 视图用的是同一份清单：按资料里的模组分组，含缺失项，不含只存在磁盘上的。
+	tree := r.Tree("APM", "entry")
+	libs := tree.Modules["LIB"]
+	if len(libs) != 2 {
+		t.Fatalf("LIB 分组应有 2 条（in_list + 缺失的 gone），实际 %+v", libs)
+	}
+	codes := []string{libs[0].Code, libs[1].Code}
+	if strings.Join(codes, ",") != "gone,in_list" {
+		t.Errorf("LIB 分组 = %v，期望 [gone in_list]", codes)
+	}
+	for _, f := range tree.Modules["LIB"] {
+		if f.Code == "not_listed" {
+			t.Error("磁盘上有、资料里没有的文件不该出现在全局清单")
+		}
+		if f.Code == "gone" && f.Path != "" {
+			t.Error("缺失项 Path 应为空")
+		}
+	}
+	if c := tree.Modules["CLIB"]; len(c) != 1 || c[0].Path == "" {
+		t.Errorf("CLIB 分组的文件应能解析到磁盘，实际 %+v", c)
+	}
+}
+
 func TestResolverNonMainUnion(t *testing.T) {
 	root := t.TempDir()
 	d := filepath.Join(root, "tiptop", "apm", "4gl")

@@ -1,22 +1,25 @@
 package link
 
 import (
+	"sort"
 	"strings"
 	"sync"
 )
 
 // Resolver 把「链接资料 + 模组布局 + 函数索引」组合成"某个文件能调用哪些函数"。
 //
-// 可见性规则（用户 2026-10-21 二次定稿）：
+// 可见性规则（用户 2026-11 定稿）：
 //
-//	可见函数 = 本文件 ∪ GLOBALS 引入 ∪ 链接文件 ∪ (sub ∪ lib ∪ qry 全部函数)
+//	可见函数 = 本文件 ∪ GLOBALS 引入 ∪ 链接文件 ∪ (lib ∪ sub ∪ qry 链接程序的清单)
 //
-// 扁平规则，没有方向限制，这三个模组"包括它们自己"。变量**不走**这条路
-// （R2：链接不放大变量可见性）。
+// 注意后半句：全局可见的是**这三条链接程序（GAL01=lib/sub/qry）在资料里
+// 列出的文件**，不是这三个物理目录下的所有文件。物理目录只用来把
+// (模组,代码) 解析成路径。扁平规则，没有方向限制，三个程序"包括它们自己"。
+// 变量**不走**这条路（R2：链接不放大变量可见性）。
 type Resolver struct {
 	idx    *Index
 	layout *Layout
-	global []string // 全局可见模组（默认 sub/lib/qry）
+	global []string // 全局链接程序（GAL01，默认 lib/sub/qry）
 	// externals 是"外部函数"集合（P7-D-2）：被 ≥minFiles 个文件调用、
 	// 却在整份资料里找不到定义。它们算作"存在"，用于消掉
 	// "语料快照缺少某个库"造成的大片误报。
@@ -24,9 +27,9 @@ type Resolver struct {
 	sym       *SymbolIndex
 	// maxSync 是同步解析的文件数上限，超过就走后台（见 maxSyncDefault）。
 	maxSync int
-	// modOnce/modFiles 缓存全局模组的文件清单（P7-E 链接资料 UI 用）。
-	modOnce  sync.Once
-	modFiles map[string][]TreeFile
+	// globOnce/gset 缓存全局链接程序的文件集合（诊断预热 + 链接资料 UI 共用）。
+	globOnce sync.Once
+	gset     *globalSet
 
 	started bool
 }
@@ -99,10 +102,11 @@ func (r *Resolver) ExternalTotal() int {
 	return r.idx.Meta().ExternalsTotal
 }
 
-// DefaultGlobalModules 是全局可见模组的出厂值。
+// DefaultGlobalModules 是全局链接程序的出厂值。
 //
-// `sub` / `lib` / `qry` 对所有程序可见（含它们自己）。项目若把公共库
-// 放在别的模组（如 `clib`），改 `bdl.link.globalModules` 即可。
+// `lib` / `sub` / `qry` 在资料里各是一条**没有 MAIN 的链接程序**（GAL01），
+// 它们的清单对所有程序可见（含它们自己）。这是**程序编号**，不是物理目录名：
+// 清单里的文件可以位于任何模组目录（例如 `clib` / `cqry`）。
 func DefaultGlobalModules() []string { return []string{"sub", "lib", "qry"} }
 
 // Index 返回链路索引。
@@ -114,24 +118,110 @@ func (r *Resolver) Layout() *Layout { return r.layout }
 // Symbols 返回函数索引（供状态展示与测试）。
 func (r *Resolver) Symbols() *SymbolIndex { return r.sym }
 
-// GlobalModules 返回全局可见模组。
+// GlobalModules 返回全局链接程序（GAL01）。
 func (r *Resolver) GlobalModules() []string { return append([]string(nil), r.global...) }
+
+// globalSet 是"全局链接程序"提供的文件集合。
+//
+// 来源只有一份：链接资料里 GAL01 = lib/sub/qry 的那几条链的 Files。
+// 物理目录不参与决定"哪些文件算全局"，只负责把 (模组,代码) 解析成路径；
+// 解析不到的原样留在清单里（missing 计数），不静默丢掉。
+type globalSet struct {
+	// paths 是解析到磁盘的文件（绝对路径，已排序），用于函数索引预热。
+	paths []string
+	// files 是资料里的模组名（大写）→ 该模组的文件条目（含缺失项）。
+	files map[string][]TreeFile
+	// missing 是清单里有、磁盘上没有的条目数。
+	missing int
+	// programs 是资料里实际找到的全局链接程序（GAL01 原样，按配置顺序）。
+	programs []string
+}
+
+// globalSetData 懒建并缓存全局链接程序的文件集合。
+//
+// 成本：只遍历这几条链的 Files（数百到一千条），且只建一次；
+// 路径解析走 Layout 已缓存的 name 索引，微秒级。
+func (r *Resolver) globalSetData() *globalSet {
+	if r == nil {
+		return nil
+	}
+	r.globOnce.Do(func() {
+		gs := &globalSet{files: map[string][]TreeFile{}}
+		r.gset = gs
+		if r.idx == nil || r.layout == nil {
+			return
+		}
+		seen := map[string]bool{}
+		for _, prog := range r.global {
+			c := r.idx.FindByProgram(prog)
+			if c == nil {
+				// 资料里没有这条链接程序：按约定"照常判定"，不拿磁盘兜底。
+				continue
+			}
+			gs.programs = append(gs.programs, c.Program)
+			for _, f := range c.Files {
+				if f.Code() == "" {
+					continue
+				}
+				key := f.Key()
+				if seen[key] {
+					continue
+				}
+				seen[key] = true
+				mod := strings.ToUpper(f.Module())
+				tf := TreeFile{Module: mod, Code: f.Code()}
+				if p, ok := r.layout.Path(f.Module(), f.Code()); ok {
+					tf.Path = p
+					gs.paths = append(gs.paths, p)
+				} else {
+					gs.missing++
+				}
+				gs.files[mod] = append(gs.files[mod], tf)
+			}
+		}
+		for _, list := range gs.files {
+			sort.SliceStable(list, func(i, j int) bool {
+				return strings.ToLower(list[i].Code) < strings.ToLower(list[j].Code)
+			})
+		}
+		sort.Strings(gs.paths)
+	})
+	return r.gset
+}
+
+// GlobalFiles 返回全局链接程序清单里、能在磁盘上找到的 .4gl 绝对路径。
+func (r *Resolver) GlobalFiles() []string {
+	gs := r.globalSetData()
+	if gs == nil {
+		return nil
+	}
+	return append([]string(nil), gs.paths...)
+}
+
+// GlobalPrograms 返回资料里实际找到的全局链接程序（GAL01）。
+func (r *Resolver) GlobalPrograms() []string {
+	gs := r.globalSetData()
+	if gs == nil {
+		return nil
+	}
+	return append([]string(nil), gs.programs...)
+}
+
+// GlobalMissing 返回全局清单里"资料有、磁盘没有"的条目数。
+func (r *Resolver) GlobalMissing() int {
+	gs := r.globalSetData()
+	if gs == nil {
+		return 0
+	}
+	return gs.missing
+}
 
 // SetOnReady 注册"索引就绪"回调（server 用它补发一轮诊断）。
 func (r *Resolver) SetOnReady(fn func()) {
 	r.sym.SetOnReady(fn)
 }
 
-// GlobalFiles 返回全局模组下的全部 .4gl 文件（绝对路径）。
-func (r *Resolver) GlobalFiles() []string {
-	var out []string
-	for _, m := range r.global {
-		out = append(out, r.layout.ModuleFiles(m)...)
-	}
-	return out
-}
-
-// Start 后台预热全局模组索引（幂等）。
+// Start 后台预热全局链接程序的函数索引（幂等）。
 func (r *Resolver) Start() {
 	if r == nil || r.started {
 		return
@@ -139,7 +229,8 @@ func (r *Resolver) Start() {
 	r.started = true
 	files := r.GlobalFiles()
 	if len(files) == 0 {
-		// 没有全局模组（或模组不存在）：直接算就绪，避免永远不启用诊断。
+		// 资料里没有全局链接程序（或它们没有文件）：直接算就绪，
+		// 避免永远不启用诊断。
 		r.sym.mu.Lock()
 		r.sym.ready = true
 		cb := r.sym.onReady

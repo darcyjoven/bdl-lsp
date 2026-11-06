@@ -121,7 +121,17 @@ func (s *Server) newLinkResolver() {
 		"ambiguous", st.Ambiguous, "files", st.Files,
 		"globalModules", res.GlobalModules())
 
-	// 后台预热全局模组索引（sub/lib/qry 约 983 文件，并行约 2–3 s）。
+	// 后台预热全局链接程序的函数索引（清单来自资料，实测约 983 文件，
+	// 并行约 2–3 s）。
+	//
+	// 三个数字要分开打：配置了什么、资料里找到几条、清单里有多少文件解析
+	// 不到磁盘。"全局可见为空"是 function-not-found 大面积误报的唯一原因，
+	// 出问题时先看这一行。
+	s.logger.Info("全局链接程序",
+		"configured", res.GlobalModules(),
+		"found", res.GlobalPrograms(),
+		"files", len(res.GlobalFiles()),
+		"missing", res.GlobalMissing())
 	res.Start()
 }
 

@@ -252,7 +252,12 @@ type Index struct {
 	chains []*Chain
 	byMain map[string]*Chain   // MAIN 代码（小写）→ 链
 	byCode map[string][]*Chain // 任意文件代码（小写）→ 含它的链
-	meta   *Meta
+	// byProgram 是程序编号（GAL01，小写）→ 链。
+	//
+	// 用于定位**没有 MAIN 的链接程序**（lib/sub/qry）：它们的清单是全局可见
+	// 函数的唯一来源，而 orphan 组实测有 81 个，不能靠"Main 为空"认出来。
+	byProgram map[string]*Chain
+	meta      *Meta
 
 	// 统计（加载时按实际内容重算，不盲信 meta 里的数字）
 	stat Stats
@@ -306,6 +311,17 @@ func (i *Index) FindByMain(code string) *Chain {
 	return i.byMain[strings.ToLower(code)]
 }
 
+// FindByProgram 按程序编号（GAL01）查链（大小写不敏感）。
+//
+// lib/sub/qry 这类"没有 MAIN 的链接程序"只能按编号定位：它们和普通作业
+// 一样是 GAL01 的一组，只是组内没有 MAIN。
+func (i *Index) FindByProgram(program string) *Chain {
+	if i == nil || program == "" {
+		return nil
+	}
+	return i.byProgram[strings.ToLower(program)]
+}
+
 // ChainsOf 返回包含该文件代码的全部链（大小写不敏感），用于反查。
 //
 // 实测同一个代码最多被 324 个组共享（`aws_xml`），调用方要准备分页。
@@ -339,15 +355,22 @@ func (i *Index) ChainsOfFile(module, code string) []*Chain {
 // build 从链列表建索引。
 func build(chains []*Chain, meta *Meta) *Index {
 	idx := &Index{
-		chains: chains,
-		byMain: make(map[string]*Chain, len(chains)),
-		byCode: make(map[string][]*Chain),
-		meta:   meta,
+		chains:    chains,
+		byMain:    make(map[string]*Chain, len(chains)),
+		byCode:    make(map[string][]*Chain),
+		byProgram: make(map[string]*Chain, len(chains)),
+		meta:      meta,
 	}
 	files := map[string]bool{}
 	for _, c := range chains {
 		c.Schema = SchemaVersion
 		c.byMain = strings.ToLower(c.Main)
+		if p := strings.ToLower(c.Program); p != "" {
+			// 同一程序编号只应有一条链；重复时保留先到的（资料坏了也要能用）。
+			if _, dup := idx.byProgram[p]; !dup {
+				idx.byProgram[p] = c
+			}
+		}
 		mains := c.AllMains()
 		if len(mains) > 0 {
 			idx.stat.Chains++

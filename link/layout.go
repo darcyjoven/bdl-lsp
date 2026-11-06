@@ -237,31 +237,6 @@ func (l *Layout) namesLocked(module string) map[string]string {
 	return idx
 }
 
-// ModuleFiles 返回模组 `4gl` 目录下全部 .4gl 文件（绝对路径，已排序）。
-//
-// 用于全局模组（sub/lib/qry）：这些模组的函数对所有程序可见，且**不依赖
-// 链接资料**——即使 CSV 里没有它们的组也能工作。所以只能扫盘。
-func (l *Layout) ModuleFiles(module string) []string {
-	if l == nil {
-		return nil
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.buildLocked()
-	dir, ok := l.dirs[strings.ToLower(module)]
-	if !ok {
-		return nil
-	}
-	var out []string
-	for name := range l.namesLocked(module) {
-		if strings.EqualFold(filepath.Ext(name), ".4gl") {
-			out = append(out, filepath.Join(dir, "4gl", name))
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 // CodeOf 从路径推导程序代码（文件名去 `.4gl`，保留原始大小写）。
 func CodeOf(path string) string {
 	base := filepath.Base(path)

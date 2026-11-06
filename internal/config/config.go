@@ -242,7 +242,11 @@ type LinkSettings struct {
 	DataDir string `json:"dataDir"`
 	// ModuleRoots 是模组根（相对项目根）。空 = 自动探测。
 	ModuleRoots []string `json:"moduleRoots"`
-	// GlobalModules 是对所有程序可见的模组，默认 ["sub","lib","qry"]。
+	// GlobalModules 是全局链接程序（GAL01）的清单，默认 ["sub","lib","qry"]。
+	//
+	// 注意是**程序编号**，不是物理目录名：全局可见的文件来自资料里这几条
+	// 链的 Files，目录只用来把 (模组,代码) 解析成路径；清单里的文件可以
+	// 位于任何模组目录（例如 clib / cqry）。
 	GlobalModules []string `json:"globalModules"`
 	// LensMax 是链接资料 Code Lens（PLAN Z-P3-3）的条数上限，默认 10。
 	// Zed 没有树视图，链接关系就靠"MAIN 头上每个子文件一条 lens"来表达，

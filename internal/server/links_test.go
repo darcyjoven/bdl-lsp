@@ -55,7 +55,45 @@ func (f *linkFixture) uri(module, code string) string {
 }
 
 // writeLinks 写 .project/link/links.jsonl（每行一条链；W6 新布局）。
+//
+// 会**自动补上** lib/sub/qry 三条"全局链接程序"（GAL01=lib/sub/qry、无 MAIN），
+// 清单就是对应目录下的全部文件——全局可见现在取自资料，不再扫盘。
+// 需要"资料里没有某条全局程序"的用例请用 writeLinksRaw。
 func (f *linkFixture) writeLinks(t *testing.T, lines ...string) {
+	t.Helper()
+	f.writeLinksRaw(t, append(lines, f.globalLinkLines(t)...)...)
+}
+
+// globalLinkLines 把 lib/sub/qry 目录下的文件合成三条无 MAIN 的链。
+func (f *linkFixture) globalLinkLines(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, mod := range []string{"lib", "sub", "qry"} {
+		entries, err := os.ReadDir(f.dirs[mod])
+		if err != nil {
+			continue
+		}
+		var refs []string
+		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
+			code := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+			refs = append(refs, fmt.Sprintf(`["%s","%s"]`, strings.ToUpper(mod), code))
+		}
+		if len(refs) == 0 {
+			continue
+		}
+		out = append(out, fmt.Sprintf(
+			`{"schema":1,"program":"%s","module":"%s","files":[%s]}`,
+			mod, strings.ToUpper(mod), strings.Join(refs, ","),
+		))
+	}
+	return out
+}
+
+// writeLinksRaw 原样写入（不补全局程序）。
+func (f *linkFixture) writeLinksRaw(t *testing.T, lines ...string) {
 	t.Helper()
 	dir := filepath.Join(f.root, ".project", "link")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -234,6 +272,30 @@ func TestLinkVisibilityIsFlatAcrossGlobalModules(t *testing.T) {
 	msgs := messagesOf(diags, "function-not-found")
 	if len(msgs) != 1 || !strings.Contains(msgs[0], "ghost_control") {
 		t.Fatalf("正对照应报 ghost_control，实际 %v", msgs)
+	}
+}
+
+// TestDiskOnlyGlobalFileIsNotVisible 锁定语义：lib 目录里有、但资料清单里
+// 没有的文件，不提供函数可见性（全局可见取自资料，不再扫盘）。
+func TestDiskOnlyGlobalFileIsNotVisible(t *testing.T) {
+	f := newLinkFixture(t)
+	// 物理目录里有这个文件（旧实现会把它当全局可见）。
+	f.write(t, "lib", "only_on_disk", "FUNCTION disk_only()\n    DISPLAY 1\nEND FUNCTION\n")
+	f.write(t, "apm", "entry", "MAIN\n    CALL disk_only()\nEND MAIN\n")
+	// 只写作业链，不写 lib 这条全局链接程序。
+	f.writeLinksRaw(t,
+		`{"schema":1,"program":"entry","module":"APM","main":"entry","files":[["APM","entry"]]}`,
+	)
+
+	h := f.initialize(t)
+	h.sendDiagnosticsConfig(t, map[string]string{"function-not-found": "warning"})
+	uri := f.uri("apm", "entry")
+	h.sendDidOpen(uri, "bdl", "MAIN\n    CALL disk_only()\nEND MAIN\n", 1)
+
+	diags := drainUntilCode(t, h, uri, "function-not-found", 20*time.Second)
+	msgs := messagesOf(diags, "function-not-found")
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "disk_only") {
+		t.Fatalf("资料清单里没有的函数应报未定义，实际 %v", msgs)
 	}
 }
 
