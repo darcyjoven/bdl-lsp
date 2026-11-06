@@ -153,6 +153,7 @@
 | G12 | 列补全 | `r.` 补全带每列类型与中文说明 |
 | G13 | 字段资料数据服务 | 自定义请求 `bdl/schemaTables`（正则过滤 + `total/matched/returned`）、`bdl/schemaColumns`（展开才取） |
 | G14 | 字段资料配置 | `bdl.schema.enable` / `bdl.schema.dataDir`（默认 `.project/schema`）；旧「扫各模组 `sch/*.sch`」与 `bdl.schema.paths` 已下线 |
+| G15 | 索引热重载 | 按 `tables.json` 的 mtime+size 热重载（2s 节流）：tiptop 同步完（含插件「同步缺失的表」）下一次视图/悬停请求就能看到新表，不用重启语言服务器 |
 
 产物格式（只读）：
 

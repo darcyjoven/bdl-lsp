@@ -470,3 +470,56 @@ func TestQualifierBeforeDot(t *testing.T) {
 		}
 	}
 }
+
+// TestSchemaHotReload tables.json 被 tiptop 重写后，下一次视图请求就该看到新表。
+//
+// 场景：插件「同步缺失的表」→ tiptop 写盘 → 插件立刻重新拉列表。
+// 不重载的话用户得重启语言服务器，新表在视图里等于没同步。
+func TestSchemaHotReload(t *testing.T) {
+	h, cleanup := startServer(t)
+	defer cleanup()
+	root := newSchemaWorkspace(t)
+	h.initWS(root)
+	h.waitIndex()
+
+	resp := h.request(nextRequestID(), MethodSchemaTables, `{}`)
+	res, _ := resp["result"].(map[string]any)
+	if total, _ := res["total"].(float64); int(total) != 2 {
+		t.Fatalf("初始应有 2 张表：%v", res["total"])
+	}
+
+	// 模拟 tiptop schema sync -missing 写盘：索引里多一张 ccc_file。
+	writeFile(t, filepath.Join(root, ".project/.schema/tables.json"), `{
+  "schema": 1,
+  "importedAt": "2026-10-24T09:00:00+08:00",
+  "source": "golang@db:1521/PROD",
+  "rowsTotal": 6,
+  "tables": {
+    "APA_FILE": {"name": "apa_file", "desc": "", "columns": 2, "file": "APA_FILE.json"},
+    "CCC_FILE": {"name": "ccc_file", "desc": "", "columns": 1, "file": "CCC_FILE.json"},
+    "IMA_FILE": {"name": "ima_file", "desc": "物料主档", "columns": 2, "file": "IMA_FILE.json"}
+  }
+}`)
+	writeFile(t, filepath.Join(root, ".project/.schema/tables/CCC_FILE.json"), `{
+  "table": "CCC_FILE",
+  "columns": [{"name": "ccc01", "desc": "备注", "type": "VARCHAR2", "length": 10}]
+}`)
+	// 视图请求走不节流的 reloadSchemaIfChanged：不用等 2s 也能立刻看到新索引。
+	resp = h.request(nextRequestID(), MethodSchemaTables, `{}`)
+	res, _ = resp["result"].(map[string]any)
+	if total, _ := res["total"].(float64); int(total) != 3 {
+		t.Fatalf("重写索引后应有 3 张表：%v", res["total"])
+	}
+	names := map[string]bool{}
+	tables, _ := res["tables"].([]any)
+	for _, raw := range tables {
+		if m, ok := raw.(map[string]any); ok {
+			if name, _ := m["name"].(string); name != "" {
+				names[name] = true
+			}
+		}
+	}
+	if !names["ccc_file"] {
+		t.Fatalf("新表 ccc_file 应出现在列表里：%v", names)
+	}
+}

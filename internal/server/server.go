@@ -52,6 +52,10 @@ type Server struct {
 	schema *schema.Data
 	// schemaErr 是上次加载字段资料失败的原因（供视图显示；nil = 正常或还没导入）。
 	schemaErr error
+	// schemaStamp / schemaCheckedAt 用于发现 tables.json 被重写：
+	// tiptop 同步完不需要重启语言服务器，视图下一次请求就能看到新表。
+	schemaStamp     fileStampLite
+	schemaCheckedAt time.Time
 	// formQs 是字段校验的复用 query（P3b；惰性编译）。
 	formQs *formQueriesAlias
 	// rootPath 是工作区根的本地路径（initialize 时记录，供热更新重建解析器）。

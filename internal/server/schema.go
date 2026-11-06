@@ -9,8 +9,60 @@ import (
 	"github.com/darcyjoven/bdl-lsp/internal/schema"
 )
 
+// schemaReloadInterval 与链接资料/内置符号表保持同一节奏（2s 节流）。
+const schemaReloadInterval = 2 * time.Second
+
+// maybeReloadSchema 发现 tables.json 变了就重新加载字段资料（2s 节流）。
+//
+// 场景：视图里点完「同步缺失的表」（tiptop 重写索引）后，下一次列表/展开请求
+// 就该看到新表，而不是要求用户重启语言服务器。
+func (s *Server) maybeReloadSchema() {
+	if s == nil || s.rootPath == "" {
+		return
+	}
+	// 先看节流时间：schemaIndex 在悬停/补全里也会被调，不能每次都去 stat。
+	s.mu.Lock()
+	last := s.schemaCheckedAt
+	s.mu.Unlock()
+	if !last.IsZero() && time.Since(last) < schemaReloadInterval {
+		return
+	}
+	s.mu.Lock()
+	s.schemaCheckedAt = time.Now()
+	s.mu.Unlock()
+	s.reloadSchemaIfChanged()
+}
+
+// reloadSchemaIfChanged 不节流地检查并重载索引，返回是否真的重载了。
+//
+// 视图请求用它而不是 maybeReloadSchema：用户刚点完「同步缺失的表」，
+// 插件紧接着就来拉列表——这一次必须看到新索引，不能因为 2s 节流而拿到旧数据。
+// 代价只有一次 stat + 目录解析，可以忽略。
+func (s *Server) reloadSchemaIfChanged() bool {
+	if s == nil || s.rootPath == "" || !s.settings().SchemaEnabled() {
+		return false
+	}
+	dir := s.schemaDataDir()
+	if dir == "" {
+		return false
+	}
+	s.mu.Lock()
+	old := s.schemaStamp
+	s.mu.Unlock()
+	if stampOfFile(filepath.Join(dir, schema.FileName)) == old {
+		s.mu.Lock()
+		s.schemaCheckedAt = time.Now()
+		s.mu.Unlock()
+		return false
+	}
+	s.loadSchemaIndex()
+	s.logger.Info("字段资料已变更，重新加载", "dir", dir)
+	return true
+}
+
 // schemaIndex 返回字段资料（可能为 nil：未启用、还没导入过、或资料坏了）。
 func (s *Server) schemaIndex() *schema.Data {
+	s.maybeReloadSchema()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.schema
@@ -50,6 +102,13 @@ func (s *Server) loadSchemaIndex() {
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(s.rootPath, dir)
 	}
+	// 无论成功还是失败都记下本次看到的 mtime：坏索引不要每分钟重读一遍。
+	indexPath := filepath.Join(dir, schema.FileName)
+	defer func() {
+		s.mu.Lock()
+		s.schemaStamp = stampOfFile(indexPath)
+		s.mu.Unlock()
+	}()
 	start := time.Now()
 	ix, err := schema.LoadData(dir)
 	if err != nil {

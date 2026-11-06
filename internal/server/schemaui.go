@@ -76,6 +76,8 @@ type schemaColumnsResult struct {
 }
 
 func (s *Server) handleSchemaTables(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	// 视图是显式操作：不节流，确保 tiptop 刚写完的索引立刻生效。
+	s.reloadSchemaIfChanged()
 	var params schemaTablesParams
 	if raw := req.Params(); len(raw) > 0 {
 		if err := json.Unmarshal(raw, &params); err != nil {
@@ -115,6 +117,7 @@ func (s *Server) handleSchemaTables(ctx context.Context, reply jsonrpc2.Replier,
 }
 
 func (s *Server) handleSchemaColumns(ctx context.Context, reply jsonrpc2.Replier, req jsonrpc2.Request) error {
+	s.reloadSchemaIfChanged()
 	var params schemaColumnsParams
 	if raw := req.Params(); len(raw) > 0 {
 		if err := json.Unmarshal(raw, &params); err != nil {

@@ -114,6 +114,7 @@ func (s *Server) handleExecuteCommand(ctx context.Context, reply jsonrpc2.Replie
 				return reply(ctx, nil, fmt.Errorf("%s: 第 2 个参数 limit 必须是数字", params.Command))
 			}
 		}
+		s.reloadSchemaIfChanged()
 		settings := s.settings()
 		res := schemaTablesResult{
 			Enabled: settings.SchemaEnabled(),
@@ -149,6 +150,7 @@ func (s *Server) handleExecuteCommand(ctx context.Context, reply jsonrpc2.Replie
 		if err != nil {
 			return reply(ctx, nil, err)
 		}
+		s.reloadSchemaIfChanged()
 		settings := s.settings()
 		res := schemaColumnsResult{Enabled: settings.SchemaEnabled(), Table: table}
 		ix := s.schemaIndex()
