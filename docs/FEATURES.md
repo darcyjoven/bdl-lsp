@@ -5,7 +5,7 @@
 >
 > | 项目 | 值 |
 > |---|---|
-> | 版本 | `bdl-lsp v0.3.18`（配套 `tiptop v0.1.13` / `vscode-bdl v0.9.5`） |
+> | 版本 | `bdl-lsp v0.3.19`（配套 `tiptop v0.1.14` / `vscode-bdl v0.9.6`） |
 > | 生成日期 | 2026-10-24 |
 > | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
 > | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
