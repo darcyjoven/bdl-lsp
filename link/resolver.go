@@ -127,9 +127,12 @@ func (r *Resolver) GlobalModules() []string { return append([]string(nil), r.glo
 // 物理目录不参与决定"哪些文件算全局"，只负责把 (模组,代码) 解析成路径；
 // 解析不到的原样留在清单里（missing 计数），不静默丢掉。
 type globalSet struct {
-	// paths 是解析到磁盘的文件（绝对路径，已排序），用于函数索引预热。
+	// paths 是解析到磁盘的文件（绝对路径，已排序、已去重），用于函数索引预热。
 	paths []string
-	// files 是资料里的模组名（大写）→ 该模组的文件条目（含缺失项）。
+	// files 是**链接程序编号（GAL01，大写）** → 该程序清单里的文件条目。
+	//
+	// 键是程序而不是物理模组：一个程序的清单可以横跨多个模组目录
+	//（lib 的清单里可能有 lib/ 与 clib/），视图要按程序分组展示。
 	files map[string][]TreeFile
 	// missing 是清单里有、磁盘上没有的条目数。
 	missing int
@@ -151,36 +154,52 @@ func (r *Resolver) globalSetData() *globalSet {
 		if r.idx == nil || r.layout == nil {
 			return
 		}
-		seen := map[string]bool{}
+		seenPath := map[string]bool{}
+		seenProgram := map[string]bool{}
 		for _, prog := range r.global {
 			c := r.idx.FindByProgram(prog)
 			if c == nil {
 				// 资料里没有这条链接程序：按约定"照常判定"，不拿磁盘兜底。
 				continue
 			}
+			key := strings.ToUpper(c.Program)
+			if key == "" || seenProgram[key] {
+				continue
+			}
+			seenProgram[key] = true
 			gs.programs = append(gs.programs, c.Program)
+			// 只在同一条程序内去重：同一文件若同时属于两条全局程序，
+			// 两个节点下都该看得到。
+			seen := map[string]bool{}
 			for _, f := range c.Files {
 				if f.Code() == "" {
 					continue
 				}
-				key := f.Key()
-				if seen[key] {
+				fk := f.Key()
+				if seen[fk] {
 					continue
 				}
-				seen[key] = true
-				mod := strings.ToUpper(f.Module())
-				tf := TreeFile{Module: mod, Code: f.Code()}
+				seen[fk] = true
+				tf := TreeFile{Module: strings.ToUpper(f.Module()), Code: f.Code()}
 				if p, ok := r.layout.Path(f.Module(), f.Code()); ok {
 					tf.Path = p
-					gs.paths = append(gs.paths, p)
+					if !seenPath[p] {
+						seenPath[p] = true
+						gs.paths = append(gs.paths, p)
+					}
 				} else {
 					gs.missing++
 				}
-				gs.files[mod] = append(gs.files[mod], tf)
+				gs.files[key] = append(gs.files[key], tf)
 			}
 		}
+		// 组内按 (模组, 代码) 排序：sub/* 与 csub/* 各自连在一起，
+		// 文件多了也一眼能看出"这个程序横跨哪几个物理目录"。
 		for _, list := range gs.files {
 			sort.SliceStable(list, func(i, j int) bool {
+				if list[i].Module != list[j].Module {
+					return list[i].Module < list[j].Module
+				}
 				return strings.ToLower(list[i].Code) < strings.ToLower(list[j].Code)
 			})
 		}

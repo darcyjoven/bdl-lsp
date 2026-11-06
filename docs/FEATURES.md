@@ -5,7 +5,7 @@
 >
 > | 项目 | 值 |
 > |---|---|
-> | 版本 | `bdl-lsp v0.3.17`（配套 `tiptop v0.1.8` / `vscode-bdl v0.9.4`） |
+> | 版本 | `bdl-lsp v0.3.18`（配套 `tiptop v0.1.13` / `vscode-bdl v0.9.5`） |
 > | 生成日期 | 2026-10-24 |
 > | 完整版 | <https://github.com/darcyjoven/vscode-bdl/blob/main/docs/FEATURES.md> |
 > | tiptop 切片 | <https://github.com/darcyjoven/tiptop/blob/main/docs/FEATURES.md> |
@@ -123,7 +123,7 @@
 | F12 | 跨文件函数可见性 | 可见函数 = 本文件 ∪ GLOBALS ∪ 链接文件 ∪ **全局链接程序清单**（资料里 GAL01=`lib`/`sub`/`qry` 三条无 MAIN 链接程序的 Files；不是这三个目录下的文件扫描结果）；扁平规则，**只放大函数，变量可见性不变** |
 | F13 | `function-not-found` 启用条件 | 必须有链接资料且索引预热完成；资料缺失/链内文件不在磁盘/索引未就绪 → 一律不报（宁漏勿误） |
 | F14 | 资料自身诊断 | `link-data-invalid`（JSONL 坏了 → 停用并提示重导）；诊断落在资料文件上，不污染源码 |
-| F15 | 链接资料数据服务 | 自定义请求 `bdl/linkTree`、`bdl/linkReferences`（反查默认不查、分页 50） |
+| F15 | 链接资料数据服务 | 自定义请求 `bdl/linkTree`、`bdl/linkReferences`（反查默认不查、分页 50）；全局清单**按链接程序分组**（GAL01），组内文件带物理模组，一个程序可跨 lib/clib |
 | F15a | **链接资料 Code Lens**（PLAN Z-P3-3） | `textDocument/codeLens`：把链内**子文件各一条** lens 挂在 **MAIN 程序块**那一行（标题 `模组/代码`，命令 `bdl.openLink` → 服务端反向请求 `window/showDocument` 打开目标文件）；文件不在磁盘时改用 `bdl.showInfo`（只提示，不跳转）；不给当前文件自己挂；上限 `bdl.link.lensMax`（默认 10，超出显示前 N 条 + 一条 `bdl.showInfo` 汇总）。Zed 没有树视图 API，这是链接资料的"就地可点"形态；VSCode 侧仍以 TreeView 为主，Code Lens 作为补充视图共用同一份内存数据 |
 | F15b | **函数级反查 Code Lens**（PLAN Z-P3-3 续） | `textDocument/codeLens` 第二类：给"确实被调用过"的顶层函数各挂一条「🔗 函数名 被 N 处调用（点开首处 …）」，挂在**函数定义那一行**；数据来自工作区索引（`wsindex.Index.CallsOf`），索引未就绪就不显示；每文件上限 10 条，超出给一条 `bdl.showInfo` 汇总。这是 VSCode 侧 TreeView「反查引用程序」在 Zed 上的函数级降级形态（Zed 无侧边栏树、无 QuickPick）；要看全部调用点用 Zed 原生「查找引用」（`referencesProvider`） |
 | F15c | **Code Lens 必须带 command**（Zed 兼容硬约束） | Zed **只显示 `lens.command.title`**：没有 command 的 lens 会先渲染占位，等 `codeLens/resolve` 回来补标题；服务端不声明 `resolveProvider` 时就永远占位，最终回落到**假的**「0 references」文本（`crates/editor/src/code_lens.rs` 的 `EMPTY_LENS_FALLBACK_TITLE`）。所以"纯文本 lens"在 Zed 里是陷阱 —— 所有汇总/说明行都改用 `bdl.showInfo` 挂 command（弹 `window/showMessage`）。另有测试 `TestEveryLensHasCommand` 锁定这条不变量 |

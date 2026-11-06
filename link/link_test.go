@@ -442,17 +442,22 @@ func TestGlobalFilesComeFromLinkData(t *testing.T) {
 		t.Errorf("GlobalPrograms = %v，期望 [lib]", p)
 	}
 
-	// 视图用的是同一份清单：按资料里的模组分组，含缺失项，不含只存在磁盘上的。
+	// 视图用的是同一份清单：**按链接程序分组**（不是按物理模组），
+	// 组内文件带真实模组名（lib/custom 会显示成 clib/custom），含缺失项，
+	// 不含只存在磁盘上的文件。
 	tree := r.Tree("APM", "entry")
 	libs := tree.Modules["LIB"]
-	if len(libs) != 2 {
-		t.Fatalf("LIB 分组应有 2 条（in_list + 缺失的 gone），实际 %+v", libs)
+	if len(libs) != 3 {
+		t.Fatalf("LIB 程序节点应有 3 条（clib/custom + lib/in_list + 缺失的 gone），实际 %+v", libs)
 	}
-	codes := []string{libs[0].Code, libs[1].Code}
-	if strings.Join(codes, ",") != "gone,in_list" {
-		t.Errorf("LIB 分组 = %v，期望 [gone in_list]", codes)
+	entries := make([]string, 0, len(libs))
+	for _, f := range libs {
+		entries = append(entries, f.Module+"/"+f.Code)
 	}
-	for _, f := range tree.Modules["LIB"] {
+	if strings.Join(entries, ",") != "CLIB/custom,LIB/gone,LIB/in_list" {
+		t.Errorf("LIB 节点 = %v，期望按 (模组,代码) 排序且跨目录", entries)
+	}
+	for _, f := range libs {
 		if f.Code == "not_listed" {
 			t.Error("磁盘上有、资料里没有的文件不该出现在全局清单")
 		}
@@ -460,8 +465,8 @@ func TestGlobalFilesComeFromLinkData(t *testing.T) {
 			t.Error("缺失项 Path 应为空")
 		}
 	}
-	if c := tree.Modules["CLIB"]; len(c) != 1 || c[0].Path == "" {
-		t.Errorf("CLIB 分组的文件应能解析到磁盘，实际 %+v", c)
+	if c, ok := tree.Modules["CLIB"]; ok {
+		t.Errorf("物理模组不该单独成节点（应归到链接程序 LIB 下），实际 %+v", c)
 	}
 }
 

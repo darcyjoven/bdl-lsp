@@ -22,9 +22,11 @@ type LinkTree struct {
 	Ambiguous bool `json:"ambiguous,omitempty"`
 	// Files 是链里的文件，**按 (模组, 代码) 排序**，路径已解析。
 	Files []TreeFile `json:"files,omitempty"`
-	// Modules 是"全局链接程序"（GAL01=lib/sub/qry）清单里的文件：模块名 → 文件。
+	// Modules 是"全局链接程序"（GAL01=lib/sub/qry）清单里的文件：
+	// **程序编号 → 文件**。一个程序可能横跨多个物理模组（lib/clib），
+	// 视图按程序分组，组内文件自带 module 字段（显示成 `clib/xxx`）。
 	// 这些文件对每个程序都可见，逐个铺进 Files 会重复几千行，所以单列。
-	// 注意来源是**链接资料**，不是这几个物理目录的扫描结果。
+	// 来源是**链接资料**，不是物理目录的扫描结果。
 	Modules map[string][]TreeFile `json:"modules,omitempty"`
 	// Refs 是"反查"结果：把当前文件链接进去的程序（最多 MaxRefs 个）。
 	Refs []string `json:"refs,omitempty"`
@@ -106,7 +108,7 @@ func (r *Resolver) Tree(module, code string) *LinkTree {
 	// 清单由资料决定，一次建好复用（lib 一条程序就可能上千个文件，
 	// 每次重建纯属浪费）。
 	if len(r.global) > 0 {
-		t.Modules = r.globalModuleFiles()
+		t.Modules = r.globalProgramFiles()
 	}
 
 	// 反查：把 (模组, 代码) 链接进去的程序。
@@ -129,12 +131,12 @@ func (r *Resolver) Tree(module, code string) *LinkTree {
 	return t
 }
 
-// globalModuleFiles 返回全局链接程序清单里的文件（惰性构建、缓存）。
+// globalProgramFiles 返回全局链接程序清单里的文件（惰性构建、缓存）。
 //
 // 来源是链接资料（GAL01 = lib/sub/qry 的链），不是这几个物理目录的扫描结果：
 // 目录只用来解析路径，资料里没列出的文件不算全局可见。缓存生命周期跟着
 // resolver：资料重载会重建 resolver，清单变化由下一次重载带走。
-func (r *Resolver) globalModuleFiles() map[string][]TreeFile {
+func (r *Resolver) globalProgramFiles() map[string][]TreeFile {
 	gs := r.globalSetData()
 	if gs == nil {
 		return nil
